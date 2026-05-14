@@ -180,7 +180,7 @@ func (a *Chill) Seed(seedVal int64) {
 			Channel: 0, Velocity: 72, Notes: notes,
 			PeriodSec: cycleSec, Phase01: 0,
 			MutationRate: 1.0, MutateOne: mutate,
-			VelocityJitter: 8,
+			VelocityJitter: 8, TimingJitterSec: 0.008, // EP stab — lazy but not sloppy
 		})
 	}
 
@@ -194,7 +194,7 @@ func (a *Chill) Seed(seedVal int64) {
 		PeriodSec: cycleSec, Phase01: 0,
 		MutationRate: 1.0,
 		MutateOne:    func(slot int, _ int) int { return a.bassNoteAt(slot) },
-		VelocityJitter: 6,
+		VelocityJitter: 6, TimingJitterSec: 0.005, // bass — tight
 	})
 
 	// --- Vibraphone melody: one note per chord, sparse and high-register.
@@ -207,7 +207,7 @@ func (a *Chill) Seed(seedVal int64) {
 		PeriodSec: cycleSec, Phase01: 0,
 		MutationRate: 0.35,
 		MutateOne:    func(slot int, _ int) int { return a.vibeNoteAt(slot) },
-		VelocityJitter: 12,
+		VelocityJitter: 12, TimingJitterSec: 0.020, // vibe — laid back
 	})
 
 	// --- Nylon Guitar: comping with extended chord notes on beat 2-and (the
@@ -222,7 +222,7 @@ func (a *Chill) Seed(seedVal int64) {
 		Phase01:   1.5 / float64(4*numBars), // 1.5 beats into the first bar
 		MutationRate: 1.0,
 		MutateOne:    func(slot int, _ int) int { return a.guitarNoteAt(slot) },
-		VelocityJitter: 10,
+		VelocityJitter: 10, TimingJitterSec: 0.025, // nylon comping — humans don't quantize
 	})
 
 	// --- Soprano Sax: very sparse solo. Only 2 notes per loop (one in the
@@ -238,7 +238,7 @@ func (a *Chill) Seed(seedVal int64) {
 		Phase01:   0.4, // come in 40% through the cycle
 		MutationRate: 0.4,
 		MutateOne:    func(slot int, _ int) int { return a.saxNoteAt(slot) },
-		VelocityJitter: 14,
+		VelocityJitter: 14, TimingJitterSec: 0.035, // sax solo — most expressive, most loose
 	})
 
 	// --- Drum beat: kick on 1 & 3, snare on 2 & 4, hi-hat every 8th note.
@@ -252,7 +252,7 @@ func (a *Chill) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: drumChannel, Velocity: 92, Notes: kickNotes,
 		PeriodSec: cycleSec, Phase01: 0,
-		VelocityJitter: 8,
+		VelocityJitter: 8, TimingJitterSec: 0.003, // kick — anchors the groove, must be tight
 	})
 	snareNotes := make([]int, 2*numBars)
 	for i := range snareNotes {
@@ -264,7 +264,7 @@ func (a *Chill) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: drumChannel, Velocity: 82, Notes: snareNotes,
 		PeriodSec: cycleSec, Phase01: 0.5 / float64(2*numBars),
-		VelocityJitter: 6,
+		VelocityJitter: 6, TimingJitterSec: 0.004, // snare — tight, slight behind-the-beat
 	})
 	hihatNotes := make([]int, 8*numBars) // 8 hits per bar
 	for i := range hihatNotes {
@@ -273,7 +273,8 @@ func (a *Chill) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: drumChannel, Velocity: 55, Notes: hihatNotes,
 		PeriodSec: cycleSec, Phase01: 0,
-		VelocityJitter: 14, // hi-hat especially benefits from "swing" velocity feel
+		VelocityJitter:  14,    // hi-hat benefits most from "swing" velocity feel
+		TimingJitterSec: 0.006, // and a bit of swing timing
 	})
 
 	// --- Tape character ---

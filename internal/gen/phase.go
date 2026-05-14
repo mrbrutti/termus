@@ -86,14 +86,20 @@ func (a *Phase) Seed(seedVal int64) {
 	basePeriod := 6.5 + 2.0*a.rng.Float64()
 	driftRatio := 1.005 // gentler tempo offset (was 1.008)
 
+	// Vibraphone voices get small velocity jitter for "real player" feel but
+	// NO timing jitter — the entire phase-shift technique depends on each
+	// voice's tempo being precisely defined. Randomizing timing here would
+	// erase the rhythmic-interference effect the algorithm exists to produce.
 	core.addTrack(SF2Track{
 		Channel: 0, Velocity: 76, Notes: figure,
 		PeriodSec: basePeriod, Phase01: 0,
 		MutationRate: 0.10, MutateOne: figMutate,
+		VelocityJitter: 8,
 	})
 	core.addTrack(SF2Track{
 		Channel: 1, Velocity: 70, Notes: figure,
 		PeriodSec: basePeriod * driftRatio, Phase01: 0,
+		VelocityJitter: 8,
 	})
 
 	// Chord progression: 4 chords, ~60 s each (was 30 s) — the harmonic bed
@@ -131,15 +137,19 @@ func (a *Phase) Seed(seedVal int64) {
 		return k
 	}
 	const chordCycleSec = 240.0
+	// Pad and bass have very slow change rate (one chord per minute), so
+	// timing jitter is meaningless — kept on velocity only for breathing feel.
 	core.addTrack(SF2Track{
 		Channel: 2, Velocity: 50, Notes: chordRoots,
 		PeriodSec: chordCycleSec, Phase01: 0,
-		MutationRate: 1.0, MutateOne: padMutate, // every cycle re-roll for key drift
+		MutationRate: 1.0, MutateOne: padMutate,
+		VelocityJitter: 4,
 	})
 	core.addTrack(SF2Track{
 		Channel: 3, Velocity: 70, Notes: bassRoots,
 		PeriodSec: chordCycleSec, Phase01: 0,
 		MutationRate: 1.0, MutateOne: bassMutate,
+		VelocityJitter: 6,
 	})
 
 	// Auto-install a long synthetic hall reverb — phase-shift sounds dramatic

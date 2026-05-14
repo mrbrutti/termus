@@ -60,12 +60,12 @@ func (a *SF2Drone) Seed(seedVal int64) {
 			Channel: 0, Velocity: 64, Notes: notes,
 			PeriodSec: period, Phase01: phase,
 			MutationRate: 0.05, MutateOne: bedMutate,
-			VelocityJitter: 4,
+			VelocityJitter: 4, TimingJitterSec: 0.020,
 		})
 		core.addTrack(SF2Track{
 			Channel: 1, Velocity: 48, Notes: notes,
 			PeriodSec: period, Phase01: phase,
-			VelocityJitter: 4,
+			VelocityJitter: 4, TimingJitterSec: 0.020,
 		})
 	}
 
@@ -83,7 +83,7 @@ func (a *SF2Drone) Seed(seedVal int64) {
 		Channel: 2, Velocity: 70, Notes: shimmerNotes,
 		PeriodSec: shimmerPeriod, Phase01: rng.Float64(),
 		MutationRate: 0.15, MutateOne: shimmerMutate,
-		VelocityJitter: 10,
+		VelocityJitter: 10, TimingJitterSec: 0.025,
 	})
 
 	// Choir voice "oohs" in mid-register for human warmth. Slow cycle so
@@ -100,7 +100,7 @@ func (a *SF2Drone) Seed(seedVal int64) {
 		Channel: 3, Velocity: 54, Notes: choirNotes,
 		PeriodSec: 37.0, Phase01: rng.Float64(),
 		MutationRate: 0.08, MutateOne: choirMutate,
-		VelocityJitter: 4,
+		VelocityJitter: 4, TimingJitterSec: 0.020,
 	})
 
 	// Acoustic bass: very slow walk through scale tones at the root register.
@@ -116,7 +116,7 @@ func (a *SF2Drone) Seed(seedVal int64) {
 		Channel: 4, Velocity: 76, Notes: bassNotes,
 		PeriodSec: 41.0, Phase01: rng.Float64(),
 		MutationRate: 0.06, MutateOne: bassMutate,
-		VelocityJitter: 4,
+		VelocityJitter: 4, TimingJitterSec: 0.020,
 	})
 
 	a.core = core

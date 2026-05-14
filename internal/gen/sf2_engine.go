@@ -27,8 +27,10 @@ type SF2Reverberator interface {
 // using MutateOne. This makes the music gradually evolve over time rather
 // than looping the same figure indefinitely.
 //
-// Humanization: VelocityJitter randomizes velocity per NoteOn so dynamic
-// expression isn't deadly flat. 0 disables; typical values 4–10 (out of 127).
+// Humanization: VelocityJitter randomizes velocity per NoteOn so dynamics
+// aren't deadly flat. TimingJitterSec adds a random ±N-second offset to
+// each NoteOn's fire time so the rhythm doesn't sound machine-precise.
+// Typical values: Velocity 4–14, Timing 0.005–0.020 (5–20 ms).
 type SF2Track struct {
 	Channel   int32 // MIDI channel 0..15
 	Velocity  int32 // 0..127
@@ -39,17 +41,23 @@ type SF2Track struct {
 	MutationRate float64
 	MutateOne    func(slot int, prev int) int
 
-	VelocityJitter int32 // ±range randomly added to Velocity per NoteOn
+	VelocityJitter  int32   // ±range added to Velocity per NoteOn
+	TimingJitterSec float64 // ±range added to fire time per NoteOn (seconds)
 }
 
-// sf2TrackState is the runtime state for one track.
+// sf2TrackState is the runtime state for one track. The scheduler uses
+// absolute fire times (samples since Seed) rather than per-cycle phase math
+// so timing jitter can be applied naturally — the next-fire sample is just
+// the slot boundary plus a random offset, with no special cases for "fired
+// early" vs "fired late".
 type sf2TrackState struct {
 	cfg           SF2Track
 	periodSamples int64
 	phaseOffset   int64
 	notesLen      int64 // len(cfg.Notes) cached as int64 to avoid conversion in hot path
-	curSlot       int
-	curKey        int // currently sounding key, or -1
+	curSlot       int   // last slot we fired (-1 before first fire)
+	curKey        int   // currently sounding key, or -1
+	nextFireT     int64 // absolute sample at which we should fire the next NoteOn
 }
 
 // sf2Core is a shared SoundFont rendering engine. Each SF2-mode algorithm
@@ -206,7 +214,9 @@ func (e *sf2Core) setConvolutionIR(ir []float64, wet float64) {
 	e.convWet = wet
 }
 
-// addTrack registers a cycling-note track with the engine.
+// addTrack registers a cycling-note track with the engine. nextFireT is
+// initialized to 0, which (combined with curSlot=-1) means "fire the slot
+// matching the current time on the very next render call."
 func (e *sf2Core) addTrack(t SF2Track) {
 	period := int64(t.PeriodSec * float64(synth.SampleRate))
 	if period < 1 {
@@ -219,49 +229,45 @@ func (e *sf2Core) addTrack(t SF2Track) {
 		notesLen:      int64(len(t.Notes)),
 		curSlot:       -1,
 		curKey:        -1,
+		nextFireT:     0,
 	}
 	e.tracks = append(e.tracks, state)
 }
 
-// slotAt returns the slot index for the given absolute sample time. Uses the
-// `int(phase * notesLen / period)` formula (same as gen.Eno's existing code)
-// because integer division consistently rounds toward zero — there's no
-// "phantom" slot at the end of the period that division-by-slotLen would
-// produce.
-func (s *sf2TrackState) slotAt(t int64) int {
-	phase := (t + s.phaseOffset) % s.periodSamples
-	return int(phase * s.notesLen / s.periodSamples)
-}
-
-// samplesUntilNextSlot returns how many samples until this track's slot
-// changes again. Returns 0 if the slot has already changed and we need to
-// fire an event now.
+// samplesUntilNextSlot returns how many samples until this track's next
+// NoteOn should fire. Returns 0 if the next fire is overdue.
 func (s *sf2TrackState) samplesUntilNextSlot(t int64) int64 {
-	phase := (t + s.phaseOffset) % s.periodSamples
-	slot := int(phase * s.notesLen / s.periodSamples)
-	if slot != s.curSlot {
+	if t >= s.nextFireT {
 		return 0
 	}
-	// Next slot starts at the smallest phase d where
-	//   (phase + d) * notesLen / periodSamples >= slot + 1
-	// i.e.  phase + d >= ceil((slot+1) * periodSamples / notesLen)
-	nextSlotStart := (int64(slot+1)*s.periodSamples + s.notesLen - 1) / s.notesLen
-	return nextSlotStart - phase
+	return s.nextFireT - t
 }
 
-// fireTransition sends NoteOff for the currently sounding key (if any) and
-// NoteOn for the slot's note. Velocity is jittered if VelocityJitter > 0,
-// for humanization. Also optionally re-rolls one OTHER slot's note so the
-// cycled material gradually evolves rather than repeating forever.
+// fireTransition fires the NoteOn for the slot the track is currently in
+// (computed from `t`), then schedules the next fire time at the next slot
+// boundary plus a random timing-jitter offset.
+//
+// Velocity is jittered if VelocityJitter > 0. Also optionally re-rolls one
+// OTHER slot's note so the cycled material gradually evolves.
 func (s *sf2TrackState) fireTransition(t int64, syn *meltysynth.Synthesizer, rng *rand.Rand) {
-	newSlot := s.slotAt(t)
+	// Compute the slot we're firing — based on t, not the previous slot.
+	// With timing jitter the fire time may be just past the natural slot
+	// boundary, so the new slot index is what's at time t.
+	phase := (t + s.phaseOffset) % s.periodSamples
+	newSlot := int(phase * s.notesLen / s.periodSamples)
+	if newSlot < 0 {
+		newSlot = 0
+	}
+	if int64(newSlot) >= s.notesLen {
+		newSlot = int(s.notesLen) - 1
+	}
+
 	if s.curKey >= 0 {
 		syn.NoteOff(s.cfg.Channel, int32(s.curKey))
 	}
 	key := s.cfg.Notes[newSlot]
 	vel := s.cfg.Velocity
 	if s.cfg.VelocityJitter > 0 && rng != nil {
-		// Symmetric ±jitter range. Clamp to a valid MIDI velocity.
 		offset := int32(rng.Intn(int(2*s.cfg.VelocityJitter)+1)) - s.cfg.VelocityJitter
 		vel += offset
 		if vel < 1 {
@@ -274,6 +280,27 @@ func (s *sf2TrackState) fireTransition(t int64, syn *meltysynth.Synthesizer, rng
 	syn.NoteOn(s.cfg.Channel, int32(key), vel)
 	s.curSlot = newSlot
 	s.curKey = key
+
+	// Schedule the next fire = natural boundary + timing jitter.
+	// Natural boundary of the next slot is at the smallest phase value
+	// where (phase * notesLen / periodSamples) >= (newSlot + 1), i.e.
+	// ceil((newSlot+1) * periodSamples / notesLen).
+	nextSlotStart := (int64(newSlot+1)*s.periodSamples + s.notesLen - 1) / s.notesLen
+	naturalBoundary := t + (nextSlotStart - phase)
+
+	jitter := int64(0)
+	if s.cfg.TimingJitterSec > 0 && rng != nil {
+		jSamples := int64(s.cfg.TimingJitterSec * float64(synth.SampleRate))
+		if jSamples > 0 {
+			jitter = rng.Int63n(2*jSamples+1) - jSamples
+		}
+	}
+	s.nextFireT = naturalBoundary + jitter
+	if s.nextFireT <= t {
+		// Jitter pulled the fire time into the past — clamp to "very next
+		// sample" so we always make forward progress.
+		s.nextFireT = t + 1
+	}
 
 	if s.cfg.MutateOne != nil && s.cfg.MutationRate > 0 && len(s.cfg.Notes) > 1 && rng != nil {
 		if rng.Float64() < s.cfg.MutationRate {

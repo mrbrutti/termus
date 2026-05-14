@@ -62,12 +62,12 @@ func (a *SF2Eno) Seed(seedVal int64) {
 			Channel: 0, Velocity: 70, Notes: notes,
 			PeriodSec: period, Phase01: phase,
 			MutationRate: 0.08, MutateOne: padMutate,
-			VelocityJitter: 6,
+			VelocityJitter: 6, TimingJitterSec: 0.012,
 		})
 		core.addTrack(SF2Track{
 			Channel: 1, Velocity: 56, Notes: notes,
 			PeriodSec: period, Phase01: phase,
-			VelocityJitter: 4,
+			VelocityJitter: 4, TimingJitterSec: 0.008,
 		})
 	}
 
@@ -86,7 +86,7 @@ func (a *SF2Eno) Seed(seedVal int64) {
 			Channel: 2, Velocity: 92, Notes: notes,
 			PeriodSec: period, Phase01: rng.Float64(),
 			MutationRate: 0.18, MutateOne: leadMutate,
-			VelocityJitter: 12,
+			VelocityJitter: 12, TimingJitterSec: 0.018,
 		})
 	}
 
@@ -103,7 +103,7 @@ func (a *SF2Eno) Seed(seedVal int64) {
 		Channel: 3, Velocity: 56, Notes: celestaNotes,
 		PeriodSec: 27.0, Phase01: rng.Float64(),
 		MutationRate: 0.20, MutateOne: celesta,
-		VelocityJitter: 12,
+		VelocityJitter: 12, TimingJitterSec: 0.018,
 	})
 
 	// French horn: warm low sustained voice on chord roots. Cycles slowly
@@ -121,7 +121,7 @@ func (a *SF2Eno) Seed(seedVal int64) {
 		Channel: 4, Velocity: 50, Notes: hornNotes,
 		PeriodSec: 25.0, Phase01: rng.Float64(),
 		MutationRate: 0.10, MutateOne: horn,
-		VelocityJitter: 6,
+		VelocityJitter: 6, TimingJitterSec: 0.012,
 	})
 
 	a.core = core

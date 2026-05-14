@@ -60,7 +60,7 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 			Channel: ch, Velocity: vel, Notes: notes,
 			PeriodSec: period, Phase01: rng.Float64(),
 			MutationRate: 0.15, MutateOne: mutate,
-			VelocityJitter: 8,
+			VelocityJitter: 8, TimingJitterSec: 0.015,
 		})
 	}
 
@@ -76,7 +76,7 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 		Channel: 3, Velocity: 78, Notes: bassNotes,
 		PeriodSec: 22.0, Phase01: rng.Float64(),
 		MutationRate: 0.10, MutateOne: bassMutate,
-		VelocityJitter: 5,
+		VelocityJitter: 5, TimingJitterSec: 0.018,
 	})
 
 	// Music box sparkle: very sparse, high register. 3 notes per ~30s cycle.
@@ -93,7 +93,7 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 		Channel: 2, Velocity: 60, Notes: mbNotes,
 		PeriodSec: 30.0, Phase01: rng.Float64(),
 		MutationRate: 0.20, MutateOne: mbMutate,
-		VelocityJitter: 12,
+		VelocityJitter: 12, TimingJitterSec: 0.025,
 	})
 
 	a.core = core

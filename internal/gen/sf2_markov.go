@@ -60,7 +60,7 @@ func (a *SF2Markov) Seed(seedVal int64) {
 			Channel: ch, Velocity: vel, Notes: notes,
 			PeriodSec: period, Phase01: rng.Float64(),
 			MutationRate: 0.12, MutateOne: mutate,
-			VelocityJitter: 8,
+			VelocityJitter: 8, TimingJitterSec: 0.015,
 		})
 	}
 
@@ -75,7 +75,7 @@ func (a *SF2Markov) Seed(seedVal int64) {
 		Channel: 2, Velocity: 70, Notes: clarNotes,
 		PeriodSec: 23.0, Phase01: rng.Float64(),
 		MutationRate: 0.18, MutateOne: clarMutate,
-		VelocityJitter: 10,
+		VelocityJitter: 10, TimingJitterSec: 0.018,
 	})
 
 	// Acoustic bass: long, slow Markov walk one octave below the root.
@@ -89,7 +89,7 @@ func (a *SF2Markov) Seed(seedVal int64) {
 		Channel: 3, Velocity: 82, Notes: bassNotes,
 		PeriodSec: 18.5, Phase01: rng.Float64(),
 		MutationRate: 0.08, MutateOne: bassMutate,
-		VelocityJitter: 6,
+		VelocityJitter: 6, TimingJitterSec: 0.012,
 	})
 
 	a.core = core

@@ -56,12 +56,12 @@ func (a *SF2Glass) Seed(seedVal int64) {
 			Channel: 0, Velocity: 84, Notes: notes,
 			PeriodSec: period, Phase01: phase,
 			MutationRate: 0.20, MutateOne: pentMutate,
-			VelocityJitter: 10,
+			VelocityJitter: 10, TimingJitterSec: 0.022,
 		})
 		core.addTrack(SF2Track{
 			Channel: 1, Velocity: 52, Notes: notes,
 			PeriodSec: period, Phase01: phase + 0.03,
-			VelocityJitter: 6,
+			VelocityJitter: 6, TimingJitterSec: 0.022,
 		})
 	}
 
@@ -80,7 +80,7 @@ func (a *SF2Glass) Seed(seedVal int64) {
 		Channel: 2, Velocity: 50, Notes: padNotes,
 		PeriodSec: 33.0, Phase01: 0,
 		MutationRate: 0.15, MutateOne: padMutate,
-		VelocityJitter: 4,
+		VelocityJitter: 4, TimingJitterSec: 0.025,
 	})
 
 	// Marimba reinforcement: occasional low strikes echoing the bell tones.
@@ -92,7 +92,7 @@ func (a *SF2Glass) Seed(seedVal int64) {
 		Channel: 3, Velocity: 56, Notes: marimNotes,
 		PeriodSec: 19.0, Phase01: rng.Float64(),
 		MutationRate: 0.15, MutateOne: padMutate,
-		VelocityJitter: 12,
+		VelocityJitter: 12, TimingJitterSec: 0.030,
 	})
 
 	a.core = core
