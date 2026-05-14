@@ -189,6 +189,12 @@ func (a *Chill) Seed(seedVal int64) {
 	core.setChorusSend(2, 32)
 	core.setChorusSend(4, 24)
 
+	// Sidechain ducking — the kick triggers a -4 dB duck on the master bus
+	// that recovers over 250 ms. This is the squelchy "pump" of modern lofi
+	// where the bass and pad get briefly pulled down each time the kick
+	// hits, making the kick feel huge without it being loud.
+	core.configureSidechain(-4, 12, 240)
+
 	// Pick a progression.
 	a.progression = chillProgressions[a.rng.Intn(len(chillProgressions))]
 
@@ -289,6 +295,7 @@ func (a *Chill) Seed(seedVal int64) {
 		Channel: drumChannel, Velocity: 92, Notes: kickNotes,
 		PeriodSec: cycleSec, Phase01: 0,
 		VelocityJitter: 8, TimingJitterSec: 0.003, // kick — anchors the groove, must be tight
+		OnFire: core.triggerDuck,
 	})
 	snareNotes := make([]int, 2*numBars)
 	for i := range snareNotes {

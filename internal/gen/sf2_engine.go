@@ -49,6 +49,12 @@ type SF2Track struct {
 	// through its slots without firing NoteOn — used by algorithms with
 	// "section" structure to drop/add layers over time.
 	Enabled *bool
+
+	// OnFire is called by the engine right after each successful NoteOn
+	// (i.e. not when the track was disabled). Used by sidechain
+	// ducking — the chill kick uses this to gate-trigger the master-bus
+	// duck envelope.
+	OnFire func()
 }
 
 // sf2TrackState is the runtime state for one track. The scheduler uses
@@ -105,8 +111,64 @@ type sf2Core struct {
 	// emits MIDI CC 74 on each at ~20 Hz control rate.
 	lfos []*filterLFO
 
+	// Optional sidechain duck envelope — multiplied with the master output.
+	// Triggered externally (e.g. by chill's kick OnFire). 1.0 = no duck,
+	// dives to duckFloor on trigger, exponentially recovers.
+	duckValue       float64
+	duckFloor       float64 // bottom of the duck, e.g. 0.55 = -5 dB
+	duckAttackCoef  float64 // per-sample multiplier during attack
+	duckReleaseCoef float64 // per-sample multiplier during release
+	duckState       int     // 0=idle, 1=attacking, 2=releasing
+
 	bufF32L []float32
 	bufF32R []float32
+}
+
+// configureSidechain installs a duck envelope. floorDB is the depth of the
+// duck (negative dB, e.g. -5). attackMs is how fast it dives (1–5 ms is
+// snappy; 8–20 ms is more "musical"). releaseMs is the recovery time
+// (typically 150–400 ms for a noticeable but not annoying pump).
+func (e *sf2Core) configureSidechain(floorDB, attackMs, releaseMs float64) {
+	e.duckFloor = math.Pow(10, floorDB/20)
+	e.duckValue = 1.0
+	e.duckAttackCoef = math.Exp(-1.0 / (attackMs * 0.001 * float64(synth.SampleRate)))
+	e.duckReleaseCoef = math.Exp(-1.0 / (releaseMs * 0.001 * float64(synth.SampleRate)))
+	e.duckState = 0
+}
+
+// triggerDuck starts a new duck cycle. Called by an algorithm's OnFire
+// callback (usually on a kick hit). Safe to call from the audio thread —
+// it just resets the state machine.
+func (e *sf2Core) triggerDuck() {
+	if e.duckAttackCoef == 0 {
+		return // not configured
+	}
+	e.duckState = 1 // attacking
+}
+
+// stepDuck advances the duck envelope by one sample and returns the
+// current attenuation (1.0 = no duck).
+func (e *sf2Core) stepDuck() float64 {
+	if e.duckAttackCoef == 0 {
+		return 1.0
+	}
+	switch e.duckState {
+	case 1:
+		// Exponential approach toward duckFloor.
+		e.duckValue = e.duckAttackCoef*(e.duckValue-e.duckFloor) + e.duckFloor
+		if e.duckValue <= e.duckFloor+0.005 {
+			e.duckValue = e.duckFloor
+			e.duckState = 2
+		}
+	case 2:
+		// Exponential recovery toward 1.0.
+		e.duckValue = e.duckReleaseCoef*(e.duckValue-1.0) + 1.0
+		if e.duckValue >= 0.999 {
+			e.duckValue = 1.0
+			e.duckState = 0
+		}
+	}
+	return e.duckValue
 }
 
 // newSF2Core constructs the engine and the master bus. masterGain compensates
@@ -401,6 +463,9 @@ func (s *sf2TrackState) fireTransition(t int64, syn *meltysynth.Synthesizer, rng
 		syn.NoteOn(s.cfg.Channel, int32(key), vel)
 		s.curSlot = newSlot
 		s.curKey = key
+		if s.cfg.OnFire != nil {
+			s.cfg.OnFire()
+		}
 	}
 
 	// Schedule the next fire = natural boundary + timing jitter.
@@ -498,6 +563,13 @@ func (e *sf2Core) renderInto(left, right []float64) {
 			// Stereo-decorrelated white noise — independent samples per channel.
 			l += (e.rng.Float64()*2 - 1) * e.hissLevel
 			r += (e.rng.Float64()*2 - 1) * e.hissLevel
+		}
+		// Sidechain duck — multiply both channels by the duck envelope's
+		// current attenuation. Idle = 1.0 (no effect).
+		if e.duckAttackCoef != 0 {
+			duck := e.stepDuck()
+			l *= duck
+			r *= duck
 		}
 		l, r = e.comp.Tick(l, r)
 		left[i] = synth.SoftClip(l)
