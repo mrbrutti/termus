@@ -1,10 +1,14 @@
 package gen
 
 import (
+	"math"
 	"math/rand"
 
 	"github.com/mrbrutti/termus/internal/synth"
 )
+
+// Compile-time assertion that *Eno implements Algorithm.
+var _ Algorithm = (*Eno)(nil)
 
 // Eno is the v1 algorithm: multiple short melodic phrases on incommensurate
 // loop periods over a slow filter-swept drone pad, with stereo cross-delay.
@@ -72,9 +76,12 @@ func (e *Eno) Next(left, right []float64) {
 		d := e.drone.tick()
 		l += d
 		r += d
-		// Stereo cross-delay.
-		l = e.delayL.Tick(l)
-		r = e.delayR.Tick(r)
+		// Stereo cross-delay (ping-pong): each channel's signal echoes through
+		// the opposite-side delay line. This widens the stereo image and is the
+		// canonical ambient-music space effect.
+		newL := e.delayL.Tick(r)
+		newR := e.delayR.Tick(l)
+		l, r = newL, newR
 		// Master soft-clip to keep peaks bounded.
 		left[i] = synth.SoftClip(l * 0.7)
 		right[i] = synth.SoftClip(r * 0.7)
@@ -177,9 +184,5 @@ func (d *enoDrone) tick() float64 {
 // --- helpers ---
 
 func midiToHz(midi int) float64 {
-	return 440.0 * pow2((float64(midi)-69.0)/12.0)
-}
-
-func pow2(x float64) float64 {
-	return pow2Impl(x)
+	return 440.0 * math.Exp2((float64(midi)-69.0)/12.0)
 }

@@ -25,6 +25,19 @@ func TestEnoDeterministic(t *testing.T) {
 				i, la[i], ra[i], lb[i], rb[i])
 		}
 	}
+
+	// Run two more blocks to catch state-corruption bugs that only show up
+	// after the first Next() returns.
+	for round := 1; round <= 2; round++ {
+		a.Next(la, ra)
+		b.Next(lb, rb)
+		for i := 0; i < n; i++ {
+			if la[i] != lb[i] || ra[i] != rb[i] {
+				t.Fatalf("non-deterministic at round=%d i=%d: a=(%g,%g) b=(%g,%g)",
+					round, i, la[i], ra[i], lb[i], rb[i])
+			}
+		}
+	}
 }
 
 func TestEnoProducesAudio(t *testing.T) {
@@ -42,8 +55,8 @@ func TestEnoProducesAudio(t *testing.T) {
 	if rms < 0.01 {
 		t.Fatalf("eno RMS=%g, want >= 0.01 (was the generator silent?)", rms)
 	}
-	if rms > 1.0 {
-		t.Fatalf("eno RMS=%g, expected < 1.0 (clipping?)", rms)
+	if rms > 0.5 {
+		t.Fatalf("eno RMS=%g, expected < 0.5 (gain regression?)", rms)
 	}
 }
 
