@@ -39,9 +39,13 @@ func main() {
 	root.SetSeed(*seed)
 	root.SetVolume(*initialVol)
 
-	// Initialize beep speaker (44.1 kHz, ~17 ms buffer).
+	// Initialize beep speaker. The buffer must be big enough that one Stream
+	// call can be produced before the speaker drains its previous chunk.
+	// time.Second/60 (≈17ms) was too tight for Eno's per-sample work on
+	// real hardware — caused ~25% underrun → silent output. time.Second/20
+	// (50ms) gives comfortable headroom. Latency is unnoticeable for ambient.
 	sr := beep.SampleRate(44100)
-	if err := speaker.Init(sr, sr.N(time.Second/60)); err != nil {
+	if err := speaker.Init(sr, sr.N(time.Second/20)); err != nil {
 		fmt.Fprintln(os.Stderr, "audio init failed:", err)
 		os.Exit(1)
 	}
