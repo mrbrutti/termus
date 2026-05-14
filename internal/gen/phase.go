@@ -75,6 +75,10 @@ func (a *Phase) Seed(seedVal int64) {
 	core.setProgram(2, 52)
 	core.setProgram(3, 32)
 
+	// Filter LFO on the choir pad — sustained, benefits from breathing.
+	// Vibraphones get no LFO (would mask the phase-shift rhythmic effect).
+	core.addFilterLFO(2, 1.0/18.0, 60, 32)
+
 	// 4-note figure, drawn from pentatonic-minor. Fewer notes than the v1
 	// 6-note figure → each note rings longer, more ambient.
 	figure := make([]int, 4)

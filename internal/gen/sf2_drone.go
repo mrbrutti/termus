@@ -50,6 +50,12 @@ func (a *SF2Drone) Seed(seedVal int64) {
 	core.setPan(3, 64)
 	core.setPan(4, 64)
 
+	// Filter LFOs on the sustained string and choir layers. Different rates
+	// per channel so they breathe out of phase with each other.
+	core.addFilterLFO(0, 1.0/14.0, 62, 28)
+	core.addFilterLFO(1, 1.0/19.0, 60, 26)
+	core.addFilterLFO(3, 1.0/11.0, 70, 30)
+
 	// Bed voices on long periods. Mutation is gentle here — drone wants
 	// to feel stable; abrupt note changes would betray the aesthetic.
 	bedMutate := func(_ int, _ int) int {

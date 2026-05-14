@@ -157,6 +157,11 @@ func (a *Chill) Seed(seedVal int64) {
 	core.setProgram(drumChannel, progStandardKit)
 	core.setPan(drumChannel, 64)
 
+	// Filter LFO on the Rhodes — classic lofi "wow" effect, like a slowly-
+	// detuning tape head. Slow rate, modest depth so the brightness gently
+	// rocks back and forth.
+	core.addFilterLFO(0, 1.0/8.0, 60, 22)
+
 	// Pick a progression.
 	a.progression = chillProgressions[a.rng.Intn(len(chillProgressions))]
 

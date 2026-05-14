@@ -95,6 +95,10 @@ type sf2Core struct {
 	convL, convR synth.RealtimeConvolver
 	convWet      float64
 
+	// Filter-cutoff LFOs — one per channel that wants modulation. The engine
+	// emits MIDI CC 74 on each at ~20 Hz control rate.
+	lfos []*filterLFO
+
 	bufF32L []float32
 	bufF32R []float32
 }
@@ -141,6 +145,68 @@ func (e *sf2Core) programSwap(channel int32, alternatives []int32, rng *rand.Ran
 		return
 	}
 	e.setProgram(channel, alternatives[rng.Intn(len(alternatives))])
+}
+
+// filterLFO holds the state for a slow CC-74 (filter cutoff) LFO on one
+// MIDI channel. Sustained pads especially benefit — without modulation
+// they sound static, with it they "breathe."
+type filterLFO struct {
+	channel    int32
+	rateHz     float64 // typical 0.05–0.25 Hz (4–20 second cycle)
+	depth      int32   // ±range of CC74 values; total swing = 2*depth
+	center     int32   // 0..127, midpoint of the swing
+	phaseSamps int64   // running phase counter in samples
+	periodSamp int64   // samples per full cycle
+	emitEvery  int64   // emit a CC74 every N samples (e.g. ~ 50 ms)
+	emitAcc    int64
+}
+
+// addFilterLFO installs a slow filter-cutoff LFO on the given channel.
+// rateHz is the LFO frequency (a 4–20 second cycle is typical for ambient).
+// center 64 is mid-range; depth 30 swings ±30 around center (34..94).
+func (e *sf2Core) addFilterLFO(channel int32, rateHz, center, depth float64) {
+	if rateHz <= 0 {
+		return
+	}
+	period := int64(float64(synth.SampleRate) / rateHz)
+	if period < 1 {
+		period = 1
+	}
+	lfo := &filterLFO{
+		channel:    channel,
+		rateHz:     rateHz,
+		depth:      int32(depth),
+		center:     int32(center),
+		periodSamp: period,
+		emitEvery:  int64(float64(synth.SampleRate) * 0.05), // 20 Hz control rate
+	}
+	e.lfos = append(e.lfos, lfo)
+}
+
+// updateLFOs advances every installed filter LFO by samples and emits MIDI
+// CC 74 messages at the configured rate. Called once per render block.
+func (e *sf2Core) updateLFOs(samples int64) {
+	const ccControlChange = 0xB0
+	const ccBrightness = 74 // CC 74 = filter cutoff / brightness
+	for _, l := range e.lfos {
+		l.phaseSamps = (l.phaseSamps + samples) % l.periodSamp
+		l.emitAcc += samples
+		if l.emitAcc < l.emitEvery {
+			continue
+		}
+		l.emitAcc = 0
+		// LFO value in -1..1 via sine.
+		theta := 2 * math.Pi * float64(l.phaseSamps) / float64(l.periodSamp)
+		v := math.Sin(theta)
+		cc := int32(float64(l.center) + v*float64(l.depth))
+		if cc < 0 {
+			cc = 0
+		}
+		if cc > 127 {
+			cc = 127
+		}
+		e.syn.ProcessMidiMessage(l.channel, ccControlChange, ccBrightness, cc)
+	}
 }
 
 // setPan positions a MIDI channel in the stereo field. pan is 0..127 where
@@ -348,6 +414,9 @@ func (e *sf2Core) renderInto(left, right []float64) {
 			}
 		}
 		if ahead > 0 {
+			if len(e.lfos) > 0 {
+				e.updateLFOs(ahead)
+			}
 			e.syn.Render(e.bufF32L[pos:pos+int(ahead)], e.bufF32R[pos:pos+int(ahead)])
 			e.t += ahead
 			pos += int(ahead)

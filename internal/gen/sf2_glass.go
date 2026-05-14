@@ -48,6 +48,11 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	core.setPan(2, 64)
 	core.setPan(3, 64)
 
+	// Filter LFO on the bowed-glass pad — bells/crystal already shimmer
+	// from their natural envelopes, but the pad below benefits from a slow
+	// breathing sweep.
+	core.addFilterLFO(2, 1.0/15.0, 64, 28)
+
 	pentMutate := func(_ int, _ int) int {
 		degree := scalePentatonicMinor[rng.Intn(len(scalePentatonicMinor))]
 		octave := 12 * (1 + rng.Intn(3))

@@ -55,6 +55,14 @@ func (a *SF2Eno) Seed(seedVal int64) {
 	core.setPan(3, 100)
 	core.setPan(4, 64)
 
+	// Slow filter modulation on the sustained pads — gives the texture a
+	// breathing quality. ~12 s cycle on strings, ~17 s on the warm pad
+	// (different rates so the two pads don't pulse in sync).
+	core.addFilterLFO(0, 1.0/12.0, 64, 26)
+	core.addFilterLFO(1, 1.0/17.0, 64, 30)
+	// French horn at slightly faster rate but smaller depth.
+	core.addFilterLFO(4, 1.0/9.0, 70, 18)
+
 	// Slow pad bed — same logic as gen.Eno.Seed but with two tracks per
 	// musical voice so strings and warm pad layer together.
 	padMutate := func(_ int, _ int) int {
