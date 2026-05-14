@@ -4,40 +4,59 @@ import (
 	"math/rand"
 
 	"github.com/sinshu/go-meltysynth/meltysynth"
+
+	"github.com/mrbrutti/termus/internal/synth"
 )
 
 var _ Algorithm = (*Phase)(nil)
 var _ SF2Reverberator = (*Phase)(nil)
 
-// Phase is a Reich-style phase-shift algorithm. Two marimba voices play
-// the same 6-note melodic figure at slightly different tempos: voice A at
-// some base period, voice B at ~0.8% slower. Over time the rhythmic
-// alignment between them drifts continuously, producing ever-changing
-// interlocking patterns — the algorithmic technique Steve Reich pioneered
-// in "Piano Phase" (1967) and "Music for 18 Musicians" (1976).
+// Phase is a Reich-style phase-shift algorithm tuned for ambient listening.
+// Two vibraphone voices play the same 4-note pentatonic-minor figure at
+// slightly different tempos; the long sustain of the vibraphone fills the
+// space between attacks so the music feels like a continuous shimmer rather
+// than a sequence of struck notes. A choir-aahs pad and acoustic bass move
+// underneath at a much slower chord cycle (~60 s per chord).
 //
-// Underneath, a sustained Choir Aahs pad cycles through a slow 4-chord
-// minor-key progression (~30 s per chord), with an acoustic bass on the
-// chord roots an octave lower. The melodic figure is drawn from the
-// pentatonic minor scale, so it stays consonant against any chord in the
-// progression.
+// For hours-long listening, the algorithm performs two kinds of mutation:
+//   - per-slot: at each note trigger, with ~10% probability one of the
+//     figure slots is re-rolled (handled by sf2Core).
+//   - macro key-drift: every 4–7 minutes a transposition of ±1..±2 semitones
+//     is rolled in. The drift takes effect gradually as notes mutate over
+//     the next minute, so the key change feels like Eno-style "obvious but
+//     gradual" modulation rather than a jump cut.
 //
-// Best results with --ir set to a real cathedral or hall IR — the
-// long-tail reverb dramatically enhances the interlocking-pattern effect
-// because rhythmic offsets between the two voices create dense reflections.
+// The algorithm auto-installs the SyntheticHallIR reverb on the master bus
+// unless --ir is provided. Phase-shift especially benefits from a long
+// reverb tail since the dense interlocking patterns blur into a wash.
 type Phase struct {
 	sf   *meltysynth.SoundFont
 	core *sf2Core
+	rng  *rand.Rand
+
+	rootMidi  int // base tonic
+	keyOffset int // current macro-transposition (semitones)
+
+	samplesElapsed int64 // since Seed
+	nextDriftAt    int64 // absolute sample index for next macro key drift
 }
 
-// NewPhase constructs the algorithm. Caller must call Seed before Next.
 func NewPhase(sf *meltysynth.SoundFont) *Phase { return &Phase{sf: sf} }
 
 func (a *Phase) Name() string { return "phase-shift" }
 
+// currentRoot returns the effective root MIDI accounting for any macro
+// key-drift that has happened. Mutator closures read this through the
+// *Phase pointer so they always pick notes in the current key, not the
+// initial one.
+func (a *Phase) currentRoot() int { return a.rootMidi + a.keyOffset }
+
 func (a *Phase) Seed(seedVal int64) {
-	rng := rand.New(rand.NewSource(seedVal)) //nolint:gosec
-	rootMidi := 45 + rng.Intn(7) // A2..D#3 — a register that puts the marimba mid-range
+	a.rng = rand.New(rand.NewSource(seedVal)) //nolint:gosec
+	a.rootMidi = 45 + a.rng.Intn(7)            // A2..D#3
+	a.keyOffset = 0
+	a.samplesElapsed = 0
+	a.scheduleNextDrift()
 
 	core, err := newSF2Core(a.sf, 3.0, seedVal)
 	if err != nil {
@@ -45,97 +64,127 @@ func (a *Phase) Seed(seedVal int64) {
 		return
 	}
 	// Channel layout:
-	//   0 — Marimba (GM #12)    voice A (slightly faster figure)
-	//   1 — Marimba (GM #12)    voice B (slightly slower figure)
-	//   2 — Choir Aahs (#52)    sustained chord pad
-	//   3 — Acoustic Bass (#32) chord roots, octave lower
-	core.setProgram(0, 12)
-	core.setProgram(1, 12)
+	//   0 — Vibraphone (#11)    voice A — long sustain, ambient hover
+	//   1 — Vibraphone (#11)    voice B — slightly slower tempo
+	//   2 — Choir Aahs (#52)    sustained pad
+	//   3 — Acoustic Bass (#32) chord roots, soft
+	core.setProgram(0, 11)
+	core.setProgram(1, 11)
 	core.setProgram(2, 52)
 	core.setProgram(3, 32)
 
-	// Build the melodic figure: 6 notes from the pentatonic-minor scale,
-	// distributed across two octaves above the root for a "music box" feel.
-	figure := make([]int, 6)
+	// 4-note figure, drawn from pentatonic-minor. Fewer notes than the v1
+	// 6-note figure → each note rings longer, more ambient.
+	figure := make([]int, 4)
 	for i := range figure {
-		deg := scalePentatonicMinor[rng.Intn(len(scalePentatonicMinor))]
-		// Slight upward bias as the figure unfolds — gives a melodic arc
-		// even though the order within is random.
-		octaveBias := 24
-		if i >= 4 {
-			octaveBias = 36
-		}
-		figure[i] = rootMidi + deg + octaveBias
+		figure[i] = a.pickFigureNote()
 	}
+	figMutate := func(_ int, _ int) int { return a.pickFigureNote() }
 
-	// Tempo: ~3.0 to 3.6 seconds per 6-note cycle.
-	basePeriod := 3.0 + 0.6*rng.Float64()
-	// Voice B is exactly 0.8% slower. With 6 notes per cycle, the phase
-	// offset accumulates one full note position every ~125 cycles, so
-	// after ~7 minutes the two voices have shifted by an entire beat.
-	driftRatio := 1.008
+	// Cycle ~6.5–8.5 s — more than 2× slower than v1, so each note breathes
+	// before the next one lands.
+	basePeriod := 6.5 + 2.0*a.rng.Float64()
+	driftRatio := 1.005 // gentler tempo offset (was 1.008)
 
-	// Mutation: the figure slowly mutates over time so the patterns evolve
-	// instead of repeating verbatim. Both voices share the same figure
-	// slice (Voice A and Voice B literally play the same notes) so mutating
-	// once changes the figure for both — perfect, since the whole point of
-	// the algorithm is that both voices play the SAME thing.
-	figMutate := func(_ int, _ int) int {
-		deg := scalePentatonicMinor[rng.Intn(len(scalePentatonicMinor))]
-		oct := 24
-		if rng.Float64() < 0.35 {
-			oct = 36
-		}
-		return rootMidi + deg + oct
-	}
 	core.addTrack(SF2Track{
-		Channel: 0, Velocity: 92, Notes: figure,
+		Channel: 0, Velocity: 76, Notes: figure,
 		PeriodSec: basePeriod, Phase01: 0,
 		MutationRate: 0.10, MutateOne: figMutate,
 	})
 	core.addTrack(SF2Track{
-		Channel: 1, Velocity: 86, Notes: figure,
+		Channel: 1, Velocity: 70, Notes: figure,
 		PeriodSec: basePeriod * driftRatio, Phase01: 0,
-		// Voice B inherits any mutations on the shared figure slice; no
-		// own MutateOne needed.
 	})
 
-	// Chord progression: i-VI-III-VII (Andalusian feel), one chord per
-	// ~30 seconds. The pad track cycles through 4 chord roots; the same
-	// list raised down an octave is the bass.
+	// Chord progression: 4 chords, ~60 s each (was 30 s) — the harmonic bed
+	// barely moves so the listener's attention rests on the interlocking
+	// vibraphone patterns. Pad and bass share the same chord roots.
 	progDegs := [][]int{
-		{0, 5, 2, 6}, // i-VI-III-VII
-		{0, 3, 5, 6}, // i-iv-VI-VII
-		{0, 6, 5, 3}, // i-VII-VI-iv
-		{0, 2, 3, 6}, // i-III-iv-VII
-	}[rng.Intn(4)]
+		{0, 5, 2, 6},
+		{0, 3, 5, 6},
+		{0, 6, 5, 3},
+		{0, 2, 3, 6},
+	}[a.rng.Intn(4)]
+
+	// Recompute chord notes from currentRoot() on every cycle by mutating
+	// the slots. The chord cycle itself is 240 s, so this isn't a hot path.
 	chordRoots := make([]int, len(progDegs))
 	bassRoots := make([]int, len(progDegs))
 	for i, deg := range progDegs {
-		chordRoots[i] = rootMidi + scaleMinor[deg] // pad in same register as root
-		bassRoots[i] = rootMidi + scaleMinor[deg] - 12
-		// Pull the bass into a reasonable register (no subsonic).
+		chordRoots[i] = a.currentRoot() + scaleMinor[deg]
+		bassRoots[i] = a.currentRoot() + scaleMinor[deg] - 12
 		if bassRoots[i] < 24 {
 			bassRoots[i] += 12
 		}
 	}
-	const chordCycleSec = 120.0 // 4 chords × 30 s each
+	// Mutators for pad/bass: re-roll uses the CURRENT key, so over time the
+	// progression itself drifts along with macro key shifts. Stays in the
+	// same scale degrees, just shifted.
+	padMutate := func(slot int, _ int) int {
+		return a.currentRoot() + scaleMinor[progDegs[slot%len(progDegs)]]
+	}
+	bassMutate := func(slot int, _ int) int {
+		k := a.currentRoot() + scaleMinor[progDegs[slot%len(progDegs)]] - 12
+		if k < 24 {
+			k += 12
+		}
+		return k
+	}
+	const chordCycleSec = 240.0
 	core.addTrack(SF2Track{
-		Channel: 2, Velocity: 60, Notes: chordRoots,
+		Channel: 2, Velocity: 50, Notes: chordRoots,
 		PeriodSec: chordCycleSec, Phase01: 0,
+		MutationRate: 1.0, MutateOne: padMutate, // every cycle re-roll for key drift
 	})
 	core.addTrack(SF2Track{
-		Channel: 3, Velocity: 80, Notes: bassRoots,
+		Channel: 3, Velocity: 70, Notes: bassRoots,
 		PeriodSec: chordCycleSec, Phase01: 0,
+		MutationRate: 1.0, MutateOne: bassMutate,
 	})
+
+	// Auto-install a long synthetic hall reverb — phase-shift sounds dramatic
+	// in a big space and lifeless dry. Overridden if the user passes --ir.
+	core.setConvolutionIR(synth.SyntheticHallIR(seedVal), 0.55)
 
 	a.core = core
 }
 
-// SetReverbIR installs a convolution reverb on the master bus. Highly
-// recommended for this algorithm — the phase-shift effect lives or dies
-// on the rhythmic interaction of the two voices, and a long reverb tail
-// dramatically thickens the resulting interlocking patterns.
+// pickFigureNote returns a random pentatonic-minor note in the figure's
+// register, using the current (possibly key-drifted) root.
+func (a *Phase) pickFigureNote() int {
+	deg := scalePentatonicMinor[a.rng.Intn(len(scalePentatonicMinor))]
+	oct := 24
+	if a.rng.Float64() < 0.35 {
+		oct = 36
+	}
+	return a.currentRoot() + deg + oct
+}
+
+func (a *Phase) scheduleNextDrift() {
+	// 4–7 minutes between key drifts.
+	secs := 240.0 + 180.0*a.rng.Float64()
+	a.nextDriftAt = a.samplesElapsed + int64(secs*float64(synth.SampleRate))
+}
+
+// shiftKey rolls a ±1..±2 semitone macro transposition. Drifts are
+// clamped to ±5 semitones from the original key to keep the long-term
+// listening centered around the seed's chosen tonic.
+func (a *Phase) shiftKey() {
+	shift := a.rng.Intn(5) - 2 // -2..+2
+	if shift == 0 {
+		shift = 1
+	}
+	a.keyOffset += shift
+	if a.keyOffset > 5 {
+		a.keyOffset = 5 - a.rng.Intn(3)
+	}
+	if a.keyOffset < -5 {
+		a.keyOffset = -5 + a.rng.Intn(3)
+	}
+}
+
+// SetReverbIR installs a convolution reverb on the master bus. Phase auto-
+// installs a hall by default; --ir overrides.
 func (a *Phase) SetReverbIR(ir []float64, wet float64) {
 	if a.core != nil {
 		a.core.setConvolutionIR(ir, wet)
@@ -151,4 +200,9 @@ func (a *Phase) Next(left, right []float64) {
 		return
 	}
 	a.core.renderInto(left, right)
+	a.samplesElapsed += int64(len(left))
+	if a.samplesElapsed >= a.nextDriftAt {
+		a.shiftKey()
+		a.scheduleNextDrift()
+	}
 }

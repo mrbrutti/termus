@@ -80,7 +80,7 @@ func main() {
 		algo = gen.NewPentatonic()
 	case "markov":
 		algo = gen.NewMarkov()
-	case "sf2", "eno-sf2", "drone-sf2", "glass-sf2", "pentatonic-sf2", "markov-sf2", "phase":
+	case "sf2", "eno-sf2", "drone-sf2", "glass-sf2", "pentatonic-sf2", "markov-sf2", "phase", "chill":
 		p, err := sf2.EnsureDefault(nil)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "sf2 setup:", err)
@@ -106,6 +106,8 @@ func main() {
 			algo = gen.NewSF2Markov(sf)
 		case "phase":
 			algo = gen.NewPhase(sf)
+		case "chill":
+			algo = gen.NewChill(sf)
 		}
 	default:
 		fmt.Fprintf(os.Stderr, "unknown algo %q\n", *algoName)

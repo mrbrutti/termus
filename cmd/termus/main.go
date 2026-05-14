@@ -22,7 +22,7 @@ func main() {
 	seed := flag.Int64("seed", time.Now().UnixNano(), "RNG seed (default: time-based)")
 	algoName := flag.String("algo", "eno",
 		"algorithm: eno | drone | glass | pentatonic | markov | sf2 | "+
-			"eno-sf2 | drone-sf2 | glass-sf2 | pentatonic-sf2 | markov-sf2 | phase")
+			"eno-sf2 | drone-sf2 | glass-sf2 | pentatonic-sf2 | markov-sf2 | phase | chill")
 	initialVol := flag.Int("volume", 70, "initial volume 0..100")
 	sf2Path := flag.String("sf2", "", "path to SoundFont file for the sf2 algorithm (default: auto-download TimGM6mb.sf2)")
 	irPath := flag.String("ir", "", "convolution IR: WAV file path, or preset name: room | hall | cathedral | plate")
@@ -46,7 +46,7 @@ func main() {
 		algo = gen.NewPentatonic()
 	case "markov":
 		algo = gen.NewMarkov()
-	case "sf2", "eno-sf2", "drone-sf2", "glass-sf2", "pentatonic-sf2", "markov-sf2", "phase":
+	case "sf2", "eno-sf2", "drone-sf2", "glass-sf2", "pentatonic-sf2", "markov-sf2", "phase", "chill":
 		// Resolve the SoundFont: --sf2 overrides, otherwise auto-download.
 		path := *sf2Path
 		if path == "" {
@@ -83,6 +83,8 @@ func main() {
 			algo = gen.NewSF2Markov(sf)
 		case "phase":
 			algo = gen.NewPhase(sf)
+		case "chill":
+			algo = gen.NewChill(sf)
 		}
 	default:
 		fmt.Fprintf(os.Stderr,
