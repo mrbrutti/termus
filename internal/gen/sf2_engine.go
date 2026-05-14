@@ -341,6 +341,18 @@ func (e *sf2Core) setPan(channel int32, pan int32) {
 	e.syn.ProcessMidiMessage(channel, ccControlChange, ccPan, pan)
 }
 
+// setMasterEQ overrides the default master-bus shelf EQ. The engine builds
+// in a +2.5 dB low shelf at 180 Hz and a +3 dB high shelf at 7.5 kHz as
+// sensible defaults — algorithms can pass different parameters to dial in
+// their specific character (e.g. chill wants a high-shelf CUT, not boost,
+// so the tape lowpass isn't fighting an air-boost above its corner).
+func (e *sf2Core) setMasterEQ(lowHz, lowDB, highHz, highDB float64) {
+	e.eqLowL = synth.NewLowShelf(lowHz, lowDB, 0.707)
+	e.eqLowR = synth.NewLowShelf(lowHz, lowDB, 0.707)
+	e.eqHighL = synth.NewHighShelf(highHz, highDB, 0.707)
+	e.eqHighR = synth.NewHighShelf(highHz, highDB, 0.707)
+}
+
 // setMasterLowpass installs a stereo low-pass filter at the end of the master
 // bus, giving the output a "muffled tape" character. Pass 0 hz to disable.
 func (e *sf2Core) setMasterLowpass(cutoffHz, q float64) {

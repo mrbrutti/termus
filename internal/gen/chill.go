@@ -175,6 +175,16 @@ func (a *Chill) Seed(seedVal int64) {
 	// rocks back and forth.
 	core.addFilterLFO(0, 1.0/8.0, 60, 22)
 
+	// Chill master EQ override: the engine default boosts highs by +3 dB at
+	// 7.5 kHz, which fights against the tape lowpass and the "dark" lofi
+	// aesthetic. For chill specifically, CUT highs slightly so the master
+	// chain genuinely darkens the top end rather than re-adding what the
+	// LP took away.
+	core.setMasterEQ(180, 1.5, 7500, -4.0)
+	// Also drop the master LP cutoff a bit (was 6500 Hz) — pulls the top
+	// end down further for that fully-muffled tape feel.
+	core.setMasterLowpass(5500, 0.55)
+
 	// Lofi reverb is generally short and close (already configured via
 	// SyntheticRoomIR), but per-channel sends shape the mix character.
 	// Sax solo gets the most reverb for "soloistic space"; drums stay dry
@@ -195,16 +205,17 @@ func (a *Chill) Seed(seedVal int64) {
 	// hits, making the kick feel huge without it being loud.
 	core.configureSidechain(-4, 12, 240)
 
-	// Tape saturation — softens transients, adds a tiny bit of harmonic
-	// distortion that mimics analog tape's compression-by-magnetization.
-	// 0.28 is in the "subtle but audible warmth" range; 0.5+ would start
-	// to sound obviously distorted, which lofi doesn't want.
-	core.setTapeSaturation(0.28)
+	// Tape saturation — gentler than before (0.20 vs 0.28) so it doesn't
+	// generate as many harsh upper harmonics that the listener perceives
+	// as "always-present sharpness."
+	core.setTapeSaturation(0.20)
 
-	// Vinyl crackle — ~15 pops per second, each ~1 ms long with random
-	// sign and amplitude. Quiet enough to live under the music, just
-	// loud enough to feel like "playing through a slightly dusty record."
-	core.setVinylCrackle(15, 0.045, 1.2)
+	// Vinyl crackle — much sparser than v1 (was 15 pops/sec at 0.045 amp;
+	// now 6 pops/sec at 0.022 amp with longer pop duration). Real dusty
+	// vinyl pops a few times per second, not constantly. The reduction
+	// removes the "always there" hash that the prior amplitude+rate were
+	// producing.
+	core.setVinylCrackle(6, 0.022, 1.5)
 
 	// Pick a progression.
 	a.progression = chillProgressions[a.rng.Intn(len(chillProgressions))]
@@ -328,9 +339,9 @@ func (a *Chill) Seed(seedVal int64) {
 		hihatNotes[i] = drumHiHatC
 	}
 	core.addTrack(SF2Track{
-		Channel: drumChannel, Velocity: 55, Notes: hihatNotes,
+		Channel: drumChannel, Velocity: 38, Notes: hihatNotes,
 		PeriodSec: cycleSec, Phase01: 0,
-		VelocityJitter:  14,
+		VelocityJitter:  10, // narrower so loud accents don't poke through
 		TimingJitterSec: 0.006,
 		// Swing! Lofi hi-hats shuffle — odd 8ths fire ~13% of a beat late.
 		// This is THE production-feel marker that turns "drum-machine
@@ -338,14 +349,9 @@ func (a *Chill) Seed(seedVal int64) {
 		SwingAmount: 0.13,
 	})
 
-	// --- Tape character ---
-	// Light master-bus low-pass at 6.5 kHz: rolls off the brightest harmonics
-	// the way a cassette would. q=0.5 keeps the rolloff smooth (no resonant
-	// peak).
-	core.setMasterLowpass(6500, 0.5)
-	// Subtle white-noise hiss at ~-50 dBFS. Just barely audible behind quiet
-	// passages, masked by everything louder.
+	// Tape hiss — subtle white-noise floor at ~-50 dBFS.
 	core.setTapeHiss(0.003)
+	// (Master LP and EQ are set above, near the FilterLFO config.)
 
 	// Soft small-room reverb by default.
 	core.setConvolutionIR(synth.SyntheticRoomIR(0.12), 0.35)
