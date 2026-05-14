@@ -75,6 +75,13 @@ func (a *SF2Eno) Seed(seedVal int64) {
 	a.core = core
 }
 
+// SetReverbIR installs a convolution reverb on the master bus.
+func (a *SF2Eno) SetReverbIR(ir []float64, wet float64) {
+	if a.core != nil {
+		a.core.setConvolutionIR(ir, wet)
+	}
+}
+
 func (a *SF2Eno) Next(left, right []float64) {
 	if a.core == nil {
 		for i := range left {

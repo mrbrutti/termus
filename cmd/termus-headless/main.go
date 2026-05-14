@@ -18,6 +18,7 @@ import (
 	"github.com/mrbrutti/termus/internal/gen"
 	"github.com/mrbrutti/termus/internal/scope"
 	"github.com/mrbrutti/termus/internal/sf2"
+	"github.com/mrbrutti/termus/internal/synth"
 )
 
 // debugStreamer wraps a beep.Streamer and records call statistics so we can
@@ -63,6 +64,8 @@ func main() {
 	seconds := flag.Int("seconds", 10, "duration")
 	bufDivisor := flag.Int("buf", 60, "buffer = SampleRate / this")
 	algoName := flag.String("algo", "eno", "algorithm name")
+	irPath := flag.String("ir", "", "convolution IR WAV path, or 'synthetic'")
+	irWet := flag.Float64("ir-wet", 0.40, "convolution wet mix 0..1")
 	flag.Parse()
 
 	var algo gen.Algorithm
@@ -107,6 +110,23 @@ func main() {
 		os.Exit(2)
 	}
 	algo.Seed(*seed)
+	if *irPath != "" {
+		if rev, ok := algo.(gen.SF2Reverberator); ok {
+			var ir []float64
+			var err error
+			if *irPath == "synthetic" {
+				ir = synth.SyntheticRoomIR(0.08)
+			} else {
+				ir, err = audio.ReadIR(*irPath)
+				if err != nil {
+					fmt.Fprintln(os.Stderr, "ir load:", err)
+					os.Exit(1)
+				}
+			}
+			rev.SetReverbIR(ir, *irWet)
+			fmt.Fprintf(os.Stderr, "IR: %d samples (%.1f ms)\n", len(ir), float64(len(ir))*1000.0/44100.0)
+		}
+	}
 	ring := scope.NewRing(4096)
 	root := audio.NewRoot(algo, ring)
 	root.SetSeed(*seed)

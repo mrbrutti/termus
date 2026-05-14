@@ -1,10 +1,20 @@
 package gen
 
 import (
+	"math"
+
 	"github.com/sinshu/go-meltysynth/meltysynth"
 
 	"github.com/mrbrutti/termus/internal/synth"
 )
+
+// SF2Reverberator is the optional interface implemented by SF2-mode
+// algorithms that can have a convolution reverb installed on their master
+// bus. Used by the --ir flag to inject a real impulse response.
+type SF2Reverberator interface {
+	Algorithm
+	SetReverbIR(ir []float64, wet float64)
+}
 
 // SF2Track configures one cycling-note track inside an sf2Core engine.
 // Multiple tracks can share a MIDI channel (e.g. several voices all on
@@ -49,6 +59,11 @@ type sf2Core struct {
 	eqHighL, eqHighR *synth.HighShelf
 	comp             *synth.StereoCompressor
 
+	// Optional convolution reverb. When non-nil, applied in parallel with
+	// the dry signal at convWet mix level. nil disables convolution.
+	convL, convR *synth.Convolver
+	convWet      float64
+
 	bufF32L []float32
 	bufF32R []float32
 }
@@ -78,6 +93,41 @@ func newSF2Core(sf *meltysynth.SoundFont, masterGain float64) (*sf2Core, error) 
 func (e *sf2Core) setProgram(channel int32, program int32) {
 	const ccProgramChange = 0xC0
 	e.syn.ProcessMidiMessage(channel, ccProgramChange, program, 0)
+}
+
+// setConvolutionIR installs a convolution reverb on the master bus. The IR is
+// shared across both channels (mono → stereo via two independent convolver
+// instances seeded from the same IR). wet is the mix level in [0, 1]; pass
+// nil ir or 0 wet to disable.
+func (e *sf2Core) setConvolutionIR(ir []float64, wet float64) {
+	if len(ir) == 0 || wet <= 0 {
+		e.convL = nil
+		e.convR = nil
+		e.convWet = 0
+		return
+	}
+	if wet > 1 {
+		wet = 1
+	}
+	// Normalize so convolved output stays in a reasonable level range —
+	// otherwise a long, dense IR sums to a much louder signal than the dry.
+	var sumSq float64
+	for _, x := range ir {
+		sumSq += x * x
+	}
+	norm := 1.0
+	if sumSq > 0 {
+		// Cube root: fully normalizing a dense 1-second IR makes it
+		// inaudibly quiet; this gives a perceptually balanced level.
+		norm = math.Pow(1.0/sumSq, 1.0/3.0)
+	}
+	scaled := make([]float64, len(ir))
+	for i, x := range ir {
+		scaled[i] = x * norm
+	}
+	e.convL = synth.NewConvolver(scaled)
+	e.convR = synth.NewConvolver(scaled)
+	e.convWet = wet
 }
 
 // addTrack registers a cycling-note track with the engine.
@@ -173,7 +223,7 @@ func (e *sf2Core) renderInto(left, right []float64) {
 		}
 	}
 
-	// Master bus: gain → EQ → compressor → soft-clip.
+	// Master bus: gain → EQ → optional convolution wet bus → compressor → soft-clip.
 	for i := 0; i < n; i++ {
 		l := float64(e.bufF32L[i]) * e.masterGain
 		r := float64(e.bufF32R[i]) * e.masterGain
@@ -181,6 +231,16 @@ func (e *sf2Core) renderInto(left, right []float64) {
 		r = e.eqLowR.Tick(r)
 		l = e.eqHighL.Tick(l)
 		r = e.eqHighR.Tick(r)
+		if e.convL != nil {
+			// Parallel wet/dry: dry signal is full-level; conv wet is mixed in
+			// at convWet. This is the "early-reflection room" use case — we
+			// don't want to replace the existing reverb, we want to add a
+			// room impression on top.
+			wetL := e.convL.Tick(l)
+			wetR := e.convR.Tick(r)
+			l += wetL * e.convWet
+			r += wetR * e.convWet
+		}
 		l, r = e.comp.Tick(l, r)
 		left[i] = synth.SoftClip(l)
 		right[i] = synth.SoftClip(r)

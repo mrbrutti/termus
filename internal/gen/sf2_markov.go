@@ -83,6 +83,13 @@ func markovWalk(rng *rand.Rand, rootMidi, count int) []int {
 	return notes
 }
 
+// SetReverbIR installs a convolution reverb on the master bus.
+func (a *SF2Markov) SetReverbIR(ir []float64, wet float64) {
+	if a.core != nil {
+		a.core.setConvolutionIR(ir, wet)
+	}
+}
+
 func (a *SF2Markov) Next(left, right []float64) {
 	if a.core == nil {
 		for i := range left {

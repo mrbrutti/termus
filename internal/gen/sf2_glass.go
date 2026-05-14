@@ -56,6 +56,13 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	a.core = core
 }
 
+// SetReverbIR installs a convolution reverb on the master bus.
+func (a *SF2Glass) SetReverbIR(ir []float64, wet float64) {
+	if a.core != nil {
+		a.core.setConvolutionIR(ir, wet)
+	}
+}
+
 func (a *SF2Glass) Next(left, right []float64) {
 	if a.core == nil {
 		for i := range left {

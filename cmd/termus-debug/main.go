@@ -12,6 +12,7 @@ import (
 	"github.com/mrbrutti/termus/internal/audio"
 	"github.com/mrbrutti/termus/internal/gen"
 	"github.com/mrbrutti/termus/internal/sf2"
+	"github.com/mrbrutti/termus/internal/synth"
 )
 
 func main() {
@@ -22,6 +23,8 @@ func main() {
 		"algorithm: eno|drone|glass|pentatonic|markov|sf2|"+
 			"eno-sf2|drone-sf2|glass-sf2|pentatonic-sf2|markov-sf2")
 	sf2Path := flag.String("sf2", "", "SoundFont path for the sf2 algorithm (default: auto-download)")
+	irPath := flag.String("ir", "", "convolution IR WAV path, or 'synthetic'")
+	irWet := flag.Float64("ir-wet", 0.40, "convolution wet mix 0..1")
 	flag.Parse()
 
 	var algo gen.Algorithm
@@ -70,6 +73,27 @@ func main() {
 		os.Exit(2)
 	}
 	algo.Seed(*seed)
+
+	if *irPath != "" {
+		if rev, ok := algo.(gen.SF2Reverberator); ok {
+			var ir []float64
+			var err error
+			if *irPath == "synthetic" {
+				ir = synth.SyntheticRoomIR(0.08)
+			} else {
+				ir, err = audio.ReadIR(*irPath)
+				if err != nil {
+					fmt.Fprintln(os.Stderr, "ir load failed:", err)
+					os.Exit(1)
+				}
+			}
+			rev.SetReverbIR(ir, *irWet)
+			fmt.Fprintf(os.Stderr, "convolution IR loaded: %d samples (%.1f ms)\n",
+				len(ir), float64(len(ir))*1000.0/44100.0)
+		} else {
+			fmt.Fprintf(os.Stderr, "warning: --ir requires an sf2-mode algorithm; ignoring\n")
+		}
+	}
 
 	const sr = 44100
 	totalFrames := int(*seconds * float64(sr))
