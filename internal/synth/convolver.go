@@ -1,5 +1,13 @@
 package synth
 
+// RealtimeConvolver is the common interface satisfied by both the direct
+// time-domain Convolver and the FFT-based FFTConvolver. Code that wants to
+// hold "some kind of convolver" (e.g. the SF2 master bus) uses this so it
+// can swap implementations based on IR length.
+type RealtimeConvolver interface {
+	Tick(x float64) float64
+}
+
 // Convolver is a real-time direct (time-domain) convolution filter. Use it to
 // imprint the early-reflections of a real space onto an input signal by
 // loading an impulse response (IR) WAV file. For best CPU behavior keep IRs

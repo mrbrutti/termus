@@ -1,6 +1,7 @@
 package gen
 
 import (
+	"math"
 	"math/rand"
 
 	"github.com/sinshu/go-meltysynth/meltysynth"
@@ -8,8 +9,10 @@ import (
 	"github.com/mrbrutti/termus/internal/synth"
 )
 
-// Compile-time assertion that *SF2 implements Algorithm.
+// Compile-time assertions: gen.SF2 satisfies both gen.Algorithm and
+// gen.SF2Reverberator so the --ir flag works against it.
 var _ Algorithm = (*SF2)(nil)
+var _ SF2Reverberator = (*SF2)(nil)
 
 // SF2 is the hi-fi algorithm: a minor-key A-B chord progression with modal
 // interchange (borrowed chords from parallel major), voiced for piano,
@@ -62,9 +65,56 @@ type SF2 struct {
 	eqHighL, eqHighR *synth.HighShelf
 	comp             *synth.StereoCompressor
 
+	// Optional convolution reverb on the master bus.
+	convL, convR synth.RealtimeConvolver
+	convWet      float64
+
 	// Scratch buffers — go-meltysynth uses []float32, we use []float64.
 	bufF32L []float32
 	bufF32R []float32
+}
+
+// SetReverbIR installs a convolution reverb on the master bus. The IR is
+// shared across both channels (one instance per channel, both seeded from
+// the same IR). wet is the mix level in [0, 1]; pass nil/empty ir or wet ≤ 0
+// to disable.
+func (s *SF2) SetReverbIR(ir []float64, wet float64) {
+	if len(ir) == 0 || wet <= 0 {
+		s.convL = nil
+		s.convR = nil
+		s.convWet = 0
+		return
+	}
+	if wet > 1 {
+		wet = 1
+	}
+	// Cube-root normalization keeps long, dense IRs perceptually
+	// comparable to short ones without going inaudibly quiet.
+	var sumSq float64
+	for _, x := range ir {
+		sumSq += x * x
+	}
+	norm := 1.0
+	if sumSq > 0 {
+		norm = math.Pow(1.0/sumSq, 1.0/3.0)
+	}
+	scaled := make([]float64, len(ir))
+	for i, x := range ir {
+		scaled[i] = x * norm
+	}
+	// Short IRs use direct convolution (zero latency); long IRs use the
+	// FFT-based partitioned convolver. Threshold and block size match
+	// sf2Core for consistency.
+	const fftThreshold = 1024
+	const fftBlockSize = 512
+	if len(scaled) <= fftThreshold {
+		s.convL = synth.NewConvolver(scaled)
+		s.convR = synth.NewConvolver(scaled)
+	} else {
+		s.convL = synth.NewFFTConvolver(scaled, fftBlockSize)
+		s.convR = synth.NewFFTConvolver(scaled, fftBlockSize)
+	}
+	s.convWet = wet
 }
 
 // chord is a set of MIDI note numbers in canonical root-3rd-5th-7th order.
@@ -277,7 +327,7 @@ func (s *SF2) Next(left, right []float64) {
 		pos += ahead
 	}
 
-	// Master bus: EQ + compressor + soft-clip.
+	// Master bus: gain → EQ → optional convolution wet bus → compressor → soft-clip.
 	for i := 0; i < n; i++ {
 		l := float64(s.bufF32L[i]) * 3.5
 		r := float64(s.bufF32R[i]) * 3.5
@@ -285,6 +335,12 @@ func (s *SF2) Next(left, right []float64) {
 		r = s.eqLowR.Tick(r)
 		l = s.eqHighL.Tick(l)
 		r = s.eqHighR.Tick(r)
+		if s.convL != nil {
+			wetL := s.convL.Tick(l)
+			wetR := s.convR.Tick(r)
+			l += wetL * s.convWet
+			r += wetR * s.convWet
+		}
 		l, r = s.comp.Tick(l, r)
 		left[i] = synth.SoftClip(l)
 		right[i] = synth.SoftClip(r)

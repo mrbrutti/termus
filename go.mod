@@ -6,6 +6,7 @@ require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/gopxl/beep/v2 v2.1.1
+	github.com/madelynnblue/go-dsp v1.0.0
 	github.com/sinshu/go-meltysynth v0.0.0-20230205031334-05d311382fc4
 )
 

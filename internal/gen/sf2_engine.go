@@ -60,8 +60,9 @@ type sf2Core struct {
 	comp             *synth.StereoCompressor
 
 	// Optional convolution reverb. When non-nil, applied in parallel with
-	// the dry signal at convWet mix level. nil disables convolution.
-	convL, convR *synth.Convolver
+	// the dry signal at convWet mix level. Each channel has its own
+	// instance, both seeded from the same IR. nil disables convolution.
+	convL, convR synth.RealtimeConvolver
 	convWet      float64
 
 	bufF32L []float32
@@ -125,8 +126,19 @@ func (e *sf2Core) setConvolutionIR(ir []float64, wet float64) {
 	for i, x := range ir {
 		scaled[i] = x * norm
 	}
-	e.convL = synth.NewConvolver(scaled)
-	e.convR = synth.NewConvolver(scaled)
+	// Pick an implementation based on IR length. For short IRs (≤1024 samples
+	// ≈ 23 ms at 44.1 kHz) direct convolution is faster than FFT-based and
+	// adds zero latency. For longer IRs the FFT version is essential —
+	// direct convolution's O(N) per-sample cost becomes prohibitive.
+	const fftThreshold = 1024
+	const fftBlockSize = 512
+	if len(scaled) <= fftThreshold {
+		e.convL = synth.NewConvolver(scaled)
+		e.convR = synth.NewConvolver(scaled)
+	} else {
+		e.convL = synth.NewFFTConvolver(scaled, fftBlockSize)
+		e.convR = synth.NewFFTConvolver(scaled, fftBlockSize)
+	}
 	e.convWet = wet
 }
 
