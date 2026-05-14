@@ -44,6 +44,13 @@ type SF2Track struct {
 	VelocityJitter  int32   // ±range added to Velocity per NoteOn
 	TimingJitterSec float64 // ±range added to fire time per NoteOn (seconds)
 
+	// SwingAmount applies a systematic offset on odd-indexed slots,
+	// pushing them later by SwingAmount * slotLength. 0 = straight time
+	// (default). 0.12–0.18 = classic hip-hop / lofi shuffle. Distinct
+	// from TimingJitterSec which is random; swing is deterministic and
+	// applies to every odd slot.
+	SwingAmount float64
+
 	// Enabled, if non-nil, is checked by the engine on every slot
 	// transition. When *Enabled is false, the track silently advances
 	// through its slots without firing NoteOn — used by algorithms with
@@ -100,6 +107,19 @@ type sf2Core struct {
 
 	// Optional tape-hiss noise floor at the master bus output. 0 disables.
 	hissLevel float64
+
+	// Optional tape saturation amount, 0..1. Adds a soft odd-harmonic
+	// curve to the master before final soft-clip — emulates tape
+	// magnetization behavior.
+	tapeSatAmount float64
+
+	// Optional vinyl-crackle: chance per sample (e.g. 1e-4) of firing
+	// a brief noise burst, and the duration in samples of each pop.
+	crackleProb     float64
+	crackleAmp      float64
+	cracklePopSamps int64
+	cracklePopLeft  int64 // remaining samples on current pop
+	cracklePopVal   float64
 
 	// Optional convolution reverb. When non-nil, applied in parallel with
 	// the dry signal at convWet mix level. Each channel has its own
@@ -343,6 +363,66 @@ func (e *sf2Core) setTapeHiss(level float64) {
 	e.hissLevel = level
 }
 
+// setTapeSaturation installs a soft-saturation shaper on the master bus
+// before the final SoftClip. amount in 0..1: 0 = none, 1 = strong tape-y
+// compression of peaks. Approximates analog-tape magnetization curve via a
+// scaled tanh. For lofi character, 0.20–0.45 sounds right.
+func (e *sf2Core) setTapeSaturation(amount float64) {
+	if amount < 0 {
+		amount = 0
+	}
+	if amount > 1 {
+		amount = 1
+	}
+	e.tapeSatAmount = amount
+}
+
+// setVinylCrackle installs a vinyl-record-style crackle layer on the master
+// output. popsPerSec is the average pop rate (e.g. 12 = somewhat dusty
+// record, 40 = very dusty). amp is the linear amplitude of each pop
+// (e.g. 0.06). popMs is the duration each pop holds before decaying
+// (typical real-vinyl pop: 0.5–2 ms).
+func (e *sf2Core) setVinylCrackle(popsPerSec, amp, popMs float64) {
+	if popsPerSec <= 0 || amp <= 0 {
+		e.crackleProb = 0
+		e.crackleAmp = 0
+		return
+	}
+	e.crackleProb = popsPerSec / float64(synth.SampleRate)
+	e.crackleAmp = amp
+	e.cracklePopSamps = int64(popMs * 0.001 * float64(synth.SampleRate))
+	if e.cracklePopSamps < 1 {
+		e.cracklePopSamps = 1
+	}
+}
+
+// stepCrackle returns the current crackle sample (or 0 when idle). Each
+// pop is a brief burst at random sign with exponential decay over
+// cracklePopSamps samples.
+func (e *sf2Core) stepCrackle() float64 {
+	if e.crackleProb == 0 {
+		return 0
+	}
+	if e.cracklePopLeft > 0 {
+		v := e.cracklePopVal
+		e.cracklePopLeft--
+		// Decay toward zero for a click-and-fade rather than a square pulse.
+		e.cracklePopVal *= 0.6
+		return v
+	}
+	if e.rng.Float64() < e.crackleProb {
+		// Start a new pop with random sign + random amplitude within ±amp.
+		sign := 1.0
+		if e.rng.Float64() < 0.5 {
+			sign = -1.0
+		}
+		e.cracklePopVal = sign * e.crackleAmp * (0.4 + 0.6*e.rng.Float64())
+		e.cracklePopLeft = e.cracklePopSamps - 1
+		return e.cracklePopVal
+	}
+	return 0
+}
+
 // setConvolutionIR installs a convolution reverb on the master bus. The IR is
 // shared across both channels (mono → stereo via two independent convolver
 // instances seeded from the same IR). wet is the mix level in [0, 1]; pass
@@ -468,12 +548,25 @@ func (s *sf2TrackState) fireTransition(t int64, syn *meltysynth.Synthesizer, rng
 		}
 	}
 
-	// Schedule the next fire = natural boundary + timing jitter.
+	// Schedule the next fire = natural boundary + swing + timing jitter.
 	// Natural boundary of the next slot is at the smallest phase value
 	// where (phase * notesLen / periodSamples) >= (newSlot + 1), i.e.
 	// ceil((newSlot+1) * periodSamples / notesLen).
 	nextSlotStart := (int64(newSlot+1)*s.periodSamples + s.notesLen - 1) / s.notesLen
 	naturalBoundary := t + (nextSlotStart - phase)
+	slotLen := s.periodSamples / s.notesLen
+
+	// Swing: odd-indexed slots fire later. This is the systematic shuffle
+	// that turns "straight 8ths" into the lofi/hip-hop groove.
+	if s.cfg.SwingAmount > 0 {
+		nextSlotIdx := newSlot + 1
+		if int64(nextSlotIdx) >= s.notesLen {
+			nextSlotIdx = 0
+		}
+		if nextSlotIdx%2 == 1 {
+			naturalBoundary += int64(s.cfg.SwingAmount * float64(slotLen))
+		}
+	}
 
 	jitter := int64(0)
 	if s.cfg.TimingJitterSec > 0 && rng != nil {
@@ -570,6 +663,20 @@ func (e *sf2Core) renderInto(left, right []float64) {
 			duck := e.stepDuck()
 			l *= duck
 			r *= duck
+		}
+		// Tape saturation — soft-knee tanh shaping with amount-dependent
+		// drive. Approximates analog tape magnetization without dramatic
+		// peak compression; preserves transients better than SoftClip alone.
+		if e.tapeSatAmount > 0 {
+			drive := 1.0 + 1.5*e.tapeSatAmount
+			l = math.Tanh(l*drive) / drive
+			r = math.Tanh(r*drive) / drive
+		}
+		// Vinyl crackle — single mono noise source mixed into both channels.
+		if e.crackleProb > 0 {
+			c := e.stepCrackle()
+			l += c
+			r += c
 		}
 		l, r = e.comp.Tick(l, r)
 		left[i] = synth.SoftClip(l)

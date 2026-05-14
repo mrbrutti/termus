@@ -195,6 +195,17 @@ func (a *Chill) Seed(seedVal int64) {
 	// hits, making the kick feel huge without it being loud.
 	core.configureSidechain(-4, 12, 240)
 
+	// Tape saturation — softens transients, adds a tiny bit of harmonic
+	// distortion that mimics analog tape's compression-by-magnetization.
+	// 0.28 is in the "subtle but audible warmth" range; 0.5+ would start
+	// to sound obviously distorted, which lofi doesn't want.
+	core.setTapeSaturation(0.28)
+
+	// Vinyl crackle — ~15 pops per second, each ~1 ms long with random
+	// sign and amplitude. Quiet enough to live under the music, just
+	// loud enough to feel like "playing through a slightly dusty record."
+	core.setVinylCrackle(15, 0.045, 1.2)
+
 	// Pick a progression.
 	a.progression = chillProgressions[a.rng.Intn(len(chillProgressions))]
 
@@ -319,8 +330,12 @@ func (a *Chill) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: drumChannel, Velocity: 55, Notes: hihatNotes,
 		PeriodSec: cycleSec, Phase01: 0,
-		VelocityJitter:  14,    // hi-hat benefits most from "swing" velocity feel
-		TimingJitterSec: 0.006, // and a bit of swing timing
+		VelocityJitter:  14,
+		TimingJitterSec: 0.006,
+		// Swing! Lofi hi-hats shuffle — odd 8ths fire ~13% of a beat late.
+		// This is THE production-feel marker that turns "drum-machine
+		// quantized" into "actual lofi groove."
+		SwingAmount: 0.13,
 	})
 
 	// --- Tape character ---
