@@ -32,8 +32,14 @@ func (a *SF2Glass) Seed(seedVal int64) {
 		a.core = nil
 		return
 	}
-	core.setProgram(0, 14) // Tubular Bells
-	core.setProgram(1, 98) // Crystal (FX 3) — bell-like ringing
+	core.setProgram(0, 14) // Tubular Bells           (left)
+	core.setProgram(1, 98) // Crystal (FX 3)          (right)
+	core.setProgram(2, 92) // Pad 5 (Bowed Glass)     (low pad, center)
+	core.setProgram(3, 12) // Marimba                 (sub-octave reinforcement)
+	core.setPan(0, 40)
+	core.setPan(1, 88)
+	core.setPan(2, 64)
+	core.setPan(3, 64)
 
 	pentMutate := func(_ int, _ int) int {
 		degree := scalePentatonicMinor[rng.Intn(len(scalePentatonicMinor))]
@@ -46,18 +52,49 @@ func (a *SF2Glass) Seed(seedVal int64) {
 			notes[j] = pentMutate(0, 0)
 		}
 		phase := rng.Float64()
-		// Bells: moderate mutation — the sparse texture handles change well.
 		core.addTrack(SF2Track{
 			Channel: 0, Velocity: 84, Notes: notes,
 			PeriodSec: period, Phase01: phase,
 			MutationRate: 0.20, MutateOne: pentMutate,
+			VelocityJitter: 10,
 		})
-		// Crystal layer shares notes via slice aliasing; no own mutator needed.
 		core.addTrack(SF2Track{
 			Channel: 1, Velocity: 52, Notes: notes,
 			PeriodSec: period, Phase01: phase + 0.03,
+			VelocityJitter: 6,
 		})
 	}
+
+	// Bowed glass pad in low register — sustained tones for body underneath
+	// the bell shimmer. Long period, low velocity so it's atmospheric, not
+	// the focus.
+	padMutate := func(_ int, _ int) int {
+		degree := scalePentatonicMinor[rng.Intn(len(scalePentatonicMinor))]
+		return rootMidi + degree // base octave
+	}
+	padNotes := make([]int, 4)
+	for j := range padNotes {
+		padNotes[j] = padMutate(0, 0)
+	}
+	core.addTrack(SF2Track{
+		Channel: 2, Velocity: 50, Notes: padNotes,
+		PeriodSec: 33.0, Phase01: 0,
+		MutationRate: 0.15, MutateOne: padMutate,
+		VelocityJitter: 4,
+	})
+
+	// Marimba reinforcement: occasional low strikes echoing the bell tones.
+	marimNotes := make([]int, 4)
+	for j := range marimNotes {
+		marimNotes[j] = padMutate(0, 0) // same scale, low register
+	}
+	core.addTrack(SF2Track{
+		Channel: 3, Velocity: 56, Notes: marimNotes,
+		PeriodSec: 19.0, Phase01: rng.Float64(),
+		MutationRate: 0.15, MutateOne: padMutate,
+		VelocityJitter: 12,
+	})
+
 	a.core = core
 }
 

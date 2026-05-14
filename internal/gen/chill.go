@@ -135,10 +135,17 @@ func (a *Chill) Seed(seedVal int64) {
 		return
 	}
 
-	// Melodic channels — standard programs.
-	core.setProgram(0, 5)  // Electric Piano 2 (chorused Rhodes)
-	core.setProgram(1, 32) // Acoustic Bass
-	core.setProgram(2, 11) // Vibraphone
+	// Melodic channels.
+	core.setProgram(0, 5)  // Electric Piano 2 (chorused Rhodes)  center
+	core.setProgram(1, 32) // Acoustic Bass                       center
+	core.setProgram(2, 11) // Vibraphone                          right
+	core.setProgram(3, 64) // Soprano Sax                         left (solo)
+	core.setProgram(4, 24) // Nylon Guitar                        right (comp)
+	core.setPan(0, 64)
+	core.setPan(1, 64)
+	core.setPan(2, 88)
+	core.setPan(3, 40)
+	core.setPan(4, 90)
 
 	// Channel 9 = standard MIDI drum channel. Select bank 128 (drum kit) and
 	// program 0 (standard kit). Most SF2 files including TimGM6mb honor
@@ -146,6 +153,7 @@ func (a *Chill) Seed(seedVal int64) {
 	// bank+program is the robust path.
 	core.syn.ProcessMidiMessage(drumChannel, ccBankSelect, drumBankMSB, 0)
 	core.setProgram(drumChannel, progStandardKit)
+	core.setPan(drumChannel, 64)
 
 	// Pick a progression.
 	a.progression = chillProgressions[a.rng.Intn(len(chillProgressions))]
@@ -172,11 +180,11 @@ func (a *Chill) Seed(seedVal int64) {
 			Channel: 0, Velocity: 72, Notes: notes,
 			PeriodSec: cycleSec, Phase01: 0,
 			MutationRate: 1.0, MutateOne: mutate,
+			VelocityJitter: 8,
 		})
 	}
 
 	// --- Walking bass: root on beat 1, 5th on beat 3 (half-note feel).
-	// 2 hits per bar × 4 bars = 8 notes per cycle.
 	bassNotes := make([]int, 2*numBars)
 	for i := range bassNotes {
 		bassNotes[i] = a.bassNoteAt(i)
@@ -186,6 +194,7 @@ func (a *Chill) Seed(seedVal int64) {
 		PeriodSec: cycleSec, Phase01: 0,
 		MutationRate: 1.0,
 		MutateOne:    func(slot int, _ int) int { return a.bassNoteAt(slot) },
+		VelocityJitter: 6,
 	})
 
 	// --- Vibraphone melody: one note per chord, sparse and high-register.
@@ -198,6 +207,38 @@ func (a *Chill) Seed(seedVal int64) {
 		PeriodSec: cycleSec, Phase01: 0,
 		MutationRate: 0.35,
 		MutateOne:    func(slot int, _ int) int { return a.vibeNoteAt(slot) },
+		VelocityJitter: 12,
+	})
+
+	// --- Nylon Guitar: comping with extended chord notes on beat 2-and (the
+	// "and" of beat 2) of each bar. One hit per bar at offset 1.5 beats.
+	guitarNotes := make([]int, numBars)
+	for i := range guitarNotes {
+		guitarNotes[i] = a.guitarNoteAt(i)
+	}
+	core.addTrack(SF2Track{
+		Channel: 4, Velocity: 50, Notes: guitarNotes,
+		PeriodSec: cycleSec,
+		Phase01:   1.5 / float64(4*numBars), // 1.5 beats into the first bar
+		MutationRate: 1.0,
+		MutateOne:    func(slot int, _ int) int { return a.guitarNoteAt(slot) },
+		VelocityJitter: 10,
+	})
+
+	// --- Soprano Sax: very sparse solo. Only 2 notes per loop (one in the
+	// middle, one near the end), high register, jazzy color tones. With
+	// mutation it'll wander to different chord tones across cycles.
+	saxNotes := make([]int, 2)
+	for i := range saxNotes {
+		saxNotes[i] = a.saxNoteAt(i)
+	}
+	core.addTrack(SF2Track{
+		Channel: 3, Velocity: 64, Notes: saxNotes,
+		PeriodSec: cycleSec,
+		Phase01:   0.4, // come in 40% through the cycle
+		MutationRate: 0.4,
+		MutateOne:    func(slot int, _ int) int { return a.saxNoteAt(slot) },
+		VelocityJitter: 14,
 	})
 
 	// --- Drum beat: kick on 1 & 3, snare on 2 & 4, hi-hat every 8th note.
@@ -211,6 +252,7 @@ func (a *Chill) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: drumChannel, Velocity: 92, Notes: kickNotes,
 		PeriodSec: cycleSec, Phase01: 0,
+		VelocityJitter: 8,
 	})
 	snareNotes := make([]int, 2*numBars)
 	for i := range snareNotes {
@@ -222,6 +264,7 @@ func (a *Chill) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: drumChannel, Velocity: 82, Notes: snareNotes,
 		PeriodSec: cycleSec, Phase01: 0.5 / float64(2*numBars),
+		VelocityJitter: 6,
 	})
 	hihatNotes := make([]int, 8*numBars) // 8 hits per bar
 	for i := range hihatNotes {
@@ -230,6 +273,7 @@ func (a *Chill) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: drumChannel, Velocity: 55, Notes: hihatNotes,
 		PeriodSec: cycleSec, Phase01: 0,
+		VelocityJitter: 14, // hi-hat especially benefits from "swing" velocity feel
 	})
 
 	// --- Tape character ---
@@ -269,6 +313,44 @@ func (a *Chill) bassNoteAt(slot int) int {
 		tone = c.tones[2] // 5th
 	}
 	return a.currentRoot() + tone - 12
+}
+
+// guitarNoteAt returns a single nylon-guitar comp note per bar. Plays a
+// chord-tone in the +12-semitone register (between bass and EP) at the "and"
+// of beat 2 — classic jazz/bossa comping placement.
+func (a *Chill) guitarNoteAt(slot int) int {
+	chordIdx := slot % len(a.progression)
+	c := a.progression[chordIdx]
+	// 60% root, 30% 5th, 10% 9th (chord extension)
+	switch r := a.rng.Float64(); {
+	case r < 0.10:
+		return a.currentRoot() + c.tones[0] + 14 // 9th of chord root
+	case r < 0.40:
+		return a.currentRoot() + c.tones[2] + 12 // 5th
+	default:
+		return a.currentRoot() + c.tones[0] + 12 // root
+	}
+}
+
+// saxNoteAt returns one soprano-sax note. The sax track has only 2 slots
+// per cycle so the sax phrases are very sparse — soloistic, not constant
+// melody. Plays jazzy intervals: chord tones, 9th, 11th, or 13th.
+func (a *Chill) saxNoteAt(slot int) int {
+	// Pick a chord from the current cycle proportional to slot position.
+	chordIdx := (slot * len(a.progression) / 2) % len(a.progression)
+	c := a.progression[chordIdx]
+	chordRoot := a.currentRoot() + c.tones[0]
+	switch r := a.rng.Float64(); {
+	case r < 0.20:
+		return chordRoot + 14 // 9th
+	case r < 0.35:
+		return chordRoot + 17 // 11th
+	case r < 0.50:
+		return chordRoot + 21 // 13th
+	default:
+		// Chord tone in high register
+		return a.currentRoot() + c.tones[a.rng.Intn(len(c.tones))] + 36
+	}
 }
 
 // vibeNoteAt returns one melody note per chord. 65% chord tone, 35% color

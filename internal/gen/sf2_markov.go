@@ -32,12 +32,15 @@ func (a *SF2Markov) Seed(seedVal int64) {
 		a.core = nil
 		return
 	}
-	core.setProgram(0, 0)  // Acoustic Grand Piano
-	core.setProgram(1, 49) // String Ensemble 2 (slow)
+	core.setProgram(0, 0)  // Acoustic Grand Piano (center)
+	core.setProgram(1, 49) // Slow Strings         (left)
+	core.setProgram(2, 71) // Clarinet              (right — solo voice)
+	core.setProgram(3, 32) // Acoustic Bass         (low foundation, center)
+	core.setPan(0, 64)
+	core.setPan(1, 40)
+	core.setPan(2, 90)
+	core.setPan(3, 64)
 
-	// Same Markov-chain melody as gen.Markov. Mutation re-rolls a note via
-	// the same transition matrix, taking the previous note's degree as
-	// state — so mutated notes follow the same compositional grammar.
 	for i, period := range markovLoopPeriods {
 		count := 10 + rng.Intn(5)
 		notes := markovWalk(rng, rootMidi, count)
@@ -57,8 +60,38 @@ func (a *SF2Markov) Seed(seedVal int64) {
 			Channel: ch, Velocity: vel, Notes: notes,
 			PeriodSec: period, Phase01: rng.Float64(),
 			MutationRate: 0.12, MutateOne: mutate,
+			VelocityJitter: 8,
 		})
 	}
+
+	// Clarinet solo voice: sparse Markov phrases in a higher register.
+	clarNotes := markovWalk(rng, rootMidi+12, 6)
+	clarMutate := func(_ int, prev int) int {
+		loc := findClosestScalePitch(prev, rootMidi+12, scaleMinor)
+		nextDeg := nextMarkovDegree(rng, loc.degreeIdx)
+		return (rootMidi + 12) + scaleMinor[nextDeg] + loc.octaveOffset*12
+	}
+	core.addTrack(SF2Track{
+		Channel: 2, Velocity: 70, Notes: clarNotes,
+		PeriodSec: 23.0, Phase01: rng.Float64(),
+		MutationRate: 0.18, MutateOne: clarMutate,
+		VelocityJitter: 10,
+	})
+
+	// Acoustic bass: long, slow Markov walk one octave below the root.
+	bassNotes := markovWalk(rng, rootMidi-12, 5)
+	bassMutate := func(_ int, prev int) int {
+		loc := findClosestScalePitch(prev, rootMidi-12, scaleMinor)
+		nextDeg := nextMarkovDegree(rng, loc.degreeIdx)
+		return (rootMidi - 12) + scaleMinor[nextDeg] + loc.octaveOffset*12
+	}
+	core.addTrack(SF2Track{
+		Channel: 3, Velocity: 82, Notes: bassNotes,
+		PeriodSec: 18.5, Phase01: rng.Float64(),
+		MutationRate: 0.08, MutateOne: bassMutate,
+		VelocityJitter: 6,
+	})
+
 	a.core = core
 }
 

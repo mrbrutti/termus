@@ -32,10 +32,16 @@ func (a *SF2Drone) Seed(seedVal int64) {
 		a.core = nil
 		return
 	}
-	// Channel layout: 0 = String Ensemble, 1 = Slow Strings, 2 = Flute.
-	core.setProgram(0, 48) // String Ensemble 1
-	core.setProgram(1, 49) // String Ensemble 2 (slow)
-	core.setProgram(2, 73) // Flute
+	core.setProgram(0, 48) // String Ensemble 1 (left)
+	core.setProgram(1, 49) // String Ensemble 2 slow (right)
+	core.setProgram(2, 73) // Flute (shimmer, high right)
+	core.setProgram(3, 53) // Choir Voice "Oohs" (warmth, center)
+	core.setProgram(4, 32) // Acoustic Bass (foundation, center)
+	core.setPan(0, 38)
+	core.setPan(1, 90)
+	core.setPan(2, 100)
+	core.setPan(3, 64)
+	core.setPan(4, 64)
 
 	// Bed voices on long periods. Mutation is gentle here — drone wants
 	// to feel stable; abrupt note changes would betray the aesthetic.
@@ -54,10 +60,12 @@ func (a *SF2Drone) Seed(seedVal int64) {
 			Channel: 0, Velocity: 64, Notes: notes,
 			PeriodSec: period, Phase01: phase,
 			MutationRate: 0.05, MutateOne: bedMutate,
+			VelocityJitter: 4,
 		})
 		core.addTrack(SF2Track{
 			Channel: 1, Velocity: 48, Notes: notes,
 			PeriodSec: period, Phase01: phase,
+			VelocityJitter: 4,
 		})
 	}
 
@@ -75,7 +83,42 @@ func (a *SF2Drone) Seed(seedVal int64) {
 		Channel: 2, Velocity: 70, Notes: shimmerNotes,
 		PeriodSec: shimmerPeriod, Phase01: rng.Float64(),
 		MutationRate: 0.15, MutateOne: shimmerMutate,
+		VelocityJitter: 10,
 	})
+
+	// Choir voice "oohs" in mid-register for human warmth. Slow cycle so
+	// the same chord-tone-ish notes hold for a long time.
+	choirMutate := func(_ int, _ int) int {
+		degree := scaleMinor[rng.Intn(len(scaleMinor))]
+		return rootMidi + degree + 12 // one octave above root
+	}
+	choirNotes := make([]int, 3)
+	for j := range choirNotes {
+		choirNotes[j] = choirMutate(0, 0)
+	}
+	core.addTrack(SF2Track{
+		Channel: 3, Velocity: 54, Notes: choirNotes,
+		PeriodSec: 37.0, Phase01: rng.Float64(),
+		MutationRate: 0.08, MutateOne: choirMutate,
+		VelocityJitter: 4,
+	})
+
+	// Acoustic bass: very slow walk through scale tones at the root register.
+	bassMutate := func(_ int, _ int) int {
+		degree := scaleMinor[rng.Intn(len(scaleMinor))]
+		return rootMidi + degree // base octave (rootMidi is already low C1-F#1)
+	}
+	bassNotes := make([]int, 3)
+	for j := range bassNotes {
+		bassNotes[j] = bassMutate(0, 0)
+	}
+	core.addTrack(SF2Track{
+		Channel: 4, Velocity: 76, Notes: bassNotes,
+		PeriodSec: 41.0, Phase01: rng.Float64(),
+		MutationRate: 0.06, MutateOne: bassMutate,
+		VelocityJitter: 4,
+	})
+
 	a.core = core
 }
 

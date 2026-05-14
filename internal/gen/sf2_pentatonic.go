@@ -32,12 +32,16 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 		a.core = nil
 		return
 	}
-	core.setProgram(0, 0)  // Acoustic Grand Piano
-	core.setProgram(1, 46) // Orchestral Harp
+	core.setProgram(0, 0)  // Acoustic Grand Piano  (center-left)
+	core.setProgram(1, 46) // Orchestral Harp        (center-right)
+	core.setProgram(2, 10) // Music Box              (high sparkle, hard right)
+	core.setProgram(3, 32) // Acoustic Bass          (low foundation, center)
+	core.setPan(0, 50)
+	core.setPan(1, 78)
+	core.setPan(2, 100)
+	core.setPan(3, 64)
 
-	// Same walk-based note generation as gen.Pentatonic. Mutation uses a
-	// short random walk from the previous note's pentatonic-scale degree —
-	// so mutated notes stay smoothly connected to the existing melody.
+	// Same walk-based note generation as gen.Pentatonic.
 	for i, period := range pentaLoopPeriods {
 		count := 6 + rng.Intn(5)
 		notes := pentatonicWalk(rng, rootMidi, count)
@@ -46,10 +50,8 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 		if ch == 1 {
 			vel = 68
 		}
-		// Capture rootMidi + scale ref for the mutation closure.
 		root := rootMidi
 		mutate := func(_ int, prev int) int {
-			// Find closest pentatonic-minor pitch to prev, walk by ±1..2 steps.
 			closest := findClosestScalePitch(prev, root, scalePentatonicMinor)
 			step := walkStep(rng, closest.degreeIdx, len(scalePentatonicMinor))
 			return root + scalePentatonicMinor[step] + closest.octaveOffset*12
@@ -58,8 +60,42 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 			Channel: ch, Velocity: vel, Notes: notes,
 			PeriodSec: period, Phase01: rng.Float64(),
 			MutationRate: 0.15, MutateOne: mutate,
+			VelocityJitter: 8,
 		})
 	}
+
+	// Acoustic bass: slow walk through pentatonic notes one octave below,
+	// 5 notes per ~25s cycle. Gives a foundation without competing rhythmically.
+	bassNotes := pentatonicWalk(rng, rootMidi-12, 5)
+	bassMutate := func(_ int, prev int) int {
+		closest := findClosestScalePitch(prev, rootMidi-12, scalePentatonicMinor)
+		step := walkStep(rng, closest.degreeIdx, len(scalePentatonicMinor))
+		return (rootMidi - 12) + scalePentatonicMinor[step] + closest.octaveOffset*12
+	}
+	core.addTrack(SF2Track{
+		Channel: 3, Velocity: 78, Notes: bassNotes,
+		PeriodSec: 22.0, Phase01: rng.Float64(),
+		MutationRate: 0.10, MutateOne: bassMutate,
+		VelocityJitter: 5,
+	})
+
+	// Music box sparkle: very sparse, high register. 3 notes per ~30s cycle.
+	mbNotes := make([]int, 3)
+	for j := range mbNotes {
+		deg := scalePentatonicMinor[rng.Intn(len(scalePentatonicMinor))]
+		mbNotes[j] = rootMidi + deg + 48 // four octaves above root
+	}
+	mbMutate := func(_ int, _ int) int {
+		deg := scalePentatonicMinor[rng.Intn(len(scalePentatonicMinor))]
+		return rootMidi + deg + 48
+	}
+	core.addTrack(SF2Track{
+		Channel: 2, Velocity: 60, Notes: mbNotes,
+		PeriodSec: 30.0, Phase01: rng.Float64(),
+		MutationRate: 0.20, MutateOne: mbMutate,
+		VelocityJitter: 12,
+	})
+
 	a.core = core
 }
 

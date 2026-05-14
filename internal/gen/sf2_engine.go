@@ -26,6 +26,9 @@ type SF2Reverberator interface {
 // occasionally re-roll one of the Notes (never the one currently sounding)
 // using MutateOne. This makes the music gradually evolve over time rather
 // than looping the same figure indefinitely.
+//
+// Humanization: VelocityJitter randomizes velocity per NoteOn so dynamic
+// expression isn't deadly flat. 0 disables; typical values 4–10 (out of 127).
 type SF2Track struct {
 	Channel   int32 // MIDI channel 0..15
 	Velocity  int32 // 0..127
@@ -33,17 +36,10 @@ type SF2Track struct {
 	PeriodSec float64
 	Phase01   float64 // 0..1 phase offset within the period
 
-	// MutationRate is the probability per slot transition that one note
-	// gets re-rolled. 0 = static (default), 1 = aggressive constant churn.
-	// Typical values: 0.05–0.20 for gradual evolution.
 	MutationRate float64
+	MutateOne    func(slot int, prev int) int
 
-	// MutateOne, if non-nil, is called by the engine when a mutation fires.
-	// It receives the index of the note slot being replaced (NEVER the slot
-	// currently sounding) and the current value, and returns the new value.
-	// Algorithms typically pick from a scale + register related to the
-	// original to keep mutations musical.
-	MutateOne func(slot int, prev int) int
+	VelocityJitter int32 // ±range randomly added to Velocity per NoteOn
 }
 
 // sf2TrackState is the runtime state for one track.
@@ -126,6 +122,20 @@ func newSF2Core(sf *meltysynth.SoundFont, masterGain float64, mutationSeed int64
 func (e *sf2Core) setProgram(channel int32, program int32) {
 	const ccProgramChange = 0xC0
 	e.syn.ProcessMidiMessage(channel, ccProgramChange, program, 0)
+}
+
+// setPan positions a MIDI channel in the stereo field. pan is 0..127 where
+// 0 is full-left, 64 is center, 127 is full-right (MIDI CC 10 standard).
+func (e *sf2Core) setPan(channel int32, pan int32) {
+	const ccControlChange = 0xB0
+	const ccPan = 10
+	if pan < 0 {
+		pan = 0
+	}
+	if pan > 127 {
+		pan = 127
+	}
+	e.syn.ProcessMidiMessage(channel, ccControlChange, ccPan, pan)
 }
 
 // setMasterLowpass installs a stereo low-pass filter at the end of the master
@@ -240,27 +250,36 @@ func (s *sf2TrackState) samplesUntilNextSlot(t int64) int64 {
 }
 
 // fireTransition sends NoteOff for the currently sounding key (if any) and
-// NoteOn for the slot's note. Also optionally fires a mutation on some OTHER
-// slot of the track (never the one we just landed on) so the cycled material
-// gradually evolves rather than repeating forever.
+// NoteOn for the slot's note. Velocity is jittered if VelocityJitter > 0,
+// for humanization. Also optionally re-rolls one OTHER slot's note so the
+// cycled material gradually evolves rather than repeating forever.
 func (s *sf2TrackState) fireTransition(t int64, syn *meltysynth.Synthesizer, rng *rand.Rand) {
 	newSlot := s.slotAt(t)
 	if s.curKey >= 0 {
 		syn.NoteOff(s.cfg.Channel, int32(s.curKey))
 	}
 	key := s.cfg.Notes[newSlot]
-	syn.NoteOn(s.cfg.Channel, int32(key), s.cfg.Velocity)
+	vel := s.cfg.Velocity
+	if s.cfg.VelocityJitter > 0 && rng != nil {
+		// Symmetric ±jitter range. Clamp to a valid MIDI velocity.
+		offset := int32(rng.Intn(int(2*s.cfg.VelocityJitter)+1)) - s.cfg.VelocityJitter
+		vel += offset
+		if vel < 1 {
+			vel = 1
+		}
+		if vel > 127 {
+			vel = 127
+		}
+	}
+	syn.NoteOn(s.cfg.Channel, int32(key), vel)
 	s.curSlot = newSlot
 	s.curKey = key
 
-	// Optional mutation: re-roll one of the *other* slots so the figure
-	// gradually evolves. We deliberately avoid the slot just landed on so
-	// we don't yank the note out from under the listener.
 	if s.cfg.MutateOne != nil && s.cfg.MutationRate > 0 && len(s.cfg.Notes) > 1 && rng != nil {
 		if rng.Float64() < s.cfg.MutationRate {
 			victim := rng.Intn(len(s.cfg.Notes) - 1)
 			if victim >= newSlot {
-				victim++ // skip past the current slot
+				victim++
 			}
 			s.cfg.Notes[victim] = s.cfg.MutateOne(victim, s.cfg.Notes[victim])
 		}
