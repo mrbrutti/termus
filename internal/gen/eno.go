@@ -16,7 +16,8 @@ var _ Algorithm = (*Eno)(nil)
 type Eno struct {
 	rng      *rand.Rand
 	rootMidi int
-	voices   []*padBellVoice
+	voices   []*padBellVoice // slow pad-bell bed
+	leads    []*padBellVoice // faster lead voices on top of the bed
 	drone    *sineDrone
 	revL     *synth.Reverb
 	revR     *synth.Reverb
@@ -27,6 +28,10 @@ type Eno struct {
 
 // loopPeriods are pairwise-near-irrational; voices realign on the order of hours.
 var loopPeriods = []float64{7.0, 11.0, 13.3, 17.7, 23.1}
+
+// leadPeriods are shorter — these voices carry the melodic motion that sits
+// on top of the slow pad bed.
+var leadPeriods = []float64{4.3, 5.9}
 
 // scaleMinor is natural minor: root, +2, +3, +5, +7, +8, +10 semitones.
 var scaleMinor = []int{0, 2, 3, 5, 7, 8, 10}
@@ -40,15 +45,30 @@ func (e *Eno) Seed(s int64) {
 	e.rng = rand.New(rand.NewSource(s)) //nolint:gosec
 	e.rootMidi = 36 + e.rng.Intn(12) // C2..B2
 
+	// Slow pad bed.
 	e.voices = make([]*padBellVoice, len(loopPeriods))
 	for i, period := range loopPeriods {
-		notes := make([]int, 1+e.rng.Intn(3))
+		notes := make([]int, 2+e.rng.Intn(3)) // 2..4 notes per phrase
 		for j := range notes {
 			degree := scaleMinor[e.rng.Intn(len(scaleMinor))]
 			octave := 12 * (2 + e.rng.Intn(3))
 			notes[j] = e.rootMidi + degree + octave
 		}
 		e.voices[i] = newPadBellVoice(period, notes, e.rng.Float64(), e.rng.Float64())
+	}
+	// Faster lead voices on top. Quicker attack, more notes per phrase,
+	// higher register — these carry the perceived melody.
+	e.leads = make([]*padBellVoice, len(leadPeriods))
+	for i, period := range leadPeriods {
+		notes := make([]int, 4+e.rng.Intn(3)) // 4..6 notes per phrase
+		for j := range notes {
+			degree := scaleMinor[e.rng.Intn(len(scaleMinor))]
+			octave := 12 * (3 + e.rng.Intn(2)) // higher register: +36, +48
+			notes[j] = e.rootMidi + degree + octave
+		}
+		v := newPadBellVoice(period, notes, e.rng.Float64(), e.rng.Float64())
+		v.makeLead()
+		e.leads[i] = v
 	}
 	e.drone = newSineDrone(e.rootMidi)
 	e.revL = synth.NewReverb(0.45)
@@ -61,14 +81,26 @@ func (e *Eno) Seed(s int64) {
 func (e *Eno) Next(left, right []float64) {
 	for i := range left {
 		var l, r float64
+		// Slow pad bed.
 		for vi, v := range e.voices {
 			s := v.tick(e.t)
 			if vi%2 == 0 {
-				l += s * 0.65
-				r += s * 0.35
+				l += s * 0.55
+				r += s * 0.30
 			} else {
-				l += s * 0.35
-				r += s * 0.65
+				l += s * 0.30
+				r += s * 0.55
+			}
+		}
+		// Lead voices — quieter so they sit on top without dominating.
+		for vi, v := range e.leads {
+			s := v.tick(e.t)
+			if vi%2 == 0 {
+				l += s * 0.55
+				r += s * 0.40
+			} else {
+				l += s * 0.40
+				r += s * 0.55
 			}
 		}
 		d := e.drone.tick(e.t)
@@ -106,11 +138,21 @@ type padBellVoice struct {
 	env *synth.Envelope
 	lp  *synth.Lowpass
 
-	curNote int
-	gateOn  bool
+	curNote  int
+	gateOn   bool
 	baseFreq float64
+	leadMode bool
 
 	ctrlPhase int // sub-sampled filter envelope updates
+}
+
+// makeLead retunes this voice for the lead role: faster attack so individual
+// notes pop out as melodic events instead of blending into the pad wash. Also
+// brighter filter (the cutoff envelope opens wider) so leads cut through.
+func (v *padBellVoice) makeLead() {
+	v.env = synth.NewEnvelope(0.4, 0.6, 0.45, 2.5)
+	v.lp = synth.NewLowpass(800, 0.7)
+	v.leadMode = true
 }
 
 func newPadBellVoice(periodSec float64, notes []int, phase01, vibSeed float64) *padBellVoice {
@@ -174,15 +216,22 @@ func (v *padBellVoice) tick(t int64) float64 {
 	}
 	s *= envVal
 
-	// Filter envelope: cutoff opens with envelope. Update at ~1.4 kHz control
-	// rate to keep CPU manageable.
+	// Filter envelope: cutoff opens with envelope.
 	v.ctrlPhase++
 	if v.ctrlPhase >= 32 {
 		v.ctrlPhase = 0
-		cutoff := 350 + 2600*envVal
+		var cutoff float64
+		if v.leadMode {
+			cutoff = 800 + 3200*envVal // brighter for leads
+		} else {
+			cutoff = 350 + 2600*envVal
+		}
 		v.lp.SetParams(cutoff, 0.7)
 	}
 	s = v.lp.Tick(s)
+	if v.leadMode {
+		return s * 0.16
+	}
 	return s * 0.22
 }
 

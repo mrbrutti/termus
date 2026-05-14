@@ -16,14 +16,20 @@ type Drone struct {
 	rng      *rand.Rand
 	rootMidi int
 	voices   []*droneVoice
+	shimmer  *droneVoice // high-register voice for movement on top of the bed
 	revL     *synth.Reverb
 	revR     *synth.Reverb
 	t        int64
 }
 
-// droneLoopPeriods are very long — each voice holds one note for tens of
-// seconds before retriggering with a different note from the scale.
-var droneLoopPeriods = []float64{47.0, 61.0, 73.0, 89.0}
+// droneLoopPeriods are long but not glacial — each voice holds one note for
+// half a minute or so before moving. Three voices in the bed plus one shimmer
+// voice on top (see seed) gives slow motion without becoming static.
+var droneLoopPeriods = []float64{31.0, 43.0, 53.0, 67.0}
+
+// shimmerPeriod is the high voice that sits above the bed for occasional
+// movement — short enough to actually change while you're listening.
+const shimmerPeriod = 19.0
 
 // NewDrone constructs a Drone generator. Caller must call Seed before Next.
 func NewDrone() *Drone { return &Drone{} }
@@ -35,10 +41,8 @@ func (d *Drone) Seed(s int64) {
 	d.rootMidi = 24 + d.rng.Intn(7) // C1..F#1 — really low for the bed
 	d.voices = make([]*droneVoice, len(droneLoopPeriods))
 	for i, period := range droneLoopPeriods {
-		// Each voice cycles through 2..4 notes from the minor scale over
-		// its (long) period. Notes are placed in the 2nd–3rd octave above
-		// the root so the texture is rich but not muddy.
-		notes := make([]int, 2+d.rng.Intn(3))
+		// Each voice cycles through 3..5 notes from the minor scale.
+		notes := make([]int, 3+d.rng.Intn(3))
 		for j := range notes {
 			degree := scaleMinor[d.rng.Intn(len(scaleMinor))]
 			octave := 12 * (1 + d.rng.Intn(3)) // +12, +24, +36
@@ -46,6 +50,15 @@ func (d *Drone) Seed(s int64) {
 		}
 		d.voices[i] = newDroneVoice(period, notes, d.rng.Float64())
 	}
+	// Shimmer voice: faster, higher register, lighter mix.
+	shimmerNotes := make([]int, 4+d.rng.Intn(3))
+	for j := range shimmerNotes {
+		degree := scaleMinor[d.rng.Intn(len(scaleMinor))]
+		octave := 12 * (3 + d.rng.Intn(2)) // +36, +48 — well above the bed
+		shimmerNotes[j] = d.rootMidi + degree + octave
+	}
+	d.shimmer = newDroneVoice(shimmerPeriod, shimmerNotes, d.rng.Float64())
+	d.shimmer.makeShimmer()
 	d.revL = synth.NewReverb(0.65)
 	d.revR = synth.NewReverbRight(0.65)
 	d.t = 0
@@ -56,7 +69,6 @@ func (d *Drone) Next(left, right []float64) {
 		var l, r float64
 		for vi, v := range d.voices {
 			s := v.tick(d.t)
-			// Mild stereo spread.
 			if vi%2 == 0 {
 				l += s * 0.6
 				r += s * 0.4
@@ -65,6 +77,10 @@ func (d *Drone) Next(left, right []float64) {
 				r += s * 0.6
 			}
 		}
+		// Shimmer voice — center-panned, lower gain so it floats above.
+		s := d.shimmer.tick(d.t) * 0.55
+		l += s
+		r += s
 		l = d.revL.Tick(l)
 		r = d.revR.Tick(r)
 		left[i] = synth.SoftClip(l * 2.2)
@@ -92,6 +108,15 @@ type droneVoice struct {
 	baseFreq float64
 
 	ctrlPhase int
+}
+
+// makeShimmer retunes this voice for the high-register movement role: faster
+// envelope, brighter filter, fewer partials (clearer sound at high pitches).
+func (v *droneVoice) makeShimmer() {
+	v.env = synth.NewEnvelope(3.0, 1.0, 0.5, 4.0)
+	v.lp = synth.NewLowpass(2400, 0.6)
+	// Quiet the upper partials further — shimmer should be a pure-ish bell tone.
+	v.amp = [5]float64{1.0, 0.35, 0.15, 0.06, 0.0}
 }
 
 func newDroneVoice(periodSec float64, notes []int, phase01 float64) *droneVoice {

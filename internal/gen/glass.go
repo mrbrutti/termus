@@ -101,9 +101,9 @@ func newFMBellVoice(periodSec float64, notes []int, phase01 float64) *fmBellVoic
 		periodSamples: int64(periodSec * float64(synth.SampleRate)),
 		notes:         notes,
 		// Bell envelopes: fast attack, slow decay/release, low sustain.
-		env:      synth.NewEnvelope(0.005, 1.2, 0.15, 2.8),
+		env:      synth.NewEnvelope(0.005, 1.4, 0.15, 3.2),
 		curNote:  -1,
-		modIndex: 4.0, // moderate modulation depth = bell-ish, not gong
+		modIndex: 2.0, // softer than 4.0; with 2.003× ratio this is a clean bell
 	}
 	v.phaseOffset = int64(phase01 * float64(v.periodSamples))
 	return v
@@ -119,8 +119,11 @@ func (v *fmBellVoice) tick(t int64) float64 {
 		v.curNote = slot
 		f := midiToHz(v.notes[slot])
 		v.carrierInc = f / float64(synth.SampleRate)
-		// Modulator at 1.4× carrier — produces inharmonic bell partials.
-		v.modInc = (f * 1.4) / float64(synth.SampleRate)
+		// Modulator at 2.003× carrier — almost an exact octave, so partials
+		// are nearly harmonic (clean bell), with just enough offset that the
+		// partials beat slowly against each other for life. 1.4× was too
+		// metallic; pure 2.0× sounds organ-ish.
+		v.modInc = (f * 2.003) / float64(synth.SampleRate)
 		v.env.Gate(true)
 		v.gateOn = true
 	}
