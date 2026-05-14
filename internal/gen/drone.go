@@ -59,8 +59,8 @@ func (d *Drone) Seed(s int64) {
 	}
 	d.shimmer = newDroneVoice(shimmerPeriod, shimmerNotes, d.rng.Float64())
 	d.shimmer.makeShimmer()
-	d.revL = synth.NewReverb(0.65)
-	d.revR = synth.NewReverbRight(0.65)
+	d.revL = synth.NewReverb(0.70)
+	d.revR = synth.NewReverbRight(0.70)
 	d.t = 0
 }
 

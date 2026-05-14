@@ -18,7 +18,7 @@ import (
 
 func main() {
 	seed := flag.Int64("seed", time.Now().UnixNano(), "RNG seed (default: time-based)")
-	algoName := flag.String("algo", "eno", "algorithm: eno | drone | glass")
+	algoName := flag.String("algo", "eno", "algorithm: eno | drone | glass | pentatonic | markov")
 	initialVol := flag.Int("volume", 70, "initial volume 0..100")
 	flag.Parse()
 
@@ -35,8 +35,12 @@ func main() {
 		algo = gen.NewDrone()
 	case "glass":
 		algo = gen.NewGlass()
+	case "pentatonic":
+		algo = gen.NewPentatonic()
+	case "markov":
+		algo = gen.NewMarkov()
 	default:
-		fmt.Fprintf(os.Stderr, "unknown algorithm %q (must be one of: eno, drone, glass)\n", *algoName)
+		fmt.Fprintf(os.Stderr, "unknown algorithm %q (must be one of: eno, drone, glass, pentatonic, markov)\n", *algoName)
 		os.Exit(2)
 	}
 	algo.Seed(*seed)

@@ -17,7 +17,7 @@ func main() {
 	seed := flag.Int64("seed", 42, "seed")
 	seconds := flag.Float64("seconds", 5.0, "duration to render")
 	out := flag.String("out", "termus-debug.wav", "output WAV path")
-	algoName := flag.String("algo", "eno", "algorithm: eno | drone | glass")
+	algoName := flag.String("algo", "eno", "algorithm: eno | drone | glass | pentatonic | markov")
 	flag.Parse()
 
 	var algo gen.Algorithm
@@ -28,6 +28,10 @@ func main() {
 		algo = gen.NewDrone()
 	case "glass":
 		algo = gen.NewGlass()
+	case "pentatonic":
+		algo = gen.NewPentatonic()
+	case "markov":
+		algo = gen.NewMarkov()
 	default:
 		fmt.Fprintf(os.Stderr, "unknown algorithm %q\n", *algoName)
 		os.Exit(2)

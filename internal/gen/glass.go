@@ -45,7 +45,7 @@ func (g *Glass) Seed(s int64) {
 			octave := 12 * (1 + g.rng.Intn(3)) // +12, +24, +36 from a high root
 			notes[j] = g.rootMidi + degree + octave
 		}
-		g.voices[i] = newFMBellVoice(period, notes, g.rng.Float64())
+		g.voices[i] = newFMBellVoice(period, notes, g.rng.Float64(), g.rng.Float64())
 	}
 	g.revL = synth.NewReverb(0.30)
 	g.revR = synth.NewReverbRight(0.30)
@@ -85,26 +85,37 @@ type fmBellVoice struct {
 
 	carrierPhase float64
 	modPhase     float64
+	baseCarrier  float64 // base carrier inc (samples), pre-vibrato
+	baseMod      float64 // base modulator inc, pre-vibrato
 	carrierInc   float64
 	modInc       float64
 
 	modIndex float64 // FM depth (radians)
 
-	env *synth.Envelope
+	env     *synth.Envelope
+	vibrato *synth.Oscillator
+	vibAmt  float64 // pitch wobble in semitones
 
-	curNote int
-	gateOn  bool
+	curNote   int
+	gateOn    bool
+	ctrlPhase int
 }
 
-func newFMBellVoice(periodSec float64, notes []int, phase01 float64) *fmBellVoice {
+func newFMBellVoice(periodSec float64, notes []int, phase01, vibSeed float64) *fmBellVoice {
 	v := &fmBellVoice{
 		periodSamples: int64(periodSec * float64(synth.SampleRate)),
 		notes:         notes,
 		// Bell envelopes: fast attack, slow decay/release, low sustain.
 		env:      synth.NewEnvelope(0.005, 1.4, 0.15, 3.2),
 		curNote:  -1,
-		modIndex: 2.0, // softer than 4.0; with 2.003× ratio this is a clean bell
+		modIndex: 2.0, // with 2.003× ratio this is a clean bell
+		// Slow per-voice vibrato adds warmth and life — small enough that the
+		// pitch sounds "alive" rather than detuned. Each voice gets its own
+		// rate so they don't all wobble in sync.
+		vibrato: synth.NewOscillator(synth.WaveSine),
+		vibAmt:  0.05, // ~0.3% pitch wobble
 	}
+	v.vibrato.SetFrequency(0.4 + 0.5*vibSeed) // 0.4..0.9 Hz
 	v.phaseOffset = int64(phase01 * float64(v.periodSamples))
 	return v
 }
@@ -118,14 +129,23 @@ func (v *fmBellVoice) tick(t int64) float64 {
 	if slot != v.curNote {
 		v.curNote = slot
 		f := midiToHz(v.notes[slot])
-		v.carrierInc = f / float64(synth.SampleRate)
-		// Modulator at 2.003× carrier — almost an exact octave, so partials
-		// are nearly harmonic (clean bell), with just enough offset that the
-		// partials beat slowly against each other for life. 1.4× was too
-		// metallic; pure 2.0× sounds organ-ish.
-		v.modInc = (f * 2.003) / float64(synth.SampleRate)
+		// Base increments — vibrato modulates these every control tick below.
+		v.baseCarrier = f / float64(synth.SampleRate)
+		v.baseMod = (f * 2.003) / float64(synth.SampleRate)
+		v.carrierInc = v.baseCarrier
+		v.modInc = v.baseMod
 		v.env.Gate(true)
 		v.gateOn = true
+	}
+
+	// Apply slow vibrato to both carrier and modulator at control rate.
+	v.ctrlPhase++
+	if v.ctrlPhase >= 32 {
+		v.ctrlPhase = 0
+		vib := v.vibrato.Tick()
+		factor := math.Exp2(vib * v.vibAmt / 12.0)
+		v.carrierInc = v.baseCarrier * factor
+		v.modInc = v.baseMod * factor
 	}
 	slotLen := v.periodSamples / int64(len(v.notes))
 	if v.gateOn && pos > slotLen*30/100 {

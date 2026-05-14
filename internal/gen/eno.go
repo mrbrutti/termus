@@ -150,7 +150,7 @@ type padBellVoice struct {
 // notes pop out as melodic events instead of blending into the pad wash. Also
 // brighter filter (the cutoff envelope opens wider) so leads cut through.
 func (v *padBellVoice) makeLead() {
-	v.env = synth.NewEnvelope(0.4, 0.6, 0.45, 2.5)
+	v.env = synth.NewEnvelope(0.25, 0.6, 0.45, 2.5)
 	v.lp = synth.NewLowpass(800, 0.7)
 	v.leadMode = true
 }
