@@ -82,9 +82,12 @@ func (e *Eno) Next(left, right []float64) {
 		newL := e.delayL.Tick(r)
 		newR := e.delayR.Tick(l)
 		l, r = newL, newR
-		// Master soft-clip to keep peaks bounded.
-		left[i] = synth.SoftClip(l * 0.7)
-		right[i] = synth.SoftClip(r * 0.7)
+		// Master gain into soft-clip. The pre-clip gain is set high enough
+		// that average output sits comfortably around -12..-18 dBFS — quiet
+		// enough for deep work, loud enough to actually be audible without
+		// cranking system volume. tanh smoothly limits peaks below clipping.
+		left[i] = synth.SoftClip(l * 2.5)
+		right[i] = synth.SoftClip(r * 2.5)
 		e.t++
 	}
 }
