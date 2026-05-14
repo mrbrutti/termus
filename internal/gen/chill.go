@@ -198,8 +198,11 @@ func (a *Chill) Seed(seedVal int64) {
 	// Pick a progression.
 	a.progression = chillProgressions[a.rng.Intn(len(chillProgressions))]
 
-	// Tempo: ~75 BPM. 4 beats per chord × 4 chords = 16 beats per loop.
-	const bpm = 75.0
+	// Tempo: 65 BPM ± 4 (61–69 BPM range, seed-driven). Per research, lofi
+	// sits at 65–95 BPM and the sweet spot for "doesn't tire the listener
+	// over hours" is the lower half of that range. We were at 75 — drop to
+	// 65 nominal for a noticeably slower, deeper feel.
+	bpm := 61.0 + 8.0*a.rng.Float64()
 	beatSec := 60.0 / bpm
 	barSec := beatSec * 4
 	cycleSec := barSec * float64(len(a.progression))

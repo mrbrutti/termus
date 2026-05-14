@@ -95,10 +95,12 @@ func (a *Phase) Seed(seedVal int64) {
 	}
 	figMutate := func(_ int, _ int) int { return a.pickFigureNote() }
 
-	// Cycle ~6.5–8.5 s — more than 2× slower than v1, so each note breathes
-	// before the next one lands.
-	basePeriod := 6.5 + 2.0*a.rng.Float64()
-	driftRatio := 1.005 // gentler tempo offset (was 1.008)
+	// Cycle ~7.5–10 s — slightly slower than before to give each note even
+	// more room to ring. Phase is already the most ambient algorithm; just
+	// a gentle adjustment to align with the broader "slower across the
+	// board" pass.
+	basePeriod := 7.5 + 2.5*a.rng.Float64()
+	driftRatio := 1.004 // even gentler tempo offset — patterns drift more slowly
 
 	// Vibraphone voices get small velocity jitter for "real player" feel but
 	// NO timing jitter — the entire phase-shift technique depends on each

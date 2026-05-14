@@ -26,12 +26,14 @@ type Eno struct {
 	t        int64
 }
 
-// loopPeriods are pairwise-near-irrational; voices realign on the order of hours.
-var loopPeriods = []float64{7.0, 11.0, 13.3, 17.7, 23.1}
+// loopPeriods are pairwise-near-irrational; voices realign on the order of
+// hours. Slowed ~25% from the original set (7.0/11.0/13.3/17.7/23.1) so the
+// pad bed breathes more — easier on the ear for hours-long listening.
+var loopPeriods = []float64{8.7, 13.8, 16.6, 22.1, 28.9}
 
 // leadPeriods are shorter — these voices carry the melodic motion that sits
-// on top of the slow pad bed.
-var leadPeriods = []float64{4.3, 5.9}
+// on top of the slow pad bed. Slowed ~25% from 4.3/5.9.
+var leadPeriods = []float64{5.4, 7.4}
 
 // scaleMinor is natural minor: root, +2, +3, +5, +7, +8, +10 semitones.
 var scaleMinor = []int{0, 2, 3, 5, 7, 8, 10}

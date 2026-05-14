@@ -24,7 +24,8 @@ type Pentatonic struct {
 
 // pentaLoopPeriods: moderate-length cycles. Each voice plays a longer phrase
 // (more notes per period) than eno so the walk has time to actually wander.
-var pentaLoopPeriods = []float64{6.0, 8.5, 11.5, 15.0}
+// Slowed ~25% from 6.0/8.5/11.5/15.0 for slower walk pace.
+var pentaLoopPeriods = []float64{7.5, 10.6, 14.4, 18.8}
 
 // NewPentatonic constructs the algorithm. Caller must call Seed before Next.
 func NewPentatonic() *Pentatonic { return &Pentatonic{} }

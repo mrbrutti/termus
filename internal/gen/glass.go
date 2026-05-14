@@ -23,7 +23,9 @@ type Glass struct {
 }
 
 // glassLoopPeriods are shorter than eno's so notes happen more frequently.
-var glassLoopPeriods = []float64{3.7, 5.1, 6.7, 8.3, 10.1, 13.7}
+// Slowed ~25% from the original set (3.7/5.1/6.7/8.3/10.1/13.7). Glass bells
+// already feel sparse; slowing them further makes the texture more meditative.
+var glassLoopPeriods = []float64{4.6, 6.4, 8.4, 10.4, 12.6, 17.1}
 
 // scalePentatonicMinor: root, +3, +5, +7, +10 (minor pentatonic — sounds good
 // with sparser melodic material than the full minor scale).

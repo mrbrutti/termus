@@ -26,7 +26,10 @@ type Markov struct {
 
 // markovLoopPeriods: each voice plays a fairly long phrase (10–14 notes) on
 // these periods, letting the transition matrix really wander.
-var markovLoopPeriods = []float64{7.5, 11.0, 16.5}
+// Slowed ~25% from 7.5/11.0/16.5 so Markov-generated melodies don't crowd
+// the listener and the transition weights' "wanting to resolve" character
+// has more time to breathe between resolutions.
+var markovLoopPeriods = []float64{9.4, 13.8, 20.6}
 
 // minorTransitions[i][j] = weight of moving from minor-scale degree i to j.
 // Degrees: 0=root, 1=2, 2=b3, 3=4, 4=5, 5=b6, 6=b7.

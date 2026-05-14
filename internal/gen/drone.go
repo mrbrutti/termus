@@ -25,7 +25,8 @@ type Drone struct {
 // droneLoopPeriods are long but not glacial — each voice holds one note for
 // half a minute or so before moving. Three voices in the bed plus one shimmer
 // voice on top (see seed) gives slow motion without becoming static.
-var droneLoopPeriods = []float64{31.0, 43.0, 53.0, 67.0}
+// Slowed ~25% (was 31/43/53/67). Drone benefits most from very slow movement.
+var droneLoopPeriods = []float64{39.0, 54.0, 66.0, 84.0}
 
 // shimmerPeriod is the high voice that sits above the bed for occasional
 // movement — short enough to actually change while you're listening.
