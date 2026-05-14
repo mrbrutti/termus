@@ -42,13 +42,13 @@ func (w *WAVWriter) writeHeader(dataBytes uint32) error {
 	buf = append(buf, []byte("RIFF")...)
 	buf = binary.LittleEndian.AppendUint32(buf, 36+dataBytes)
 	buf = append(buf, []byte("WAVEfmt ")...)
-	buf = binary.LittleEndian.AppendUint32(buf, 16)         // fmt chunk size
-	buf = binary.LittleEndian.AppendUint16(buf, 1)          // PCM
+	buf = binary.LittleEndian.AppendUint32(buf, 16) // fmt chunk size
+	buf = binary.LittleEndian.AppendUint16(buf, 1)  // PCM
 	buf = binary.LittleEndian.AppendUint16(buf, uint16(w.channels))
 	buf = binary.LittleEndian.AppendUint32(buf, uint32(w.sampleRate))
 	buf = binary.LittleEndian.AppendUint32(buf, byteRate)
 	buf = binary.LittleEndian.AppendUint16(buf, blockAlign)
-	buf = binary.LittleEndian.AppendUint16(buf, 16)         // bits per sample
+	buf = binary.LittleEndian.AppendUint16(buf, 16) // bits per sample
 	buf = append(buf, []byte("data")...)
 	buf = binary.LittleEndian.AppendUint32(buf, dataBytes)
 	_, err := w.f.Write(buf)
