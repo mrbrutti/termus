@@ -91,6 +91,22 @@ func (a *SF2Markov) Seed(seedVal int64) {
 		VelocityJitter: 10, TimingJitterSec: 0.018,
 	})
 
+	// Soft brush snare on the GM drum channel — sparse hits to give the
+	// "composed" Markov feel a hint of rhythmic structure without imposing
+	// a beat. GM 39 is "Hand Clap"; GM 26 is "Snare 1"; we use GM 38 (snare)
+	// at low velocity for a "brushed" feel via the standard kit.
+	const drumCh = 9
+	core.setProgram(drumCh, 0)
+	core.setPan(drumCh, 64)
+	core.setReverbSend(drumCh, 90) // wet for that "cathedral percussion" feel
+	// 4 hits per 14-second cycle — roughly half-note feel at a slow tempo.
+	brushNotes := []int{38, 38, 38, 38}
+	core.addTrack(SF2Track{
+		Channel: drumCh, Velocity: 36, Notes: brushNotes,
+		PeriodSec: 14.0, Phase01: 0.25, // start on the offbeat
+		VelocityJitter: 12, TimingJitterSec: 0.025,
+	})
+
 	// Acoustic bass: long, slow Markov walk one octave below the root.
 	bassNotes := markovWalk(rng, rootMidi-12, 5)
 	bassMutate := func(_ int, prev int) int {

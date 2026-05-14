@@ -93,6 +93,25 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 		VelocityJitter: 5, TimingJitterSec: 0.018,
 	})
 
+	// Sub-audible shaker on the GM drum channel. GM percussion key 70 is
+	// Maracas, key 82 is Shaker — both work for a soft hand-percussion bed.
+	// Eight quiet hits per 16-second cycle (one every 2 s). Very low velocity
+	// so it's atmosphere, not rhythm. Skip the drum channel's bank-select
+	// dance; meltysynth treats channel 9 as percussion automatically.
+	const drumCh = 9
+	core.setProgram(drumCh, 0)
+	core.setPan(drumCh, 64)
+	core.setReverbSend(drumCh, 60)
+	shakerNotes := make([]int, 8)
+	for i := range shakerNotes {
+		shakerNotes[i] = 82 // GM Shaker
+	}
+	core.addTrack(SF2Track{
+		Channel: drumCh, Velocity: 40, Notes: shakerNotes,
+		PeriodSec: 16.0, Phase01: 0,
+		VelocityJitter: 14, TimingJitterSec: 0.020,
+	})
+
 	// Music box sparkle: very sparse, high register. 3 notes per ~30s cycle.
 	mbNotes := make([]int, 3)
 	for j := range mbNotes {
