@@ -26,6 +26,8 @@ type Model struct {
 	recording bool
 	status    string
 	statusTTL time.Time
+
+	themeIdx int // index into Themes
 }
 
 // New constructs a Model. keyName is e.g. "Cmin".
@@ -88,6 +90,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.status = "rec stopped"
 				m.statusTTL = time.Now().Add(3 * time.Second)
 			}
+		case actionTheme:
+			m.themeIdx = (m.themeIdx + 1) % len(Themes)
+			m.status = "theme: " + Themes[m.themeIdx].Name
+			m.statusTTL = time.Now().Add(2 * time.Second)
 		}
 		return m, nil
 	case tickMsg:
@@ -103,18 +109,19 @@ func (m Model) View() string {
 	innerH := m.height - 2 // minus top + bottom bars
 	innerW := m.width
 
-	// Snapshot scope and render.
+	// Snapshot scope and render with the active theme.
 	samples := make([]float64, innerW*2)
 	m.ring.Snapshot(samples)
-	scopeStr := RenderBraille(samples, innerW, innerH)
+	theme := Themes[m.themeIdx]
+	scopeStr := RenderBrailleThemed(samples, innerW, innerH, theme)
 
-	top := topBar(m, innerW)
-	bottom := bottomBar(m, innerW)
+	top := topBar(m, innerW, theme)
+	bottom := bottomBar(m, innerW, theme)
 	return lipgloss.JoinVertical(lipgloss.Left, top, scopeStr, bottom)
 }
 
-func topBar(m Model, w int) string {
-	left := lipgloss.NewStyle().Foreground(lipgloss.Color("#a0a0ff")).Render(
+func topBar(m Model, w int, theme ColorTheme) string {
+	left := lipgloss.NewStyle().Foreground(theme.BarFg).Render(
 		fmt.Sprintf("termus · %s · %s · seed=%d", m.algo, m.keyName, m.seed),
 	)
 	right := ""
@@ -128,17 +135,18 @@ func topBar(m Model, w int) string {
 	return left + spaces(pad) + right
 }
 
-func bottomBar(m Model, w int) string {
+func bottomBar(m Model, w int, theme ColorTheme) string {
 	state := "play"
 	if m.paused {
 		state = "PAUSED"
 	}
 	left := lipgloss.NewStyle().Faint(true).Render(
-		fmt.Sprintf("[space] %s   [↑↓] vol %d%%   [r] rec   [q] quit", state, m.volume),
+		fmt.Sprintf("[space] %s   [↑↓] vol %d%%   [r] rec   [c] %s   [q] quit",
+			state, m.volume, theme.Name),
 	)
 	right := ""
 	if time.Now().Before(m.statusTTL) {
-		right = lipgloss.NewStyle().Foreground(lipgloss.Color("#5bfaff")).Render(m.status)
+		right = lipgloss.NewStyle().Foreground(theme.BarHi).Render(m.status)
 	}
 	pad := w - lipgloss.Width(left) - lipgloss.Width(right)
 	if pad < 1 {

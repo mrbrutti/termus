@@ -25,7 +25,7 @@ func main() {
 			"eno-sf2 | drone-sf2 | glass-sf2 | pentatonic-sf2 | markov-sf2 | phase")
 	initialVol := flag.Int("volume", 70, "initial volume 0..100")
 	sf2Path := flag.String("sf2", "", "path to SoundFont file for the sf2 algorithm (default: auto-download TimGM6mb.sf2)")
-	irPath := flag.String("ir", "", "path to a WAV impulse response (sf2-mode algorithms only); use 'synthetic' for a built-in room IR")
+	irPath := flag.String("ir", "", "convolution IR: WAV file path, or preset name: room | hall | cathedral | plate")
 	irWet := flag.Float64("ir-wet", 0.40, "convolution wet mix 0..1 when --ir is provided")
 	flag.Parse()
 
@@ -98,20 +98,14 @@ func main() {
 		if !ok {
 			fmt.Fprintf(os.Stderr, "--ir requires an sf2-mode algorithm; ignoring\n")
 		} else {
-			var ir []float64
-			var err error
-			if *irPath == "synthetic" {
-				ir = synth.SyntheticRoomIR(0.08)
-			} else {
-				ir, err = audio.ReadIR(*irPath)
-				if err != nil {
-					fmt.Fprintln(os.Stderr, "ir load failed:", err)
-					os.Exit(1)
-				}
+			ir, label, err := loadIR(*irPath, *seed)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "ir load failed:", err)
+				os.Exit(1)
 			}
 			rev.SetReverbIR(ir, *irWet)
-			fmt.Fprintf(os.Stderr, "convolution IR loaded: %d samples (%.1f ms) at wet=%.2f\n",
-				len(ir), float64(len(ir))*1000.0/44100.0, *irWet)
+			fmt.Fprintf(os.Stderr, "IR %s: %d samples (%.1f ms) at wet=%.2f\n",
+				label, len(ir), float64(len(ir))*1000.0/44100.0, *irWet)
 		}
 	}
 	ring := scope.NewRing(4096)
@@ -138,5 +132,33 @@ func main() {
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "tui error:", err)
 		os.Exit(1)
+	}
+}
+
+// loadIR resolves an --ir argument to an actual impulse response. Accepts:
+//   - "room"      — short synthetic room (~80 ms early reflections)
+//   - "hall"      — synthetic ~1.5 s concert hall
+//   - "cathedral" — synthetic ~3.5 s cathedral (longest tail)
+//   - "plate"     — synthetic ~2 s plate-style smooth dense reverb
+//   - "synthetic" — alias for "room" (legacy)
+//   - any other string is treated as a path to a 16-bit PCM WAV file.
+//
+// Returns (IR samples, human-readable label, error).
+func loadIR(arg string, seed int64) ([]float64, string, error) {
+	switch arg {
+	case "room", "synthetic":
+		return synth.SyntheticRoomIR(0.08), "room", nil
+	case "hall":
+		return synth.SyntheticHallIR(seed), "hall", nil
+	case "cathedral":
+		return synth.SyntheticCathedralIR(seed), "cathedral", nil
+	case "plate":
+		return synth.SyntheticPlateIR(seed), "plate", nil
+	default:
+		ir, err := audio.ReadIR(arg)
+		if err != nil {
+			return nil, "", err
+		}
+		return ir, arg, nil
 	}
 }

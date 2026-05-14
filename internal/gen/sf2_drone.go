@@ -27,7 +27,7 @@ func (a *SF2Drone) Seed(seedVal int64) {
 	rng := rand.New(rand.NewSource(seedVal)) //nolint:gosec
 	rootMidi := 24 + rng.Intn(7) // C1..F#1
 
-	core, err := newSF2Core(a.sf, 3.0)
+	core, err := newSF2Core(a.sf, 3.0, seedVal)
 	if err != nil {
 		a.core = nil
 		return
@@ -37,19 +37,23 @@ func (a *SF2Drone) Seed(seedVal int64) {
 	core.setProgram(1, 49) // String Ensemble 2 (slow)
 	core.setProgram(2, 73) // Flute
 
-	// Bed voices on long periods.
+	// Bed voices on long periods. Mutation is gentle here — drone wants
+	// to feel stable; abrupt note changes would betray the aesthetic.
+	bedMutate := func(_ int, _ int) int {
+		degree := scaleMinor[rng.Intn(len(scaleMinor))]
+		octave := 12 * (1 + rng.Intn(3))
+		return rootMidi + degree + octave
+	}
 	for _, period := range droneLoopPeriods {
 		notes := make([]int, 3+rng.Intn(3))
 		for j := range notes {
-			degree := scaleMinor[rng.Intn(len(scaleMinor))]
-			octave := 12 * (1 + rng.Intn(3))
-			notes[j] = rootMidi + degree + octave
+			notes[j] = bedMutate(0, 0)
 		}
 		phase := rng.Float64()
-		// Layer both string programs at lower velocity for a soft texture.
 		core.addTrack(SF2Track{
 			Channel: 0, Velocity: 64, Notes: notes,
 			PeriodSec: period, Phase01: phase,
+			MutationRate: 0.05, MutateOne: bedMutate,
 		})
 		core.addTrack(SF2Track{
 			Channel: 1, Velocity: 48, Notes: notes,
@@ -58,15 +62,19 @@ func (a *SF2Drone) Seed(seedVal int64) {
 	}
 
 	// Shimmer voice on a 19s period — flute in the high register.
-	shimmerNotes := make([]int, 4+rng.Intn(3))
-	for j := range shimmerNotes {
+	shimmerMutate := func(_ int, _ int) int {
 		degree := scaleMinor[rng.Intn(len(scaleMinor))]
 		octave := 12 * (3 + rng.Intn(2))
-		shimmerNotes[j] = rootMidi + degree + octave
+		return rootMidi + degree + octave
+	}
+	shimmerNotes := make([]int, 4+rng.Intn(3))
+	for j := range shimmerNotes {
+		shimmerNotes[j] = shimmerMutate(0, 0)
 	}
 	core.addTrack(SF2Track{
 		Channel: 2, Velocity: 70, Notes: shimmerNotes,
 		PeriodSec: shimmerPeriod, Phase01: rng.Float64(),
+		MutationRate: 0.15, MutateOne: shimmerMutate,
 	})
 	a.core = core
 }

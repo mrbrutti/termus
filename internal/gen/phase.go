@@ -39,7 +39,7 @@ func (a *Phase) Seed(seedVal int64) {
 	rng := rand.New(rand.NewSource(seedVal)) //nolint:gosec
 	rootMidi := 45 + rng.Intn(7) // A2..D#3 — a register that puts the marimba mid-range
 
-	core, err := newSF2Core(a.sf, 3.0)
+	core, err := newSF2Core(a.sf, 3.0, seedVal)
 	if err != nil {
 		a.core = nil
 		return
@@ -75,13 +75,29 @@ func (a *Phase) Seed(seedVal int64) {
 	// after ~7 minutes the two voices have shifted by an entire beat.
 	driftRatio := 1.008
 
+	// Mutation: the figure slowly mutates over time so the patterns evolve
+	// instead of repeating verbatim. Both voices share the same figure
+	// slice (Voice A and Voice B literally play the same notes) so mutating
+	// once changes the figure for both — perfect, since the whole point of
+	// the algorithm is that both voices play the SAME thing.
+	figMutate := func(_ int, _ int) int {
+		deg := scalePentatonicMinor[rng.Intn(len(scalePentatonicMinor))]
+		oct := 24
+		if rng.Float64() < 0.35 {
+			oct = 36
+		}
+		return rootMidi + deg + oct
+	}
 	core.addTrack(SF2Track{
 		Channel: 0, Velocity: 92, Notes: figure,
 		PeriodSec: basePeriod, Phase01: 0,
+		MutationRate: 0.10, MutateOne: figMutate,
 	})
 	core.addTrack(SF2Track{
 		Channel: 1, Velocity: 86, Notes: figure,
 		PeriodSec: basePeriod * driftRatio, Phase01: 0,
+		// Voice B inherits any mutations on the shared figure slice; no
+		// own MutateOne needed.
 	})
 
 	// Chord progression: i-VI-III-VII (Andalusian feel), one chord per

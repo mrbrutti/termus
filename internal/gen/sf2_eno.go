@@ -29,7 +29,7 @@ func (a *SF2Eno) Seed(seedVal int64) {
 	rng := rand.New(rand.NewSource(seedVal)) //nolint:gosec
 	rootMidi := 36 + rng.Intn(12)
 
-	core, err := newSF2Core(a.sf, 3.5)
+	core, err := newSF2Core(a.sf, 3.5, seedVal)
 	if err != nil {
 		a.core = nil
 		return
@@ -41,18 +41,24 @@ func (a *SF2Eno) Seed(seedVal int64) {
 
 	// Slow pad bed — same logic as gen.Eno.Seed but with two tracks per
 	// musical voice so strings and warm pad layer together.
+	padMutate := func(_ int, _ int) int {
+		degree := scaleMinor[rng.Intn(len(scaleMinor))]
+		octave := 12 * (2 + rng.Intn(3))
+		return rootMidi + degree + octave
+	}
 	for _, period := range loopPeriods {
 		notes := make([]int, 2+rng.Intn(3))
 		for j := range notes {
-			degree := scaleMinor[rng.Intn(len(scaleMinor))]
-			octave := 12 * (2 + rng.Intn(3))
-			notes[j] = rootMidi + degree + octave
+			notes[j] = padMutate(0, 0)
 		}
 		phase := rng.Float64()
+		// Bed: slow churn — about 1 in 12 transitions re-rolls a note.
 		core.addTrack(SF2Track{
 			Channel: 0, Velocity: 70, Notes: notes,
 			PeriodSec: period, Phase01: phase,
+			MutationRate: 0.08, MutateOne: padMutate,
 		})
+		// The warm-pad layer shares the same notes slice so both stay in sync.
 		core.addTrack(SF2Track{
 			Channel: 1, Velocity: 56, Notes: notes,
 			PeriodSec: period, Phase01: phase,
@@ -60,16 +66,21 @@ func (a *SF2Eno) Seed(seedVal int64) {
 	}
 
 	// Lead voices — shorter periods, more notes, higher register, piano.
+	leadMutate := func(_ int, _ int) int {
+		degree := scaleMinor[rng.Intn(len(scaleMinor))]
+		octave := 12 * (3 + rng.Intn(2))
+		return rootMidi + degree + octave
+	}
 	for _, period := range leadPeriods {
 		notes := make([]int, 4+rng.Intn(3))
 		for j := range notes {
-			degree := scaleMinor[rng.Intn(len(scaleMinor))]
-			octave := 12 * (3 + rng.Intn(2))
-			notes[j] = rootMidi + degree + octave
+			notes[j] = leadMutate(0, 0)
 		}
+		// Leads: faster churn so the melodic content shifts more visibly.
 		core.addTrack(SF2Track{
 			Channel: 2, Velocity: 92, Notes: notes,
 			PeriodSec: period, Phase01: rng.Float64(),
+			MutationRate: 0.18, MutateOne: leadMutate,
 		})
 	}
 	a.core = core

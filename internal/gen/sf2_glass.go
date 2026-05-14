@@ -27,7 +27,7 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	rng := rand.New(rand.NewSource(seedVal)) //nolint:gosec
 	rootMidi := 48 + rng.Intn(7) // C3..F#3
 
-	core, err := newSF2Core(a.sf, 3.2)
+	core, err := newSF2Core(a.sf, 3.2, seedVal)
 	if err != nil {
 		a.core = nil
 		return
@@ -35,19 +35,24 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	core.setProgram(0, 14) // Tubular Bells
 	core.setProgram(1, 98) // Crystal (FX 3) — bell-like ringing
 
+	pentMutate := func(_ int, _ int) int {
+		degree := scalePentatonicMinor[rng.Intn(len(scalePentatonicMinor))]
+		octave := 12 * (1 + rng.Intn(3))
+		return rootMidi + degree + octave
+	}
 	for _, period := range glassLoopPeriods {
 		notes := make([]int, 1+rng.Intn(2))
 		for j := range notes {
-			degree := scalePentatonicMinor[rng.Intn(len(scalePentatonicMinor))]
-			octave := 12 * (1 + rng.Intn(3))
-			notes[j] = rootMidi + degree + octave
+			notes[j] = pentMutate(0, 0)
 		}
 		phase := rng.Float64()
+		// Bells: moderate mutation — the sparse texture handles change well.
 		core.addTrack(SF2Track{
 			Channel: 0, Velocity: 84, Notes: notes,
 			PeriodSec: period, Phase01: phase,
+			MutationRate: 0.20, MutateOne: pentMutate,
 		})
-		// Crystal layer at lower velocity, slight phase offset for shimmer.
+		// Crystal layer shares notes via slice aliasing; no own mutator needed.
 		core.addTrack(SF2Track{
 			Channel: 1, Velocity: 52, Notes: notes,
 			PeriodSec: period, Phase01: phase + 0.03,

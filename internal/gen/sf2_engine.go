@@ -2,6 +2,7 @@ package gen
 
 import (
 	"math"
+	"math/rand"
 
 	"github.com/sinshu/go-meltysynth/meltysynth"
 
@@ -20,12 +21,29 @@ type SF2Reverberator interface {
 // Multiple tracks can share a MIDI channel (e.g. several voices all on
 // piano) — events from each track will sum naturally inside go-meltysynth's
 // polyphony.
+//
+// Mutation: if MutationRate > 0 and MutateOne != nil, the engine will
+// occasionally re-roll one of the Notes (never the one currently sounding)
+// using MutateOne. This makes the music gradually evolve over time rather
+// than looping the same figure indefinitely.
 type SF2Track struct {
 	Channel   int32 // MIDI channel 0..15
 	Velocity  int32 // 0..127
 	Notes     []int // MIDI keys, cycled
 	PeriodSec float64
 	Phase01   float64 // 0..1 phase offset within the period
+
+	// MutationRate is the probability per slot transition that one note
+	// gets re-rolled. 0 = static (default), 1 = aggressive constant churn.
+	// Typical values: 0.05–0.20 for gradual evolution.
+	MutationRate float64
+
+	// MutateOne, if non-nil, is called by the engine when a mutation fires.
+	// It receives the index of the note slot being replaced (NEVER the slot
+	// currently sounding) and the current value, and returns the new value.
+	// Algorithms typically pick from a scale + register related to the
+	// original to keep mutations musical.
+	MutateOne func(slot int, prev int) int
 }
 
 // sf2TrackState is the runtime state for one track.
@@ -54,6 +72,7 @@ type sf2Core struct {
 	tracks     []*sf2TrackState
 	t          int64
 	masterGain float64
+	rng        *rand.Rand // for mutation; lives on the audio goroutine only
 
 	eqLowL, eqLowR   *synth.LowShelf
 	eqHighL, eqHighR *synth.HighShelf
@@ -70,8 +89,10 @@ type sf2Core struct {
 }
 
 // newSF2Core constructs the engine and the master bus. masterGain compensates
-// for go-meltysynth's conservative internal levels.
-func newSF2Core(sf *meltysynth.SoundFont, masterGain float64) (*sf2Core, error) {
+// for go-meltysynth's conservative internal levels. mutationSeed seeds the
+// mutation RNG; pass the same value Seed() uses for note generation to keep
+// the mutation sequence deterministic with the rest of the algorithm.
+func newSF2Core(sf *meltysynth.SoundFont, masterGain float64, mutationSeed int64) (*sf2Core, error) {
 	settings := meltysynth.NewSynthesizerSettings(synth.SampleRate)
 	settings.EnableReverbAndChorus = true
 	settings.MaximumPolyphony = 96
@@ -82,6 +103,10 @@ func newSF2Core(sf *meltysynth.SoundFont, masterGain float64) (*sf2Core, error) 
 	return &sf2Core{
 		syn:        syn,
 		masterGain: masterGain,
+		// Distinct seed offset so the mutation stream doesn't correlate with
+		// the note-generation stream (which would make mutations feel
+		// "predictable" alongside the initial figure).
+		rng:        rand.New(rand.NewSource(mutationSeed ^ 0x6D757461)), //nolint:gosec // ASCII "muta"
 		eqLowL:     synth.NewLowShelf(180, 2.5, 0.707),
 		eqLowR:     synth.NewLowShelf(180, 2.5, 0.707),
 		eqHighL:    synth.NewHighShelf(7500, 3.0, 0.707),
@@ -186,8 +211,10 @@ func (s *sf2TrackState) samplesUntilNextSlot(t int64) int64 {
 }
 
 // fireTransition sends NoteOff for the currently sounding key (if any) and
-// NoteOn for the slot's note.
-func (s *sf2TrackState) fireTransition(t int64, syn *meltysynth.Synthesizer) {
+// NoteOn for the slot's note. Also optionally fires a mutation on some OTHER
+// slot of the track (never the one we just landed on) so the cycled material
+// gradually evolves rather than repeating forever.
+func (s *sf2TrackState) fireTransition(t int64, syn *meltysynth.Synthesizer, rng *rand.Rand) {
 	newSlot := s.slotAt(t)
 	if s.curKey >= 0 {
 		syn.NoteOff(s.cfg.Channel, int32(s.curKey))
@@ -196,6 +223,19 @@ func (s *sf2TrackState) fireTransition(t int64, syn *meltysynth.Synthesizer) {
 	syn.NoteOn(s.cfg.Channel, int32(key), s.cfg.Velocity)
 	s.curSlot = newSlot
 	s.curKey = key
+
+	// Optional mutation: re-roll one of the *other* slots so the figure
+	// gradually evolves. We deliberately avoid the slot just landed on so
+	// we don't yank the note out from under the listener.
+	if s.cfg.MutateOne != nil && s.cfg.MutationRate > 0 && len(s.cfg.Notes) > 1 && rng != nil {
+		if rng.Float64() < s.cfg.MutationRate {
+			victim := rng.Intn(len(s.cfg.Notes) - 1)
+			if victim >= newSlot {
+				victim++ // skip past the current slot
+			}
+			s.cfg.Notes[victim] = s.cfg.MutateOne(victim, s.cfg.Notes[victim])
+		}
+	}
 }
 
 // renderInto fills the stereo float64 buffer by alternately rendering audio
@@ -229,7 +269,7 @@ func (e *sf2Core) renderInto(left, right []float64) {
 		if pos < n {
 			for _, s := range e.tracks {
 				if s.samplesUntilNextSlot(e.t) == 0 {
-					s.fireTransition(e.t, e.syn)
+					s.fireTransition(e.t, e.syn, e.rng)
 				}
 			}
 		}

@@ -27,7 +27,7 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 	rng := rand.New(rand.NewSource(seedVal)) //nolint:gosec
 	rootMidi := 36 + rng.Intn(12)
 
-	core, err := newSF2Core(a.sf, 3.2)
+	core, err := newSF2Core(a.sf, 3.2, seedVal)
 	if err != nil {
 		a.core = nil
 		return
@@ -35,22 +35,67 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 	core.setProgram(0, 0)  // Acoustic Grand Piano
 	core.setProgram(1, 46) // Orchestral Harp
 
-	// Same walk-based note generation as gen.Pentatonic.
+	// Same walk-based note generation as gen.Pentatonic. Mutation uses a
+	// short random walk from the previous note's pentatonic-scale degree —
+	// so mutated notes stay smoothly connected to the existing melody.
 	for i, period := range pentaLoopPeriods {
 		count := 6 + rng.Intn(5)
 		notes := pentatonicWalk(rng, rootMidi, count)
-		// Alternate between piano and harp per voice for instrumental variety.
 		ch := int32(i % 2)
 		var vel int32 = 80
 		if ch == 1 {
 			vel = 68
 		}
+		// Capture rootMidi + scale ref for the mutation closure.
+		root := rootMidi
+		mutate := func(_ int, prev int) int {
+			// Find closest pentatonic-minor pitch to prev, walk by ±1..2 steps.
+			closest := findClosestScalePitch(prev, root, scalePentatonicMinor)
+			step := walkStep(rng, closest.degreeIdx, len(scalePentatonicMinor))
+			return root + scalePentatonicMinor[step] + closest.octaveOffset*12
+		}
 		core.addTrack(SF2Track{
 			Channel: ch, Velocity: vel, Notes: notes,
 			PeriodSec: period, Phase01: rng.Float64(),
+			MutationRate: 0.15, MutateOne: mutate,
 		})
 	}
 	a.core = core
+}
+
+// scalePitchLoc describes where a MIDI note sits in a scale anchored at
+// rootMidi: which degree (0..len(scale)-1) and how many octaves above the
+// root. Used by mutation to find a "nearby" scale note to walk from.
+type scalePitchLoc struct {
+	degreeIdx    int
+	octaveOffset int
+}
+
+// findClosestScalePitch returns the closest scale-anchored pitch to the given
+// MIDI note. Useful for mutation closures that want to walk from "wherever
+// we currently are" rather than re-rolling from scratch.
+func findClosestScalePitch(midi, rootMidi int, scale []int) scalePitchLoc {
+	rel := midi - rootMidi
+	// Decompose into (octave, semitone within octave) where semitone is in 0..11.
+	octave := rel / 12
+	semi := rel % 12
+	if semi < 0 {
+		semi += 12
+		octave--
+	}
+	bestIdx := 0
+	bestDist := 1 << 30
+	for i, s := range scale {
+		d := semi - s
+		if d < 0 {
+			d = -d
+		}
+		if d < bestDist {
+			bestDist = d
+			bestIdx = i
+		}
+	}
+	return scalePitchLoc{degreeIdx: bestIdx, octaveOffset: octave}
 }
 
 // pentatonicWalk produces a random walk through the pentatonic-minor scale,

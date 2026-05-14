@@ -27,7 +27,7 @@ func (a *SF2Markov) Seed(seedVal int64) {
 	rng := rand.New(rand.NewSource(seedVal)) //nolint:gosec
 	rootMidi := 36 + rng.Intn(12)
 
-	core, err := newSF2Core(a.sf, 3.2)
+	core, err := newSF2Core(a.sf, 3.2, seedVal)
 	if err != nil {
 		a.core = nil
 		return
@@ -35,20 +35,28 @@ func (a *SF2Markov) Seed(seedVal int64) {
 	core.setProgram(0, 0)  // Acoustic Grand Piano
 	core.setProgram(1, 49) // String Ensemble 2 (slow)
 
-	// Same Markov-chain melody as gen.Markov.
+	// Same Markov-chain melody as gen.Markov. Mutation re-rolls a note via
+	// the same transition matrix, taking the previous note's degree as
+	// state — so mutated notes follow the same compositional grammar.
 	for i, period := range markovLoopPeriods {
 		count := 10 + rng.Intn(5)
 		notes := markovWalk(rng, rootMidi, count)
-		// Piano voices on top, strings doubling lower voices.
 		ch := int32(0)
 		var vel int32 = 86
 		if i == len(markovLoopPeriods)-1 {
 			ch = 1
 			vel = 52
 		}
+		root := rootMidi
+		mutate := func(_ int, prev int) int {
+			loc := findClosestScalePitch(prev, root, scaleMinor)
+			nextDeg := nextMarkovDegree(rng, loc.degreeIdx)
+			return root + scaleMinor[nextDeg] + loc.octaveOffset*12
+		}
 		core.addTrack(SF2Track{
 			Channel: ch, Velocity: vel, Notes: notes,
 			PeriodSec: period, Phase01: rng.Float64(),
+			MutationRate: 0.12, MutateOne: mutate,
 		})
 	}
 	a.core = core

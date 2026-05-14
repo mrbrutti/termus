@@ -78,20 +78,14 @@ func main() {
 
 	if *irPath != "" {
 		if rev, ok := algo.(gen.SF2Reverberator); ok {
-			var ir []float64
-			var err error
-			if *irPath == "synthetic" {
-				ir = synth.SyntheticRoomIR(0.08)
-			} else {
-				ir, err = audio.ReadIR(*irPath)
-				if err != nil {
-					fmt.Fprintln(os.Stderr, "ir load failed:", err)
-					os.Exit(1)
-				}
+			ir, label, err := loadIR(*irPath, *seed)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "ir load failed:", err)
+				os.Exit(1)
 			}
 			rev.SetReverbIR(ir, *irWet)
-			fmt.Fprintf(os.Stderr, "convolution IR loaded: %d samples (%.1f ms)\n",
-				len(ir), float64(len(ir))*1000.0/44100.0)
+			fmt.Fprintf(os.Stderr, "IR %s: %d samples (%.1f ms)\n",
+				label, len(ir), float64(len(ir))*1000.0/44100.0)
 		} else {
 			fmt.Fprintf(os.Stderr, "warning: --ir requires an sf2-mode algorithm; ignoring\n")
 		}
@@ -148,4 +142,24 @@ func main() {
 	fmt.Fprintf(os.Stderr, "\nwrote %s — %d frames, peak L=%.3f R=%.3f RMS=%.4f\n",
 		*out, written, maxL, maxR, rms)
 	fmt.Fprintf(os.Stderr, "play with: afplay %s\n", *out)
+}
+
+// loadIR resolves an --ir argument; see cmd/termus for full docs.
+func loadIR(arg string, seed int64) ([]float64, string, error) {
+	switch arg {
+	case "room", "synthetic":
+		return synth.SyntheticRoomIR(0.08), "room", nil
+	case "hall":
+		return synth.SyntheticHallIR(seed), "hall", nil
+	case "cathedral":
+		return synth.SyntheticCathedralIR(seed), "cathedral", nil
+	case "plate":
+		return synth.SyntheticPlateIR(seed), "plate", nil
+	default:
+		ir, err := audio.ReadIR(arg)
+		if err != nil {
+			return nil, "", err
+		}
+		return ir, arg, nil
+	}
 }

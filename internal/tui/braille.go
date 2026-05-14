@@ -10,15 +10,20 @@ import (
 
 // RenderBraille returns a w×h block of Braille glyphs visualizing the given
 // mono samples in [-1, 1]. Each glyph is one terminal cell with 2×4 dots, so
-// the effective resolution is (2w) × (4h) dots. Coloring uses a vertical
-// gradient: deep indigo near the rails, cyan near the centerline.
+// the effective resolution is (2w) × (4h) dots. Uses the default theme
+// (indigo→cyan vertical gradient). For other themes, use RenderBrailleThemed.
 func RenderBraille(samples []float64, w, h int) string {
+	return RenderBrailleThemed(samples, w, h, DefaultTheme())
+}
+
+// RenderBrailleThemed is like RenderBraille but lets the caller pick a
+// ColorTheme. See themes.go for the available presets.
+func RenderBrailleThemed(samples []float64, w, h int, theme ColorTheme) string {
 	if w < 4 || h < 1 {
 		return "(too small)\n"
 	}
 	dotsX := 2 * w
 	dotsY := 4 * h
-	// Map sample[i in 0..len(samples)) → x in 0..dotsX-1.
 	plot := make([][]bool, dotsY)
 	for i := range plot {
 		plot[i] = make([]bool, dotsX)
@@ -33,7 +38,6 @@ func RenderBraille(samples []float64, w, h int) string {
 			if s < -1 {
 				s = -1
 			}
-			// y=0 is top of buffer. Sample 1.0 → top, -1.0 → bottom.
 			py := int((1.0 - (s+1)/2) * float64(dotsY-1))
 			if py < 0 {
 				py = 0
@@ -45,13 +49,11 @@ func RenderBraille(samples []float64, w, h int) string {
 		}
 	}
 
-	// Build cell grid.
 	var b strings.Builder
 	for cy := 0; cy < h; cy++ {
 		for cx := 0; cx < w; cx++ {
 			r := brailleCell(plot, cx, cy)
-			// Choose color from vertical position of cell.
-			color := gradientColor(cy, h)
+			color := theme.ColorAt(cx, cy, w, h)
 			b.WriteString(lipgloss.NewStyle().Foreground(color).Render(string(r)))
 		}
 		b.WriteByte('\n')
@@ -93,46 +95,3 @@ func brailleCell(plot [][]bool, cx, cy int) rune {
 	return base + bits
 }
 
-// gradientColor returns the foreground color for a given vertical cell index.
-// Indigo at the top/bottom rails, cyan near the middle.
-func gradientColor(cy, h int) lipgloss.Color {
-	mid := float64(h-1) / 2
-	d := float64(cy) - mid
-	// Normalize 0..1, 0 at center, 1 at rail.
-	norm := 1.0
-	if mid > 0 {
-		norm = absf(d) / mid
-	}
-	// indigo (#5b4bff) at rails → cyan (#5bfaff) at center.
-	r := lerp(0x5b, 0x5b, norm)
-	g := lerp(0xfa, 0x4b, norm)
-	b := lerp(0xff, 0xff, norm)
-	return lipgloss.Color(hexColor(r, g, b))
-}
-
-func absf(x float64) float64 {
-	if x < 0 {
-		return -x
-	}
-	return x
-}
-
-func lerp(near, far int, t float64) int {
-	// t=0 → near (center), t=1 → far (rail).
-	return int(float64(near) + (float64(far)-float64(near))*t)
-}
-
-func hexColor(r, g, b int) string {
-	return "#" + hex2(r) + hex2(g) + hex2(b)
-}
-
-func hex2(v int) string {
-	if v < 0 {
-		v = 0
-	}
-	if v > 255 {
-		v = 255
-	}
-	const hex = "0123456789abcdef"
-	return string([]byte{hex[v>>4], hex[v&0xf]})
-}

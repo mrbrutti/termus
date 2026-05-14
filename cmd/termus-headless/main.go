@@ -114,19 +114,14 @@ func main() {
 	algo.Seed(*seed)
 	if *irPath != "" {
 		if rev, ok := algo.(gen.SF2Reverberator); ok {
-			var ir []float64
-			var err error
-			if *irPath == "synthetic" {
-				ir = synth.SyntheticRoomIR(0.08)
-			} else {
-				ir, err = audio.ReadIR(*irPath)
-				if err != nil {
-					fmt.Fprintln(os.Stderr, "ir load:", err)
-					os.Exit(1)
-				}
+			ir, label, err := loadIR(*irPath, *seed)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "ir load:", err)
+				os.Exit(1)
 			}
 			rev.SetReverbIR(ir, *irWet)
-			fmt.Fprintf(os.Stderr, "IR: %d samples (%.1f ms)\n", len(ir), float64(len(ir))*1000.0/44100.0)
+			fmt.Fprintf(os.Stderr, "IR %s: %d samples (%.1f ms)\n",
+				label, len(ir), float64(len(ir))*1000.0/44100.0)
 		}
 	}
 	ring := scope.NewRing(4096)
@@ -151,4 +146,24 @@ func main() {
 	time.Sleep(time.Duration(*seconds) * time.Second)
 	fmt.Fprintf(os.Stderr, "done. Stream called %d times, total %d frames, peak |sample|=%.3f, last sample=%.3f\n",
 		dbg.calls, dbg.frames, dbg.peak, dbg.last)
+}
+
+// loadIR resolves an --ir argument; see cmd/termus for full docs.
+func loadIR(arg string, seed int64) ([]float64, string, error) {
+	switch arg {
+	case "room", "synthetic":
+		return synth.SyntheticRoomIR(0.08), "room", nil
+	case "hall":
+		return synth.SyntheticHallIR(seed), "hall", nil
+	case "cathedral":
+		return synth.SyntheticCathedralIR(seed), "cathedral", nil
+	case "plate":
+		return synth.SyntheticPlateIR(seed), "plate", nil
+	default:
+		ir, err := audio.ReadIR(arg)
+		if err != nil {
+			return nil, "", err
+		}
+		return ir, arg, nil
+	}
 }
