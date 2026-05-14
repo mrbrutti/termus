@@ -18,21 +18,27 @@ import (
 
 func main() {
 	seed := flag.Int64("seed", time.Now().UnixNano(), "RNG seed (default: time-based)")
-	algoName := flag.String("algo", "eno", "algorithm name (v1: eno)")
+	algoName := flag.String("algo", "eno", "algorithm: eno | drone | glass")
 	initialVol := flag.Int("volume", 70, "initial volume 0..100")
 	flag.Parse()
 
-	if *algoName != "eno" {
-		fmt.Fprintf(os.Stderr, "unknown algorithm %q (v1 only supports 'eno')\n", *algoName)
-		os.Exit(2)
-	}
 	if *initialVol < 0 || *initialVol > 100 {
 		fmt.Fprintf(os.Stderr, "volume must be 0..100, got %d\n", *initialVol)
 		os.Exit(2)
 	}
 
-	// Wire algorithm, scope, audio root.
-	algo := gen.NewEno()
+	var algo gen.Algorithm
+	switch *algoName {
+	case "eno":
+		algo = gen.NewEno()
+	case "drone":
+		algo = gen.NewDrone()
+	case "glass":
+		algo = gen.NewGlass()
+	default:
+		fmt.Fprintf(os.Stderr, "unknown algorithm %q (must be one of: eno, drone, glass)\n", *algoName)
+		os.Exit(2)
+	}
 	algo.Seed(*seed)
 	ring := scope.NewRing(4096)
 	root := audio.NewRoot(algo, ring)
