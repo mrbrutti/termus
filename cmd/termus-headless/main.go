@@ -77,7 +77,7 @@ func main() {
 		algo = gen.NewPentatonic()
 	case "markov":
 		algo = gen.NewMarkov()
-	case "sf2":
+	case "sf2", "eno-sf2", "drone-sf2", "glass-sf2", "pentatonic-sf2", "markov-sf2":
 		p, err := sf2.EnsureDefault(nil)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "sf2 setup:", err)
@@ -88,7 +88,20 @@ func main() {
 			fmt.Fprintln(os.Stderr, "sf2 open:", err)
 			os.Exit(1)
 		}
-		algo = gen.NewSF2(sf)
+		switch *algoName {
+		case "sf2":
+			algo = gen.NewSF2(sf)
+		case "eno-sf2":
+			algo = gen.NewSF2Eno(sf)
+		case "drone-sf2":
+			algo = gen.NewSF2Drone(sf)
+		case "glass-sf2":
+			algo = gen.NewSF2Glass(sf)
+		case "pentatonic-sf2":
+			algo = gen.NewSF2Pentatonic(sf)
+		case "markov-sf2":
+			algo = gen.NewSF2Markov(sf)
+		}
 	default:
 		fmt.Fprintf(os.Stderr, "unknown algo %q\n", *algoName)
 		os.Exit(2)

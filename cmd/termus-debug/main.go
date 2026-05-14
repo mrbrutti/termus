@@ -18,7 +18,9 @@ func main() {
 	seed := flag.Int64("seed", 42, "seed")
 	seconds := flag.Float64("seconds", 5.0, "duration to render")
 	out := flag.String("out", "termus-debug.wav", "output WAV path")
-	algoName := flag.String("algo", "eno", "algorithm: eno | drone | glass | pentatonic | markov | sf2")
+	algoName := flag.String("algo", "eno",
+		"algorithm: eno|drone|glass|pentatonic|markov|sf2|"+
+			"eno-sf2|drone-sf2|glass-sf2|pentatonic-sf2|markov-sf2")
 	sf2Path := flag.String("sf2", "", "SoundFont path for the sf2 algorithm (default: auto-download)")
 	flag.Parse()
 
@@ -34,7 +36,7 @@ func main() {
 		algo = gen.NewPentatonic()
 	case "markov":
 		algo = gen.NewMarkov()
-	case "sf2":
+	case "sf2", "eno-sf2", "drone-sf2", "glass-sf2", "pentatonic-sf2", "markov-sf2":
 		path := *sf2Path
 		if path == "" {
 			p, err := sf2.EnsureDefault(nil)
@@ -49,7 +51,20 @@ func main() {
 			fmt.Fprintln(os.Stderr, "sf2 open failed:", err)
 			os.Exit(1)
 		}
-		algo = gen.NewSF2(sf)
+		switch *algoName {
+		case "sf2":
+			algo = gen.NewSF2(sf)
+		case "eno-sf2":
+			algo = gen.NewSF2Eno(sf)
+		case "drone-sf2":
+			algo = gen.NewSF2Drone(sf)
+		case "glass-sf2":
+			algo = gen.NewSF2Glass(sf)
+		case "pentatonic-sf2":
+			algo = gen.NewSF2Pentatonic(sf)
+		case "markov-sf2":
+			algo = gen.NewSF2Markov(sf)
+		}
 	default:
 		fmt.Fprintf(os.Stderr, "unknown algorithm %q\n", *algoName)
 		os.Exit(2)
