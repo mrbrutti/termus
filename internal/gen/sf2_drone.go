@@ -56,6 +56,18 @@ func (a *SF2Drone) Seed(seedVal int64) {
 	core.addFilterLFO(1, 1.0/19.0, 60, 26)
 	core.addFilterLFO(3, 1.0/11.0, 70, 30)
 
+	// Drone is the wettest algorithm — everything except the bass sits deep
+	// in a cathedral. Strings + choir get full wet; flute shimmer drenched
+	// for the "from far away" halo; bass kept drier so the low end has body.
+	core.setReverbSend(0, 110)
+	core.setReverbSend(1, 110)
+	core.setReverbSend(2, 120) // flute shimmer
+	core.setReverbSend(3, 100) // choir
+	core.setReverbSend(4, 40)  // bass — drier
+	core.setChorusSend(0, 50)
+	core.setChorusSend(1, 50)
+	core.setChorusSend(3, 56)
+
 	// Bed voices on long periods. Mutation is gentle here — drone wants
 	// to feel stable; abrupt note changes would betray the aesthetic.
 	bedMutate := func(_ int, _ int) int {

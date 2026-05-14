@@ -53,6 +53,13 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	// breathing sweep.
 	core.addFilterLFO(2, 1.0/15.0, 64, 28)
 
+	// Glass family wants lots of reverb for that "ringing in a chamber" feel.
+	core.setReverbSend(0, 110) // bells
+	core.setReverbSend(1, 110) // crystal
+	core.setReverbSend(2, 90)  // pad
+	core.setReverbSend(3, 60)  // marimba (drier for transient definition)
+	core.setChorusSend(2, 40)
+
 	pentMutate := func(_ int, _ int) int {
 		degree := scalePentatonicMinor[rng.Intn(len(scalePentatonicMinor))]
 		octave := 12 * (1 + rng.Intn(3))

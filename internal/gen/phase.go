@@ -79,6 +79,14 @@ func (a *Phase) Seed(seedVal int64) {
 	// Vibraphones get no LFO (would mask the phase-shift rhythmic effect).
 	core.addFilterLFO(2, 1.0/18.0, 60, 32)
 
+	// Phase wants HEAVY reverb on the vibraphones — the long tail is what
+	// blurs the two voices' interlocking patterns into a continuous wash.
+	core.setReverbSend(0, 115)
+	core.setReverbSend(1, 115)
+	core.setReverbSend(2, 100) // choir pad
+	core.setReverbSend(3, 50)  // bass dry
+	core.setChorusSend(2, 48)
+
 	// 4-note figure, drawn from pentatonic-minor. Fewer notes than the v1
 	// 6-note figure → each note rings longer, more ambient.
 	figure := make([]int, 4)

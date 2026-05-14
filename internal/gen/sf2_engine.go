@@ -147,6 +147,36 @@ func (e *sf2Core) programSwap(channel int32, alternatives []int32, rng *rand.Ran
 	e.setProgram(channel, alternatives[rng.Intn(len(alternatives))])
 }
 
+// setReverbSend sets the channel's send level to the synthesizer's internal
+// reverb (MIDI CC 91). 0 = dry, 127 = full wet. Used per-instrument so e.g.
+// a lead voice can be drenched in reverb while the bass stays dry.
+func (e *sf2Core) setReverbSend(channel, level int32) {
+	const ccControlChange = 0xB0
+	const ccReverbSend = 91
+	if level < 0 {
+		level = 0
+	}
+	if level > 127 {
+		level = 127
+	}
+	e.syn.ProcessMidiMessage(channel, ccControlChange, ccReverbSend, level)
+}
+
+// setChorusSend sets the channel's send to the internal chorus (CC 93).
+// Same conventions as setReverbSend. Good for thickening pads or for
+// adding the classic "Rhodes chorus" feel.
+func (e *sf2Core) setChorusSend(channel, level int32) {
+	const ccControlChange = 0xB0
+	const ccChorusSend = 93
+	if level < 0 {
+		level = 0
+	}
+	if level > 127 {
+		level = 127
+	}
+	e.syn.ProcessMidiMessage(channel, ccControlChange, ccChorusSend, level)
+}
+
 // filterLFO holds the state for a slow CC-74 (filter cutoff) LFO on one
 // MIDI channel. Sustained pads especially benefit — without modulation
 // they sound static, with it they "breathe."

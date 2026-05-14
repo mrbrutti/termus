@@ -162,6 +162,20 @@ func (a *Chill) Seed(seedVal int64) {
 	// rocks back and forth.
 	core.addFilterLFO(0, 1.0/8.0, 60, 22)
 
+	// Lofi reverb is generally short and close (already configured via
+	// SyntheticRoomIR), but per-channel sends shape the mix character.
+	// Sax solo gets the most reverb for "soloistic space"; drums stay dry
+	// to keep the beat punchy; bass dry to keep the low end tight.
+	core.setReverbSend(0, 56) // Rhodes: light room verb
+	core.setReverbSend(1, 24) // bass: dry
+	core.setReverbSend(2, 80) // vibraphone: wet, halo
+	core.setReverbSend(3, 96) // sax: most wet — soloistic space
+	core.setReverbSend(4, 50) // nylon guitar: moderate
+	core.setReverbSend(drumChannel, 30) // drums: mostly dry, just a touch of room
+	core.setChorusSend(0, 56) // Rhodes loves chorus
+	core.setChorusSend(2, 32)
+	core.setChorusSend(4, 24)
+
 	// Pick a progression.
 	a.progression = chillProgressions[a.rng.Intn(len(chillProgressions))]
 

@@ -48,6 +48,13 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 	core.setPan(2, 100)
 	core.setPan(3, 64)
 
+	core.setReverbSend(0, 70)  // piano: moderate
+	core.setReverbSend(1, 80)  // harp: a bit more for that "music box" halo
+	core.setReverbSend(2, 110) // music box: drenched
+	core.setReverbSend(3, 35)  // bass: dry, hold the low end
+	core.setChorusSend(0, 24)
+	core.setChorusSend(1, 24)
+
 	// Same walk-based note generation as gen.Pentatonic.
 	for i, period := range pentaLoopPeriods {
 		count := 6 + rng.Intn(5)

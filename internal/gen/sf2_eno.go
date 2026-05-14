@@ -60,8 +60,18 @@ func (a *SF2Eno) Seed(seedVal int64) {
 	// (different rates so the two pads don't pulse in sync).
 	core.addFilterLFO(0, 1.0/12.0, 64, 26)
 	core.addFilterLFO(1, 1.0/17.0, 64, 30)
-	// French horn at slightly faster rate but smaller depth.
 	core.addFilterLFO(4, 1.0/9.0, 70, 18)
+
+	// Per-channel reverb/chorus send. Strings + pad sit IN the reverb (high
+	// send), piano leads have moderate, celesta sparkle has lots of reverb
+	// for the "halo" effect, french horn slightly dry to anchor the low end.
+	core.setReverbSend(0, 90) // strings: deeply wet
+	core.setReverbSend(1, 80) // warm pad: wet
+	core.setReverbSend(2, 60) // piano leads: moderate
+	core.setReverbSend(3, 110) // celesta: drenched, halo effect
+	core.setReverbSend(4, 50)  // french horn: drier, holds the low end
+	core.setChorusSend(0, 32)
+	core.setChorusSend(1, 48) // warm pad benefits most from chorus
 
 	// Slow pad bed — same logic as gen.Eno.Seed but with two tracks per
 	// musical voice so strings and warm pad layer together.

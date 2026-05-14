@@ -48,6 +48,12 @@ func (a *SF2Markov) Seed(seedVal int64) {
 	core.setPan(2, 90)
 	core.setPan(3, 64)
 
+	core.setReverbSend(0, 72)  // piano: medium
+	core.setReverbSend(1, 100) // strings: deeply wet
+	core.setReverbSend(2, 88)  // clarinet solo voice: wet for "concert hall" feel
+	core.setReverbSend(3, 36)  // bass: dry
+	core.setChorusSend(1, 40)
+
 	for i, period := range markovLoopPeriods {
 		count := 10 + rng.Intn(5)
 		notes := markovWalk(rng, rootMidi, count)
