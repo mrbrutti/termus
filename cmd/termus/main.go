@@ -13,13 +13,15 @@ import (
 	"github.com/mrbrutti/termus/internal/audio"
 	"github.com/mrbrutti/termus/internal/gen"
 	"github.com/mrbrutti/termus/internal/scope"
+	"github.com/mrbrutti/termus/internal/sf2"
 	"github.com/mrbrutti/termus/internal/tui"
 )
 
 func main() {
 	seed := flag.Int64("seed", time.Now().UnixNano(), "RNG seed (default: time-based)")
-	algoName := flag.String("algo", "eno", "algorithm: eno | drone | glass | pentatonic | markov")
+	algoName := flag.String("algo", "eno", "algorithm: eno | drone | glass | pentatonic | markov | sf2")
 	initialVol := flag.Int("volume", 70, "initial volume 0..100")
+	sf2Path := flag.String("sf2", "", "path to SoundFont file for the sf2 algorithm (default: auto-download TimGM6mb.sf2)")
 	flag.Parse()
 
 	if *initialVol < 0 || *initialVol > 100 {
@@ -39,8 +41,31 @@ func main() {
 		algo = gen.NewPentatonic()
 	case "markov":
 		algo = gen.NewMarkov()
+	case "sf2":
+		// Resolve the SoundFont: --sf2 overrides, otherwise auto-download.
+		path := *sf2Path
+		if path == "" {
+			fmt.Fprintln(os.Stderr, "preparing SoundFont (TimGM6mb.sf2, ~6 MB)...")
+			p, err := sf2.EnsureDefault(func(done, total int64) {
+				if total > 0 {
+					fmt.Fprintf(os.Stderr, "\r  %d / %d bytes", done, total)
+				}
+			})
+			fmt.Fprintln(os.Stderr)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "sf2 setup failed:", err)
+				os.Exit(1)
+			}
+			path = p
+		}
+		sf, err := sf2.Open(path)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "sf2 open failed:", err)
+			os.Exit(1)
+		}
+		algo = gen.NewSF2(sf)
 	default:
-		fmt.Fprintf(os.Stderr, "unknown algorithm %q (must be one of: eno, drone, glass, pentatonic, markov)\n", *algoName)
+		fmt.Fprintf(os.Stderr, "unknown algorithm %q (must be one of: eno, drone, glass, pentatonic, markov, sf2)\n", *algoName)
 		os.Exit(2)
 	}
 	algo.Seed(*seed)

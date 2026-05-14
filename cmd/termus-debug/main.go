@@ -11,13 +11,15 @@ import (
 
 	"github.com/mrbrutti/termus/internal/audio"
 	"github.com/mrbrutti/termus/internal/gen"
+	"github.com/mrbrutti/termus/internal/sf2"
 )
 
 func main() {
 	seed := flag.Int64("seed", 42, "seed")
 	seconds := flag.Float64("seconds", 5.0, "duration to render")
 	out := flag.String("out", "termus-debug.wav", "output WAV path")
-	algoName := flag.String("algo", "eno", "algorithm: eno | drone | glass | pentatonic | markov")
+	algoName := flag.String("algo", "eno", "algorithm: eno | drone | glass | pentatonic | markov | sf2")
+	sf2Path := flag.String("sf2", "", "SoundFont path for the sf2 algorithm (default: auto-download)")
 	flag.Parse()
 
 	var algo gen.Algorithm
@@ -32,6 +34,22 @@ func main() {
 		algo = gen.NewPentatonic()
 	case "markov":
 		algo = gen.NewMarkov()
+	case "sf2":
+		path := *sf2Path
+		if path == "" {
+			p, err := sf2.EnsureDefault(nil)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "sf2 setup failed:", err)
+				os.Exit(1)
+			}
+			path = p
+		}
+		sf, err := sf2.Open(path)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "sf2 open failed:", err)
+			os.Exit(1)
+		}
+		algo = gen.NewSF2(sf)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown algorithm %q\n", *algoName)
 		os.Exit(2)

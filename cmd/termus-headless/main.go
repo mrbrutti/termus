@@ -17,6 +17,7 @@ import (
 	"github.com/mrbrutti/termus/internal/audio"
 	"github.com/mrbrutti/termus/internal/gen"
 	"github.com/mrbrutti/termus/internal/scope"
+	"github.com/mrbrutti/termus/internal/sf2"
 )
 
 // debugStreamer wraps a beep.Streamer and records call statistics so we can
@@ -61,9 +62,37 @@ func main() {
 	seed := flag.Int64("seed", 42, "seed")
 	seconds := flag.Int("seconds", 10, "duration")
 	bufDivisor := flag.Int("buf", 60, "buffer = SampleRate / this")
+	algoName := flag.String("algo", "eno", "algorithm name")
 	flag.Parse()
 
-	algo := gen.NewEno()
+	var algo gen.Algorithm
+	switch *algoName {
+	case "eno":
+		algo = gen.NewEno()
+	case "drone":
+		algo = gen.NewDrone()
+	case "glass":
+		algo = gen.NewGlass()
+	case "pentatonic":
+		algo = gen.NewPentatonic()
+	case "markov":
+		algo = gen.NewMarkov()
+	case "sf2":
+		p, err := sf2.EnsureDefault(nil)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "sf2 setup:", err)
+			os.Exit(1)
+		}
+		sf, err := sf2.Open(p)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "sf2 open:", err)
+			os.Exit(1)
+		}
+		algo = gen.NewSF2(sf)
+	default:
+		fmt.Fprintf(os.Stderr, "unknown algo %q\n", *algoName)
+		os.Exit(2)
+	}
 	algo.Seed(*seed)
 	ring := scope.NewRing(4096)
 	root := audio.NewRoot(algo, ring)
@@ -83,7 +112,7 @@ func main() {
 	}
 	defer speaker.Close()
 	speaker.Play(dbg)
-	fmt.Fprintf(os.Stderr, "playing Eno for %d seconds at volume 100...\n", *seconds)
+	fmt.Fprintf(os.Stderr, "playing %s for %d seconds at volume 100...\n", *algoName, *seconds)
 	time.Sleep(time.Duration(*seconds) * time.Second)
 	fmt.Fprintf(os.Stderr, "done. Stream called %d times, total %d frames, peak |sample|=%.3f, last sample=%.3f\n",
 		dbg.calls, dbg.frames, dbg.peak, dbg.last)
