@@ -52,6 +52,12 @@ type Chill struct {
 	samplesElapsed int64
 	nextDriftAt    int64
 	nextSwapAt     int64
+
+	// Section state: sax solo and nylon guitar comp drop in/out every 90–180s
+	// to give the track verse/chorus/bridge dynamics over a long listen.
+	saxOn         *bool
+	guitarOn      *bool
+	nextSectionAt int64
 }
 
 // chillChord is one chord in the loop, expressed as semitone offsets from
@@ -130,6 +136,13 @@ func (a *Chill) Seed(seedVal int64) {
 	a.samplesElapsed = 0
 	a.scheduleNextDrift()
 	a.scheduleNextSwap()
+	// Section state. Start in "intro" — sax off, guitar on (just chords +
+	// rhythm section). First section flip usually brings the sax in.
+	saxStart := false
+	guitarStart := true
+	a.saxOn = &saxStart
+	a.guitarOn = &guitarStart
+	a.scheduleNextSection()
 
 	core, err := newSF2Core(a.sf, 2.8, seedVal)
 	if err != nil {
@@ -244,6 +257,7 @@ func (a *Chill) Seed(seedVal int64) {
 		MutationRate: 1.0,
 		MutateOne:    func(slot int, _ int) int { return a.guitarNoteAt(slot) },
 		VelocityJitter: 10, TimingJitterSec: 0.025, // nylon comping — humans don't quantize
+		Enabled: a.guitarOn,
 	})
 
 	// --- Soprano Sax: very sparse solo. Only 2 notes per loop (one in the
@@ -260,6 +274,7 @@ func (a *Chill) Seed(seedVal int64) {
 		MutationRate: 0.4,
 		MutateOne:    func(slot int, _ int) int { return a.saxNoteAt(slot) },
 		VelocityJitter: 14, TimingJitterSec: 0.035, // sax solo — most expressive, most loose
+		Enabled: a.saxOn,
 	})
 
 	// --- Drum beat: kick on 1 & 3, snare on 2 & 4, hi-hat every 8th note.
@@ -436,6 +451,25 @@ func (a *Chill) Next(left, right []float64) {
 		a.swapOneInstrument()
 		a.scheduleNextSwap()
 	}
+	if a.samplesElapsed >= a.nextSectionAt {
+		a.advanceSection()
+		a.scheduleNextSection()
+	}
+}
+
+// advanceSection cycles chill through verse/chorus-like states by flipping
+// one of the optional layer enables. 50/50 between sax and guitar.
+func (a *Chill) advanceSection() {
+	if a.rng.Float64() < 0.5 {
+		*a.saxOn = !*a.saxOn
+	} else {
+		*a.guitarOn = !*a.guitarOn
+	}
+}
+
+func (a *Chill) scheduleNextSection() {
+	secs := 90.0 + 90.0*a.rng.Float64() // 1.5–3 min
+	a.nextSectionAt = a.samplesElapsed + int64(secs*44100)
 }
 
 // chillChannelAlternatives — staying inside the lofi soundscape. Drums (ch 9)

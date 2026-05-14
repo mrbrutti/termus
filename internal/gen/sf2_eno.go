@@ -18,11 +18,16 @@ type SF2Eno struct {
 	core *sf2Core
 	rng  *rand.Rand
 
-	// Macro state for periodic instrument swaps. Once per ~3-5 min, the
-	// engine swaps one channel to a different but musically-compatible GM
-	// program — extends listening variety over many minutes.
 	samplesElapsed int64
 	nextSwapAt     int64
+
+	// Section state: ornament layers (celesta sparkle, french horn) toggle
+	// on/off every ~2–4 minutes. Two booleans give 4 sections naturally
+	// (both off, just celesta, just horn, both on), giving 8–16 minutes of
+	// cyclic form variation before patterns can repeat.
+	celestaOn *bool
+	hornOn    *bool
+	nextSectionAt int64
 }
 
 // NewSF2Eno builds the algorithm. Caller must call Seed before Next.
@@ -38,6 +43,14 @@ func (a *SF2Eno) Seed(seedVal int64) {
 	rootMidi := 36 + rng.Intn(12)
 	a.samplesElapsed = 0
 	a.scheduleNextSwap()
+	// Start in the fullest section (both ornaments on). The first section
+	// transition usually mutes one of them, so the listener hears a clear
+	// "the celesta dropped out" event.
+	on1 := true
+	on2 := true
+	a.celestaOn = &on1
+	a.hornOn = &on2
+	a.scheduleNextSection()
 
 	core, err := newSF2Core(a.sf, 3.5, seedVal)
 	if err != nil {
@@ -132,6 +145,7 @@ func (a *SF2Eno) Seed(seedVal int64) {
 		PeriodSec: 27.0, Phase01: rng.Float64(),
 		MutationRate: 0.20, MutateOne: celesta,
 		VelocityJitter: 12, TimingJitterSec: 0.018,
+		Enabled: a.celestaOn,
 	})
 
 	// French horn: warm low sustained voice on chord roots. Cycles slowly
@@ -150,6 +164,7 @@ func (a *SF2Eno) Seed(seedVal int64) {
 		PeriodSec: 25.0, Phase01: rng.Float64(),
 		MutationRate: 0.10, MutateOne: horn,
 		VelocityJitter: 6, TimingJitterSec: 0.012,
+		Enabled: a.hornOn,
 	})
 
 	a.core = core
@@ -176,6 +191,27 @@ func (a *SF2Eno) Next(left, right []float64) {
 		a.swapOneInstrument()
 		a.scheduleNextSwap()
 	}
+	if a.samplesElapsed >= a.nextSectionAt {
+		a.advanceSection()
+		a.scheduleNextSection()
+	}
+}
+
+// advanceSection randomly flips one of the ornament-layer enable flags.
+// This produces "verse / chorus / bridge" feel over many minutes: sometimes
+// just strings + pad + piano, sometimes with celesta sparkle, sometimes
+// with horn warmth, sometimes the full ensemble.
+func (a *SF2Eno) advanceSection() {
+	if a.rng.Float64() < 0.5 {
+		*a.celestaOn = !*a.celestaOn
+	} else {
+		*a.hornOn = !*a.hornOn
+	}
+}
+
+func (a *SF2Eno) scheduleNextSection() {
+	secs := 120.0 + 120.0*a.rng.Float64() // 2–4 min
+	a.nextSectionAt = a.samplesElapsed + int64(secs*44100)
 }
 
 // enoChannelAlternatives lists GM programs that are musically compatible

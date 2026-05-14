@@ -43,6 +43,12 @@ type SF2Track struct {
 
 	VelocityJitter  int32   // ±range added to Velocity per NoteOn
 	TimingJitterSec float64 // ±range added to fire time per NoteOn (seconds)
+
+	// Enabled, if non-nil, is checked by the engine on every slot
+	// transition. When *Enabled is false, the track silently advances
+	// through its slots without firing NoteOn — used by algorithms with
+	// "section" structure to drop/add layers over time.
+	Enabled *bool
 }
 
 // sf2TrackState is the runtime state for one track. The scheduler uses
@@ -369,24 +375,33 @@ func (s *sf2TrackState) fireTransition(t int64, syn *meltysynth.Synthesizer, rng
 		newSlot = int(s.notesLen) - 1
 	}
 
+	// If the track is currently disabled (section-muted), turn off any held
+	// note but skip the NoteOn — the track silently advances its slot
+	// pointer so it picks up where the music expects when it re-enables.
 	if s.curKey >= 0 {
 		syn.NoteOff(s.cfg.Channel, int32(s.curKey))
+		s.curKey = -1
 	}
-	key := s.cfg.Notes[newSlot]
-	vel := s.cfg.Velocity
-	if s.cfg.VelocityJitter > 0 && rng != nil {
-		offset := int32(rng.Intn(int(2*s.cfg.VelocityJitter)+1)) - s.cfg.VelocityJitter
-		vel += offset
-		if vel < 1 {
-			vel = 1
+	if s.cfg.Enabled != nil && !*s.cfg.Enabled {
+		s.curSlot = newSlot
+		// Fall through to schedule next fire normally; mutations still happen.
+	} else {
+		key := s.cfg.Notes[newSlot]
+		vel := s.cfg.Velocity
+		if s.cfg.VelocityJitter > 0 && rng != nil {
+			offset := int32(rng.Intn(int(2*s.cfg.VelocityJitter)+1)) - s.cfg.VelocityJitter
+			vel += offset
+			if vel < 1 {
+				vel = 1
+			}
+			if vel > 127 {
+				vel = 127
+			}
 		}
-		if vel > 127 {
-			vel = 127
-		}
+		syn.NoteOn(s.cfg.Channel, int32(key), vel)
+		s.curSlot = newSlot
+		s.curKey = key
 	}
-	syn.NoteOn(s.cfg.Channel, int32(key), vel)
-	s.curSlot = newSlot
-	s.curKey = key
 
 	// Schedule the next fire = natural boundary + timing jitter.
 	// Natural boundary of the next slot is at the smallest phase value
