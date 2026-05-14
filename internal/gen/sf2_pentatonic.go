@@ -15,6 +15,10 @@ var _ Algorithm = (*SF2Pentatonic)(nil)
 type SF2Pentatonic struct {
 	sf   *meltysynth.SoundFont
 	core *sf2Core
+	rng  *rand.Rand
+
+	samplesElapsed int64
+	nextSwapAt     int64
 }
 
 func NewSF2Pentatonic(sf *meltysynth.SoundFont) *SF2Pentatonic {
@@ -25,7 +29,10 @@ func (a *SF2Pentatonic) Name() string { return "pentatonic-sf2" }
 
 func (a *SF2Pentatonic) Seed(seedVal int64) {
 	rng := rand.New(rand.NewSource(seedVal)) //nolint:gosec
+	a.rng = rng
 	rootMidi := 36 + rng.Intn(12)
+	a.samplesElapsed = 0
+	a.scheduleNextSwap()
 
 	core, err := newSF2Core(a.sf, 3.2, seedVal)
 	if err != nil {
@@ -178,4 +185,27 @@ func (a *SF2Pentatonic) Next(left, right []float64) {
 		return
 	}
 	a.core.renderInto(left, right)
+	a.samplesElapsed += int64(len(left))
+	if a.samplesElapsed >= a.nextSwapAt {
+		a.swapOneInstrument()
+		a.scheduleNextSwap()
+	}
+}
+
+var pentaChannelAlternatives = map[int32][]int32{
+	0: {0, 1, 4, 5},        // Acoustic Grand (default), Bright Piano, EP1, EP2
+	1: {46, 24, 25, 105},   // Orchestral Harp (default), Nylon, Steel, Banjo
+	2: {10, 8, 9},          // Music Box (default), Celesta, Glockenspiel
+	3: {32, 33, 87},        // Acoustic Bass (default), Electric Bass, Lead Bass
+}
+
+func (a *SF2Pentatonic) scheduleNextSwap() {
+	secs := 220.0 + 180.0*a.rng.Float64()
+	a.nextSwapAt = a.samplesElapsed + int64(secs*44100)
+}
+
+func (a *SF2Pentatonic) swapOneInstrument() {
+	channels := []int32{0, 1, 2, 3}
+	ch := channels[a.rng.Intn(len(channels))]
+	a.core.programSwap(ch, pentaChannelAlternatives[ch], a.rng)
 }

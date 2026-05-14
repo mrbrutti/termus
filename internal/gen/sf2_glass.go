@@ -15,6 +15,10 @@ var _ Algorithm = (*SF2Glass)(nil)
 type SF2Glass struct {
 	sf   *meltysynth.SoundFont
 	core *sf2Core
+	rng  *rand.Rand
+
+	samplesElapsed int64
+	nextSwapAt     int64
 }
 
 func NewSF2Glass(sf *meltysynth.SoundFont) *SF2Glass {
@@ -25,7 +29,10 @@ func (a *SF2Glass) Name() string { return "glass-sf2" }
 
 func (a *SF2Glass) Seed(seedVal int64) {
 	rng := rand.New(rand.NewSource(seedVal)) //nolint:gosec
+	a.rng = rng
 	rootMidi := 48 + rng.Intn(7) // C3..F#3
+	a.samplesElapsed = 0
+	a.scheduleNextSwap()
 
 	core, err := newSF2Core(a.sf, 3.2, seedVal)
 	if err != nil {
@@ -114,4 +121,27 @@ func (a *SF2Glass) Next(left, right []float64) {
 		return
 	}
 	a.core.renderInto(left, right)
+	a.samplesElapsed += int64(len(left))
+	if a.samplesElapsed >= a.nextSwapAt {
+		a.swapOneInstrument()
+		a.scheduleNextSwap()
+	}
+}
+
+var glassChannelAlternatives = map[int32][]int32{
+	0: {14, 8, 9, 11}, // Tubular Bells (default), Celesta, Glockenspiel, Vibraphone
+	1: {98, 99, 100},  // Crystal (default), Atmosphere, Brightness
+	2: {92, 88, 91},   // Bowed Glass (default), New Age, Choir Pad
+	3: {12, 11, 13},   // Marimba (default), Vibraphone, Xylophone
+}
+
+func (a *SF2Glass) scheduleNextSwap() {
+	secs := 200.0 + 180.0*a.rng.Float64()
+	a.nextSwapAt = a.samplesElapsed + int64(secs*44100)
+}
+
+func (a *SF2Glass) swapOneInstrument() {
+	channels := []int32{0, 1, 2, 3}
+	ch := channels[a.rng.Intn(len(channels))]
+	a.core.programSwap(ch, glassChannelAlternatives[ch], a.rng)
 }

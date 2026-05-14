@@ -15,6 +15,10 @@ var _ Algorithm = (*SF2Drone)(nil)
 type SF2Drone struct {
 	sf   *meltysynth.SoundFont
 	core *sf2Core
+	rng  *rand.Rand
+
+	samplesElapsed int64
+	nextSwapAt     int64
 }
 
 func NewSF2Drone(sf *meltysynth.SoundFont) *SF2Drone {
@@ -25,7 +29,10 @@ func (a *SF2Drone) Name() string { return "drone-sf2" }
 
 func (a *SF2Drone) Seed(seedVal int64) {
 	rng := rand.New(rand.NewSource(seedVal)) //nolint:gosec
+	a.rng = rng
 	rootMidi := 24 + rng.Intn(7) // C1..F#1
+	a.samplesElapsed = 0
+	a.scheduleNextSwap()
 
 	core, err := newSF2Core(a.sf, 3.0, seedVal)
 	if err != nil {
@@ -138,4 +145,28 @@ func (a *SF2Drone) Next(left, right []float64) {
 		return
 	}
 	a.core.renderInto(left, right)
+	a.samplesElapsed += int64(len(left))
+	if a.samplesElapsed >= a.nextSwapAt {
+		a.swapOneInstrument()
+		a.scheduleNextSwap()
+	}
+}
+
+var droneChannelAlternatives = map[int32][]int32{
+	0: {48, 49, 50, 51, 91}, // String Ensemble 1 (default), 2, Synth Strings 1, 2, Choir
+	1: {49, 48, 50, 91},     // Slow Strings (default), String Ens 1, Synth Strings, Choir
+	2: {73, 74, 75, 76, 88}, // Flute (default), Recorder, Pan Flute, Blown Bottle, New Age Pad
+	3: {53, 52, 54, 91},     // Choir Voice "Oohs" (default), Aahs, Synth Voice, Choir Pad
+	4: {32, 33, 38, 87},     // Acoustic Bass (default), Electric Bass, Synth Bass 1, Lead Bass
+}
+
+func (a *SF2Drone) scheduleNextSwap() {
+	secs := 240.0 + 180.0*a.rng.Float64()
+	a.nextSwapAt = a.samplesElapsed + int64(secs*44100)
+}
+
+func (a *SF2Drone) swapOneInstrument() {
+	channels := []int32{0, 1, 2, 3, 4}
+	ch := channels[a.rng.Intn(len(channels))]
+	a.core.programSwap(ch, droneChannelAlternatives[ch], a.rng)
 }

@@ -132,6 +132,17 @@ func (e *sf2Core) setProgram(channel int32, program int32) {
 	e.syn.ProcessMidiMessage(channel, ccProgramChange, program, 0)
 }
 
+// programSwap rotates the channel to a different GM program, chosen from
+// the given list. Used by algorithms' macro mutation timer to occasionally
+// swap timbres for long-form variety. Currently playing notes keep their
+// old timbre (program changes only affect subsequent NoteOns).
+func (e *sf2Core) programSwap(channel int32, alternatives []int32, rng *rand.Rand) {
+	if len(alternatives) == 0 || rng == nil {
+		return
+	}
+	e.setProgram(channel, alternatives[rng.Intn(len(alternatives))])
+}
+
 // setPan positions a MIDI channel in the stereo field. pan is 0..127 where
 // 0 is full-left, 64 is center, 127 is full-right (MIDI CC 10 standard).
 func (e *sf2Core) setPan(channel int32, pan int32) {

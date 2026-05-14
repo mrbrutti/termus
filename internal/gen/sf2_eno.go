@@ -16,6 +16,13 @@ var _ Algorithm = (*SF2Eno)(nil)
 type SF2Eno struct {
 	sf   *meltysynth.SoundFont
 	core *sf2Core
+	rng  *rand.Rand
+
+	// Macro state for periodic instrument swaps. Once per ~3-5 min, the
+	// engine swaps one channel to a different but musically-compatible GM
+	// program — extends listening variety over many minutes.
+	samplesElapsed int64
+	nextSwapAt     int64
 }
 
 // NewSF2Eno builds the algorithm. Caller must call Seed before Next.
@@ -27,7 +34,10 @@ func (a *SF2Eno) Name() string { return "eno-sf2" }
 
 func (a *SF2Eno) Seed(seedVal int64) {
 	rng := rand.New(rand.NewSource(seedVal)) //nolint:gosec
+	a.rng = rng
 	rootMidi := 36 + rng.Intn(12)
+	a.samplesElapsed = 0
+	a.scheduleNextSwap()
 
 	core, err := newSF2Core(a.sf, 3.5, seedVal)
 	if err != nil {
@@ -143,4 +153,34 @@ func (a *SF2Eno) Next(left, right []float64) {
 		return
 	}
 	a.core.renderInto(left, right)
+	a.samplesElapsed += int64(len(left))
+	if a.samplesElapsed >= a.nextSwapAt {
+		a.swapOneInstrument()
+		a.scheduleNextSwap()
+	}
+}
+
+// enoChannelAlternatives lists GM programs that are musically compatible
+// substitutes for each instrument role in the algorithm. Picked so swapping
+// at any time stays inside the "Music for Airports" character.
+var enoChannelAlternatives = map[int32][]int32{
+	0: {48, 49, 50, 51, 92},      // String Ensemble 1 (default), 2, Synth Strings 1, 2, Bowed Glass
+	1: {89, 88, 91, 95},          // Warm Pad (default), New Age, Choir, Sweep Pad
+	2: {0, 1, 4, 5, 8},           // Acoustic Grand (default), Bright, EP1, EP2, Celesta
+	3: {8, 9, 10, 14},            // Celesta (default), Glockenspiel, Music Box, Tubular Bells
+	4: {60, 61, 68, 71},          // French Horn (default), Brass Section, Oboe, Clarinet
+}
+
+func (a *SF2Eno) scheduleNextSwap() {
+	// 3–5 minutes between swaps. With 5 channels, on average each channel
+	// gets swapped every ~20 min — slow enough to be noticed but not
+	// fatiguing.
+	secs := 180.0 + 120.0*a.rng.Float64()
+	a.nextSwapAt = a.samplesElapsed + int64(secs*44100)
+}
+
+func (a *SF2Eno) swapOneInstrument() {
+	channels := []int32{0, 1, 2, 3, 4}
+	ch := channels[a.rng.Intn(len(channels))]
+	a.core.programSwap(ch, enoChannelAlternatives[ch], a.rng)
 }

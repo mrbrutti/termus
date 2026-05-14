@@ -15,6 +15,10 @@ var _ Algorithm = (*SF2Markov)(nil)
 type SF2Markov struct {
 	sf   *meltysynth.SoundFont
 	core *sf2Core
+	rng  *rand.Rand
+
+	samplesElapsed int64
+	nextSwapAt     int64
 }
 
 func NewSF2Markov(sf *meltysynth.SoundFont) *SF2Markov {
@@ -25,7 +29,10 @@ func (a *SF2Markov) Name() string { return "markov-sf2" }
 
 func (a *SF2Markov) Seed(seedVal int64) {
 	rng := rand.New(rand.NewSource(seedVal)) //nolint:gosec
+	a.rng = rng
 	rootMidi := 36 + rng.Intn(12)
+	a.samplesElapsed = 0
+	a.scheduleNextSwap()
 
 	core, err := newSF2Core(a.sf, 3.2, seedVal)
 	if err != nil {
@@ -140,4 +147,27 @@ func (a *SF2Markov) Next(left, right []float64) {
 		return
 	}
 	a.core.renderInto(left, right)
+	a.samplesElapsed += int64(len(left))
+	if a.samplesElapsed >= a.nextSwapAt {
+		a.swapOneInstrument()
+		a.scheduleNextSwap()
+	}
+}
+
+var markovChannelAlternatives = map[int32][]int32{
+	0: {0, 1, 4, 5},        // Acoustic Grand (default), Bright, EP1, EP2
+	1: {49, 48, 50, 51},    // Slow Strings (default), Strings 1, Synth Strings 1, 2
+	2: {71, 68, 69, 64},    // Clarinet (default), Oboe, English Horn, Soprano Sax
+	3: {32, 33, 87, 38},    // Acoustic Bass (default), Electric Bass, Lead Bass, Synth Bass 1
+}
+
+func (a *SF2Markov) scheduleNextSwap() {
+	secs := 200.0 + 180.0*a.rng.Float64()
+	a.nextSwapAt = a.samplesElapsed + int64(secs*44100)
+}
+
+func (a *SF2Markov) swapOneInstrument() {
+	channels := []int32{0, 1, 2, 3}
+	ch := channels[a.rng.Intn(len(channels))]
+	a.core.programSwap(ch, markovChannelAlternatives[ch], a.rng)
 }

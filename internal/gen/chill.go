@@ -51,6 +51,7 @@ type Chill struct {
 
 	samplesElapsed int64
 	nextDriftAt    int64
+	nextSwapAt     int64
 }
 
 // chillChord is one chord in the loop, expressed as semitone offsets from
@@ -128,6 +129,7 @@ func (a *Chill) Seed(seedVal int64) {
 	a.keyOffset = 0
 	a.samplesElapsed = 0
 	a.scheduleNextDrift()
+	a.scheduleNextSwap()
 
 	core, err := newSF2Core(a.sf, 2.8, seedVal)
 	if err != nil {
@@ -411,4 +413,29 @@ func (a *Chill) Next(left, right []float64) {
 		a.shiftKey()
 		a.scheduleNextDrift()
 	}
+	if a.samplesElapsed >= a.nextSwapAt {
+		a.swapOneInstrument()
+		a.scheduleNextSwap()
+	}
+}
+
+// chillChannelAlternatives — staying inside the lofi soundscape. Drums (ch 9)
+// are deliberately excluded; swapping the kit mid-track would feel jarring.
+var chillChannelAlternatives = map[int32][]int32{
+	0: {5, 4, 88, 89}, // EP2 (default), EP1, New Age Pad, Warm Pad
+	1: {32, 33, 36, 38}, // Acoustic Bass (default), Electric Bass Finger, Slap Bass, Synth Bass 1
+	2: {11, 9, 13},    // Vibraphone (default), Glockenspiel, Xylophone
+	3: {64, 65, 66, 67}, // Soprano Sax (default), Alto Sax, Tenor Sax, Baritone Sax
+	4: {24, 25, 26, 27}, // Nylon Guitar (default), Steel String, Jazz Guitar, Electric Clean
+}
+
+func (a *Chill) scheduleNextSwap() {
+	secs := 180.0 + 120.0*a.rng.Float64() // 3–5 min — chill wants gentle variety
+	a.nextSwapAt = a.samplesElapsed + int64(secs*44100)
+}
+
+func (a *Chill) swapOneInstrument() {
+	channels := []int32{0, 1, 2, 3, 4}
+	ch := channels[a.rng.Intn(len(channels))]
+	a.core.programSwap(ch, chillChannelAlternatives[ch], a.rng)
 }

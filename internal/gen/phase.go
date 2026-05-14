@@ -39,6 +39,7 @@ type Phase struct {
 
 	samplesElapsed int64 // since Seed
 	nextDriftAt    int64 // absolute sample index for next macro key drift
+	nextSwapAt     int64 // absolute sample index for next instrument swap
 }
 
 func NewPhase(sf *meltysynth.SoundFont) *Phase { return &Phase{sf: sf} }
@@ -57,6 +58,7 @@ func (a *Phase) Seed(seedVal int64) {
 	a.keyOffset = 0
 	a.samplesElapsed = 0
 	a.scheduleNextDrift()
+	a.scheduleNextSwap()
 
 	core, err := newSF2Core(a.sf, 3.0, seedVal)
 	if err != nil {
@@ -215,4 +217,41 @@ func (a *Phase) Next(left, right []float64) {
 		a.shiftKey()
 		a.scheduleNextDrift()
 	}
+	if a.samplesElapsed >= a.nextSwapAt {
+		a.swapOneInstrument()
+		a.scheduleNextSwap()
+	}
+}
+
+// phaseChannelAlternatives — vibraphone is the genre-defining choice; swaps
+// happen between mallet-percussion variants that preserve the rhythmic
+// shimmer character.
+var phaseChannelAlternatives = map[int32][]int32{
+	0: {11, 9, 12, 13, 14}, // Vibraphone (default), Glockenspiel, Marimba, Xylophone, Tubular Bells
+	1: {11, 9, 12, 13, 14}, // (voice B must match voice A's instrument — see below)
+	2: {52, 53, 91, 89},    // Choir Aahs (default), Choir Oohs, Choir Pad, Warm Pad
+	3: {32, 33, 38, 60},    // Acoustic Bass (default), Electric Bass, Synth Bass, French Horn
+}
+
+func (a *Phase) scheduleNextSwap() {
+	secs := 300.0 + 240.0*a.rng.Float64() // 5–9 min — phase wants slow change
+	a.nextSwapAt = a.samplesElapsed + int64(secs*44100)
+}
+
+// swapOneInstrument: phase is special — channels 0 and 1 MUST share the same
+// program so the phase-shift effect works (two voices of the SAME instrument
+// drifting against each other). When swapping the marimba family, swap
+// both 0 and 1 to the same program.
+func (a *Phase) swapOneInstrument() {
+	// Roll: 60% swap mallet pair, 40% swap pad/bass.
+	if a.rng.Float64() < 0.60 {
+		alts := phaseChannelAlternatives[0]
+		newProg := alts[a.rng.Intn(len(alts))]
+		a.core.setProgram(0, newProg)
+		a.core.setProgram(1, newProg)
+		return
+	}
+	channels := []int32{2, 3}
+	ch := channels[a.rng.Intn(len(channels))]
+	a.core.programSwap(ch, phaseChannelAlternatives[ch], a.rng)
 }
