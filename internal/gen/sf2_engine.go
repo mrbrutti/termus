@@ -78,6 +78,13 @@ type sf2Core struct {
 	eqHighL, eqHighR *synth.HighShelf
 	comp             *synth.StereoCompressor
 
+	// Optional master-bus low-pass — for the "muffled tape" feel of lofi.
+	// nil disables it; the chain falls through without filtering.
+	lpL, lpR *synth.Lowpass
+
+	// Optional tape-hiss noise floor at the master bus output. 0 disables.
+	hissLevel float64
+
 	// Optional convolution reverb. When non-nil, applied in parallel with
 	// the dry signal at convWet mix level. Each channel has its own
 	// instance, both seeded from the same IR. nil disables convolution.
@@ -119,6 +126,28 @@ func newSF2Core(sf *meltysynth.SoundFont, masterGain float64, mutationSeed int64
 func (e *sf2Core) setProgram(channel int32, program int32) {
 	const ccProgramChange = 0xC0
 	e.syn.ProcessMidiMessage(channel, ccProgramChange, program, 0)
+}
+
+// setMasterLowpass installs a stereo low-pass filter at the end of the master
+// bus, giving the output a "muffled tape" character. Pass 0 hz to disable.
+func (e *sf2Core) setMasterLowpass(cutoffHz, q float64) {
+	if cutoffHz <= 0 {
+		e.lpL = nil
+		e.lpR = nil
+		return
+	}
+	e.lpL = synth.NewLowpass(cutoffHz, q)
+	e.lpR = synth.NewLowpass(cutoffHz, q)
+}
+
+// setTapeHiss installs a low-amplitude noise floor on the master output.
+// level is the linear amplitude (e.g. 0.005 ≈ -46 dBFS, just audible
+// behind quiet passages, inaudible behind loud ones).
+func (e *sf2Core) setTapeHiss(level float64) {
+	if level < 0 {
+		level = 0
+	}
+	e.hissLevel = level
 }
 
 // setConvolutionIR installs a convolution reverb on the master bus. The IR is
@@ -275,7 +304,8 @@ func (e *sf2Core) renderInto(left, right []float64) {
 		}
 	}
 
-	// Master bus: gain → EQ → optional convolution wet bus → compressor → soft-clip.
+	// Master bus: gain → EQ → optional conv wet → optional LP → optional hiss
+	//              → compressor → soft-clip.
 	for i := 0; i < n; i++ {
 		l := float64(e.bufF32L[i]) * e.masterGain
 		r := float64(e.bufF32R[i]) * e.masterGain
@@ -284,14 +314,19 @@ func (e *sf2Core) renderInto(left, right []float64) {
 		l = e.eqHighL.Tick(l)
 		r = e.eqHighR.Tick(r)
 		if e.convL != nil {
-			// Parallel wet/dry: dry signal is full-level; conv wet is mixed in
-			// at convWet. This is the "early-reflection room" use case — we
-			// don't want to replace the existing reverb, we want to add a
-			// room impression on top.
 			wetL := e.convL.Tick(l)
 			wetR := e.convR.Tick(r)
 			l += wetL * e.convWet
 			r += wetR * e.convWet
+		}
+		if e.lpL != nil {
+			l = e.lpL.Tick(l)
+			r = e.lpR.Tick(r)
+		}
+		if e.hissLevel > 0 {
+			// Stereo-decorrelated white noise — independent samples per channel.
+			l += (e.rng.Float64()*2 - 1) * e.hissLevel
+			r += (e.rng.Float64()*2 - 1) * e.hissLevel
 		}
 		l, r = e.comp.Tick(l, r)
 		left[i] = synth.SoftClip(l)

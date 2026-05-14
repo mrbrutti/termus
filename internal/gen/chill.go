@@ -11,75 +11,109 @@ import (
 var _ Algorithm = (*Chill)(nil)
 var _ SF2Reverberator = (*Chill)(nil)
 
-// Chill is a lofi-style algorithm: an Electric Piano 2 (chorused Rhodes)
-// arpeggiating extended jazz chords (m7, dom7, maj7), an acoustic bass
-// walking through the chord on each beat, and a sparse vibraphone melody
-// on top. The harmony is a ii-V-I-VI jazz turnaround in a major key,
-// looping every 12.8 s (~75 BPM, 4 beats per chord, 4 chords).
+// Chill is a lofi-style algorithm with a real drum beat at its core — the
+// element that makes lofi feel like lofi rather than ambient jazz. Layout:
+//
+//   ch 0 — Electric Piano 2 (Rhodes, chorused)  chord stabs (1 chord/bar)
+//   ch 1 — Acoustic Bass                        root note on each downbeat
+//   ch 2 — Vibraphone                           sparse melody (1 note/chord)
+//   ch 9 — GM percussion                        kick (1 & 3), snare (2 & 4),
+//                                                hi-hat (every 8th)
+//
+// Tempo: ~75 BPM, 4 beats per chord × 4 chords = 12.8 s per loop.
+//
+// The chord progression is one of five hand-picked turnarounds, mixing
+// major-key (ii-V-I-VI, I-vi-IV-V) and minor-key (i-iv-VII-III, i-VI-III-VII)
+// jazz/lofi progressions. The EP plays chord stabs (the Rhodes envelope
+// decays naturally between hits, giving the classic lofi "wet stab" feel)
+// using four chord-tone tracks summed into one channel.
+//
+// Tape character: a master-bus low-pass at 6.5 kHz "muffles" the high end
+// (the canonical lofi sound), and a low-level white-noise hiss layer adds
+// the "playing through a cassette" feel.
 //
 // For hours-long listening:
-//   - per-track mutation: ~15% chance per slot transition to re-roll one
-//     note from the current chord's tone set
-//   - macro key-drift: every 4–7 minutes the entire key transposes ±1..2
-//     semitones, taking effect gradually as mutations roll in
-//   - progression also drifts: occasionally one chord in the progression
-//     is swapped with a relative substitute (vi for I, IV for ii, etc.)
-//
-// The algorithm auto-installs a short SyntheticRoomIR by default for the
-// "in the room" lofi feel; --ir overrides.
+//   - per-track mutation: melody and (occasionally) bass re-roll within
+//     the current chord's tones
+//   - macro key-drift: every 4–7 minutes the key transposes ±1..2
+//     semitones; chord-tone tracks have MutationRate 1.0 so they fully
+//     re-roll in the new key on each cycle
 type Chill struct {
 	sf   *meltysynth.SoundFont
 	core *sf2Core
 	rng  *rand.Rand
 
-	rootMidi  int // base tonic (a MAJOR-key root)
+	rootMidi  int // base key tonic
 	keyOffset int
 
-	// Track the active chord progression so mutators can re-roll within it.
+	// Active progression — referenced by all mutator closures.
 	progression []chillChord
 
 	samplesElapsed int64
 	nextDriftAt    int64
 }
 
-// chillChord is one chord in the loop: a list of MIDI offsets (relative to
-// rootMidi+keyOffset) plus a label kept for debugging.
+// chillChord is one chord in the loop, expressed as semitone offsets from
+// the major-key tonic (rootMidi+keyOffset). For minor-key progressions the
+// tonic is still treated as "key center" — the chord-tone offsets define
+// the actual chord quality.
 type chillChord struct {
-	tones []int  // semitones from key tonic; chord-tones in canonical order
-	label string // e.g. "ii7", "V7"
+	tones []int  // 4-note voicing: root, 3rd, 5th, 7th of the chord
+	label string // human label, for debug/logging
 }
 
-// scaleMajor is the major scale (degrees of the diatonic scale in semitones).
-// Used by Chill since lofi is typically rooted in a major key.
-var scaleMajor = []int{0, 2, 4, 5, 7, 9, 11}
-
-// chillProgressions: each is a 4-chord turnaround that loops every 12.8 s
-// (4 beats × 4 chords at ~75 BPM). Each chord is a 4-note 7th voicing,
-// expressed in semitones from the major-key tonic. ii-V-I-VI is the classic
-// jazz/lofi turnaround.
+// chillProgressions: each is a 4-chord turnaround. The first three are
+// major-key jazz turnarounds; the last two are minor-key (very common in
+// modern lofi).
 var chillProgressions = [][]chillChord{
+	// Major: ii-V-I-VI (classic jazz)
 	{
-		// ii-V-I-VI in major
-		{tones: []int{2, 5, 9, 12}, label: "ii7"},   // Dm7 in C: D F A C
-		{tones: []int{7, 11, 14, 17}, label: "V7"},  // G7:        G B D F
-		{tones: []int{0, 4, 7, 11}, label: "Imaj7"}, // Cmaj7:     C E G B
-		{tones: []int{9, 12, 16, 19}, label: "vi7"}, // Am7:       A C E G
-	},
-	{
-		// IV-V-iii-vi
-		{tones: []int{5, 9, 12, 16}, label: "IVmaj7"},
+		{tones: []int{2, 5, 9, 12}, label: "ii7"},
 		{tones: []int{7, 11, 14, 17}, label: "V7"},
-		{tones: []int{4, 7, 11, 14}, label: "iii7"},
+		{tones: []int{0, 4, 7, 11}, label: "Imaj7"},
 		{tones: []int{9, 12, 16, 19}, label: "vi7"},
 	},
+	// Major: I-vi-IV-V (50s changes, lofi'd)
 	{
-		// Imaj7-IVmaj7-iii7-VImaj7 (more wistful)
+		{tones: []int{0, 4, 7, 11}, label: "Imaj7"},
+		{tones: []int{9, 12, 16, 19}, label: "vi7"},
+		{tones: []int{5, 9, 12, 16}, label: "IVmaj7"},
+		{tones: []int{7, 11, 14, 17}, label: "V7"},
+	},
+	// Major: Imaj7-IVmaj7-iii7-vi7 (wistful)
+	{
 		{tones: []int{0, 4, 7, 11}, label: "Imaj7"},
 		{tones: []int{5, 9, 12, 16}, label: "IVmaj7"},
 		{tones: []int{4, 7, 11, 14}, label: "iii7"},
-		{tones: []int{9, 13, 16, 20}, label: "VImaj7"}, // tonicizes vi → uses major 3rd
+		{tones: []int{9, 12, 16, 19}, label: "vi7"},
+	},
+	// Minor: i7-iv7-VII7-IIImaj7 (classic minor blues turnaround)
+	{
+		{tones: []int{0, 3, 7, 10}, label: "i7"},
+		{tones: []int{5, 8, 12, 15}, label: "iv7"},
+		{tones: []int{10, 14, 17, 20}, label: "VII7"},
+		{tones: []int{3, 7, 10, 14}, label: "IIImaj7"},
+	},
+	// Minor: i7-VI-VII-i7 (Andalusian-leaning lofi)
+	{
+		{tones: []int{0, 3, 7, 10}, label: "i7"},
+		{tones: []int{8, 12, 15, 19}, label: "VImaj7"},
+		{tones: []int{10, 14, 17, 21}, label: "VIImaj7"},
+		{tones: []int{0, 3, 7, 10}, label: "i7"},
 	},
 }
+
+// GM standard drum keys on channel 9 (channel 10 in 1-indexed MIDI).
+const (
+	drumKick      = 36 // C2  — Bass Drum 1
+	drumSnare     = 38 // D2  — Acoustic Snare
+	drumHiHatC    = 42 // F#2 — Closed Hi-Hat
+	drumChannel   = 9
+	drumBankMSB   = 128 // bank 128 = drum kit in standard MIDI
+	ccBankSelect  = 0xB0
+	ccBankNumber  = 0x00
+	progStandardKit = 0
+)
 
 // NewChill constructs the algorithm. Caller must call Seed before Next.
 func NewChill(sf *meltysynth.SoundFont) *Chill { return &Chill{sf: sf} }
@@ -90,121 +124,167 @@ func (a *Chill) currentRoot() int { return a.rootMidi + a.keyOffset }
 
 func (a *Chill) Seed(seedVal int64) {
 	a.rng = rand.New(rand.NewSource(seedVal)) //nolint:gosec
-	// Tonic in C3..F#3 — comfortable EP register, bass falls into mid range.
-	a.rootMidi = 48 + a.rng.Intn(7)
+	a.rootMidi = 48 + a.rng.Intn(7) // C3..F#3
 	a.keyOffset = 0
 	a.samplesElapsed = 0
 	a.scheduleNextDrift()
 
-	core, err := newSF2Core(a.sf, 3.2, seedVal)
+	core, err := newSF2Core(a.sf, 2.8, seedVal)
 	if err != nil {
 		a.core = nil
 		return
 	}
-	// Channel layout:
-	//   0 — Electric Piano 2 / chorused Rhodes (#5)  arpeggio
-	//   1 — Acoustic Bass (#32)                      walking bass
-	//   2 — Vibraphone (#11)                         sparse top melody
-	core.setProgram(0, 5)
-	core.setProgram(1, 32)
-	core.setProgram(2, 11)
+
+	// Melodic channels — standard programs.
+	core.setProgram(0, 5)  // Electric Piano 2 (chorused Rhodes)
+	core.setProgram(1, 32) // Acoustic Bass
+	core.setProgram(2, 11) // Vibraphone
+
+	// Channel 9 = standard MIDI drum channel. Select bank 128 (drum kit) and
+	// program 0 (standard kit). Most SF2 files including TimGM6mb honor
+	// channel 9 as percussion automatically, but explicitly setting the
+	// bank+program is the robust path.
+	core.syn.ProcessMidiMessage(drumChannel, ccBankSelect, drumBankMSB, 0)
+	core.setProgram(drumChannel, progStandardKit)
 
 	// Pick a progression.
 	a.progression = chillProgressions[a.rng.Intn(len(chillProgressions))]
 
-	// Tempo: ~75 BPM. 4 beats per chord × 4 chords = 16 beats per cycle.
+	// Tempo: ~75 BPM. 4 beats per chord × 4 chords = 16 beats per loop.
 	const bpm = 75.0
 	beatSec := 60.0 / bpm
-	cycleSec := beatSec * float64(4*len(a.progression))
-	// numBeats = 4 chords × 4 beats = 16
-	numBeats := 4 * len(a.progression)
+	barSec := beatSec * 4
+	cycleSec := barSec * float64(len(a.progression))
+	numBars := len(a.progression)
 
-	// EP arpeggio: 16 notes per cycle, one per beat. Cycle through chord
-	// tones [root, 3rd, 5th, 7th] for each chord (4 beats × 4 chords).
-	epNotes := make([]int, numBeats)
-	for i := range epNotes {
-		epNotes[i] = a.epNoteAt(i)
+	// --- EP chord stabs: two stabs per bar (beats 1 and 3), same chord both
+	// times. Four tracks (one per chord tone), all on channel 0, each with
+	// 2*numBars slots. Slot k plays chord (k/2). The Rhodes envelope decays
+	// across each half-bar, giving the lofi "stab → tail → stab → tail" feel.
+	for toneIdx := 0; toneIdx < 4; toneIdx++ {
+		ti := toneIdx
+		notes := make([]int, 2*numBars)
+		for s := range notes {
+			notes[s] = a.epChordToneAt(s, ti)
+		}
+		mutate := func(slot int, _ int) int { return a.epChordToneAt(slot, ti) }
+		core.addTrack(SF2Track{
+			Channel: 0, Velocity: 72, Notes: notes,
+			PeriodSec: cycleSec, Phase01: 0,
+			MutationRate: 1.0, MutateOne: mutate,
+		})
 	}
-	epMutate := func(slot int, _ int) int { return a.epNoteAt(slot) }
 
-	// Bass: walking pattern [root, fifth, third, seventh] across the 4 beats
-	// of each chord. Same 16-note total length.
-	bassNotes := make([]int, numBeats)
+	// --- Walking bass: root on beat 1, 5th on beat 3 (half-note feel).
+	// 2 hits per bar × 4 bars = 8 notes per cycle.
+	bassNotes := make([]int, 2*numBars)
 	for i := range bassNotes {
 		bassNotes[i] = a.bassNoteAt(i)
 	}
-	bassMutate := func(slot int, _ int) int { return a.bassNoteAt(slot) }
+	core.addTrack(SF2Track{
+		Channel: 1, Velocity: 88, Notes: bassNotes,
+		PeriodSec: cycleSec, Phase01: 0,
+		MutationRate: 1.0,
+		MutateOne:    func(slot int, _ int) int { return a.bassNoteAt(slot) },
+	})
 
-	// Vibraphone melody: sparse — one note per chord (4 notes per cycle).
-	// Picks a random chord tone in the high register, occasionally a 9th
-	// (chord_root + 14) for color. Each note lasts the full chord.
-	vibeNotes := make([]int, len(a.progression))
+	// --- Vibraphone melody: one note per chord, sparse and high-register.
+	vibeNotes := make([]int, numBars)
 	for i := range vibeNotes {
 		vibeNotes[i] = a.vibeNoteAt(i)
 	}
-	vibeMutate := func(slot int, _ int) int { return a.vibeNoteAt(slot) }
-
 	core.addTrack(SF2Track{
-		Channel: 0, Velocity: 78, Notes: epNotes,
+		Channel: 2, Velocity: 68, Notes: vibeNotes,
 		PeriodSec: cycleSec, Phase01: 0,
-		MutationRate: 0.18, MutateOne: epMutate,
-	})
-	core.addTrack(SF2Track{
-		Channel: 1, Velocity: 94, Notes: bassNotes,
-		PeriodSec: cycleSec, Phase01: 0,
-		MutationRate: 0.10, MutateOne: bassMutate,
-	})
-	core.addTrack(SF2Track{
-		Channel: 2, Velocity: 70, Notes: vibeNotes,
-		PeriodSec: cycleSec, Phase01: 0,
-		MutationRate: 0.30, MutateOne: vibeMutate,
+		MutationRate: 0.35,
+		MutateOne:    func(slot int, _ int) int { return a.vibeNoteAt(slot) },
 	})
 
-	// Soft room reverb by default — the "in a small studio" lofi feel.
-	core.setConvolutionIR(synth.SyntheticRoomIR(0.10), 0.45)
+	// --- Drum beat: kick on 1 & 3, snare on 2 & 4, hi-hat every 8th note.
+	// All on channel 9. Each drum hit is just a NoteOn of the appropriate
+	// percussion key. NoteOff has no effect on GM drum kits — they're
+	// one-shots — but the engine fires it anyway and it's harmless.
+	kickNotes := make([]int, 2*numBars)
+	for i := range kickNotes {
+		kickNotes[i] = drumKick
+	}
+	core.addTrack(SF2Track{
+		Channel: drumChannel, Velocity: 92, Notes: kickNotes,
+		PeriodSec: cycleSec, Phase01: 0,
+	})
+	snareNotes := make([]int, 2*numBars)
+	for i := range snareNotes {
+		snareNotes[i] = drumSnare
+	}
+	// Snare offset by 1 beat = beat 2 of each bar (since the 2-per-bar slot
+	// pattern lands on beats 1 & 3 by default; shifting by half a slot lands
+	// it on beats 2 & 4).
+	core.addTrack(SF2Track{
+		Channel: drumChannel, Velocity: 82, Notes: snareNotes,
+		PeriodSec: cycleSec, Phase01: 0.5 / float64(2*numBars),
+	})
+	hihatNotes := make([]int, 8*numBars) // 8 hits per bar
+	for i := range hihatNotes {
+		hihatNotes[i] = drumHiHatC
+	}
+	core.addTrack(SF2Track{
+		Channel: drumChannel, Velocity: 55, Notes: hihatNotes,
+		PeriodSec: cycleSec, Phase01: 0,
+	})
+
+	// --- Tape character ---
+	// Light master-bus low-pass at 6.5 kHz: rolls off the brightest harmonics
+	// the way a cassette would. q=0.5 keeps the rolloff smooth (no resonant
+	// peak).
+	core.setMasterLowpass(6500, 0.5)
+	// Subtle white-noise hiss at ~-50 dBFS. Just barely audible behind quiet
+	// passages, masked by everything louder.
+	core.setTapeHiss(0.003)
+
+	// Soft small-room reverb by default.
+	core.setConvolutionIR(synth.SyntheticRoomIR(0.12), 0.35)
 
 	a.core = core
 }
 
-// epNoteAt returns the EP arpeggio note for the given beat slot (0..numBeats-1).
-// Chord changes every 4 beats; within each chord, walks 0→1→2→1 through the
-// chord tones so the figure feels like a rocking arpeggio rather than a
-// dry up-down sweep.
-func (a *Chill) epNoteAt(slot int) int {
-	chordIdx := (slot / 4) % len(a.progression)
-	beat := slot % 4
-	tonePattern := []int{0, 1, 2, 1}
+// epChordToneAt returns the MIDI note for one tone of the chord that should
+// be played in the given EP slot. EP has 2 stabs per bar, so slot/2 indexes
+// the progression.
+func (a *Chill) epChordToneAt(slot, toneIdx int) int {
+	chordIdx := (slot / 2) % len(a.progression)
 	c := a.progression[chordIdx]
-	// EP voicing in the +24 register (above bass, below vibe).
-	return a.currentRoot() + c.tones[tonePattern[beat]] + 24
+	return a.currentRoot() + c.tones[toneIdx] + 24
 }
 
-// bassNoteAt returns the walking-bass note for the given beat slot.
-// Pattern per chord: root, fifth, third, seventh — a classic chord-tone walk
-// that outlines the harmony while still feeling melodic.
+// bassNoteAt returns the bass note for half-note-feel beat `slot`. Pattern
+// per chord: chord root (beat 1) → chord fifth (beat 3) → next chord →
+// root → fifth → etc. Always in the low register one octave below the
+// chord root.
 func (a *Chill) bassNoteAt(slot int) int {
-	chordIdx := (slot / 4) % len(a.progression)
-	beat := slot % 4
-	bassPattern := []int{0, 2, 1, 3} // root, 5th, 3rd, 7th
+	chordIdx := (slot / 2) % len(a.progression)
+	half := slot % 2 // 0 = beat 1, 1 = beat 3
 	c := a.progression[chordIdx]
-	return a.currentRoot() + c.tones[bassPattern[beat]] - 12
+	tone := c.tones[0] // root
+	if half == 1 {
+		tone = c.tones[2] // 5th
+	}
+	return a.currentRoot() + tone - 12
 }
 
-// vibeNoteAt returns one melody note per chord. 70% chord tone, 30% chord
-// extension (9th or 13th relative to the chord root) for jazzy color.
+// vibeNoteAt returns one melody note per chord. 65% chord tone, 35% color
+// tone (9th or 13th) for jazzy character.
 func (a *Chill) vibeNoteAt(slot int) int {
 	chordIdx := slot % len(a.progression)
 	c := a.progression[chordIdx]
 	chordRoot := a.currentRoot() + c.tones[0]
-	if a.rng.Float64() < 0.30 {
-		// Color tone: 9th (chord root + 14) or 13th (chord root + 21).
-		if a.rng.Float64() < 0.5 {
-			return chordRoot + 14
-		}
-		return chordRoot + 21
+	switch r := a.rng.Float64(); {
+	case r < 0.20:
+		return chordRoot + 14 // 9th
+	case r < 0.35:
+		return chordRoot + 21 // 13th
+	default:
+		return a.currentRoot() + c.tones[a.rng.Intn(len(c.tones))] + 36
 	}
-	// Chord tone in high register.
-	return a.currentRoot() + c.tones[a.rng.Intn(len(c.tones))] + 36
 }
 
 func (a *Chill) scheduleNextDrift() {
