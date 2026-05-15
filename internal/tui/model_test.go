@@ -67,6 +67,9 @@ func TestBottomBarLeavesRoomForStatus(t *testing.T) {
 	if !strings.Contains(bar, "[l] library") {
 		t.Fatalf("bottom bar should expose saved-seed library: %q", bar)
 	}
+	if !strings.Contains(bar, "[i] inspect") {
+		t.Fatalf("bottom bar should expose inspector: %q", bar)
+	}
 	if strings.Contains(bar, "[[/]] seed") {
 		t.Fatalf("bottom bar should stay compact, got: %q", bar)
 	}
@@ -196,6 +199,26 @@ func TestLibraryPanelShowsSavedSeeds(t *testing.T) {
 	for _, want := range []string{"SAVED SEEDS", "Ambient", "42", "[enter] load"} {
 		if !strings.Contains(panel, want) {
 			t.Fatalf("library panel missing %q:\n%s", want, panel)
+		}
+	}
+}
+
+func TestInspectorPanelShowsTrackState(t *testing.T) {
+	m := Model{
+		algo:             "Jazz",
+		keyName:          "Cmin",
+		seed:             42,
+		inspectorVisible: true,
+		seedA:            &seedBookmark{Spec: gen.AlgoSpec{Name: "ambient", Display: "Ambient"}, Seed: 11},
+		seedB:            &seedBookmark{Spec: gen.AlgoSpec{Name: "jazz", Display: "Jazz"}, Seed: 12},
+		kept:             map[string]seedBookmark{"jazz:42": {Spec: gen.AlgoSpec{Name: "jazz", Display: "Jazz"}, Seed: 42}},
+		debug:            gen.DebugStatus{Bar: 3, Section: "A", Chord: "Dm7", Preset: "general"},
+		themes:           []ColorTheme{DefaultTheme()},
+	}
+	panel := inspectorPanel(m, 90, 18, DefaultTheme())
+	for _, want := range []string{"TRACK INSPECTOR", "Jazz · Cmin", "42", "Ambient/11", "Jazz/12", "bar 3", "[e] export drawer"} {
+		if !strings.Contains(panel, want) {
+			t.Fatalf("inspector panel missing %q:\n%s", want, panel)
 		}
 	}
 }

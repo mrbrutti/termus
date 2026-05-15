@@ -19,6 +19,7 @@ const (
 	actionDebug
 	actionHelp
 	actionLibrary
+	actionInspector
 	actionPrevSeed
 	actionNextSeed
 	actionStoreA
@@ -56,6 +57,8 @@ func matchKey(msg tea.KeyMsg) keyAction {
 		return actionHelp
 	case "l":
 		return actionLibrary
+	case "i":
+		return actionInspector
 	case "[":
 		return actionPrevSeed
 	case "]":

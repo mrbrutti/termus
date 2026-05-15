@@ -33,15 +33,16 @@ type Model struct {
 	keyName string
 	seed    int64
 
-	volume         int
-	paused         bool
-	recording      bool
-	debugVisible   bool
-	helpVisible    bool
-	libraryVisible bool
-	status         string
-	statusTTL      time.Time
-	stickyStatus   string
+	volume           int
+	paused           bool
+	recording        bool
+	debugVisible     bool
+	helpVisible      bool
+	libraryVisible   bool
+	inspectorVisible bool
+	status           string
+	statusTTL        time.Time
+	stickyStatus     string
 
 	themeIdx  int // index into Themes
 	visualIdx int // index into Visuals
@@ -266,6 +267,7 @@ func (m *Model) toggleLibrary() {
 	m.libraryVisible = !m.libraryVisible
 	if m.libraryVisible {
 		m.helpVisible = false
+		m.inspectorVisible = false
 		if m.libraryIdx >= len(m.savedSeeds) {
 			m.libraryIdx = maxInt(0, len(m.savedSeeds)-1)
 		}
@@ -273,6 +275,17 @@ func (m *Model) toggleLibrary() {
 		return
 	}
 	m.flashStatus("library: off", 2*time.Second)
+}
+
+func (m *Model) toggleInspector() {
+	m.inspectorVisible = !m.inspectorVisible
+	if m.inspectorVisible {
+		m.helpVisible = false
+		m.libraryVisible = false
+		m.flashStatus("inspector: on", 2*time.Second)
+		return
+	}
+	m.flashStatus("inspector: off", 2*time.Second)
 }
 
 func (m *Model) moveLibrary(delta int) {
@@ -386,6 +399,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.helpVisible && action != actionHelp && action != actionQuit {
 			return m, nil
 		}
+		if m.inspectorVisible && action != actionInspector && action != actionQuit {
+			return m, nil
+		}
 		switch action {
 		case actionQuit:
 			return m, tea.Quit
@@ -437,12 +453,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.helpVisible = !m.helpVisible
 			if m.helpVisible {
 				m.libraryVisible = false
+				m.inspectorVisible = false
 				m.flashStatus("help: on", 2*time.Second)
 			} else {
 				m.flashStatus("help: off", 2*time.Second)
 			}
 		case actionLibrary:
 			m.toggleLibrary()
+		case actionInspector:
+			m.toggleInspector()
 		case actionNextAlgo:
 			m.switchAlgo(1)
 		case actionPrevAlgo:
@@ -505,6 +524,8 @@ func (m Model) View() string {
 		body = helpPanel(m, innerW, innerH, theme)
 	} else if m.libraryVisible {
 		body = libraryPanel(m, innerW, innerH, theme)
+	} else if m.inspectorVisible {
+		body = inspectorPanel(m, innerW, innerH, theme)
 	}
 	if m.debugVisible {
 		debug := debugBar(m, innerW, theme)
@@ -699,6 +720,21 @@ func renderCompactMeter(theme ColorTheme, peak float64, clipped bool, width int)
 	return label + " " + active + idle + " " + clip
 }
 
+func slotSeedLabel(mark *seedBookmark) string {
+	if mark == nil {
+		return "—"
+	}
+	return fmt.Sprintf("%s/%d", mark.Spec.Display, mark.Seed)
+}
+
+func inspectorDebugLabel(status gen.DebugStatus) string {
+	text := gen.FormatDebugStatus(status)
+	if text == "" {
+		return "debug unavailable"
+	}
+	return text
+}
+
 func bottomBar(m Model, w int, theme ColorTheme) string {
 	state := "play"
 	if m.paused {
@@ -709,6 +745,7 @@ func bottomBar(m Model, w int, theme ColorTheme) string {
 		fmt.Sprintf("[↑↓] %d%%", m.volume),
 		fmt.Sprintf("[C] %s", Visuals[m.visualIdx].Name),
 		"[l] library",
+		"[i] inspect",
 		"[?] help",
 	}
 	if m.recording {
@@ -733,6 +770,8 @@ func bottomBar(m Model, w int, theme ColorTheme) string {
 		hintParts = []string{"[?] close help", "[q] quit"}
 	} else if m.libraryVisible {
 		hintParts = []string{"[↑↓] browse", "[enter] load", "[delete] remove", "[l] close", "[q] quit"}
+	} else if m.inspectorVisible {
+		hintParts = []string{"[i] close", "[e] export", "[r] record", "[q] quit"}
 	}
 	hint := strings.Join(hintParts, "   ")
 
@@ -758,7 +797,7 @@ func helpPanel(m Model, w, h int, theme ColorTheme) string {
 	bodyH := maxInt(10, minInt(h-2, 18))
 	lines := []string{
 		styleHelpLine(theme, false, "Playback", "[space] pause/resume   [↑↓] volume   [r] record"),
-		styleHelpLine(theme, false, "Look", "[C] visual   [c] theme   [d] debug"),
+		styleHelpLine(theme, false, "Look", "[C] visual   [c] theme   [d] debug   [i] inspect"),
 		styleHelpLine(theme, false, "Seeds", "[[/]] browse   [a/b] store   [tab] compare   [k/x] keep/reject   [l] library"),
 		styleHelpLine(theme, false, "Tracks", "[n/p] algorithm   [s] skip playlist track"),
 		styleHelpLine(theme, false, "Close", "[?] close this overlay   [q] quit"),
@@ -808,6 +847,39 @@ func filterHelpLines(lines []string, m Model) []string {
 		out = append(out, line)
 	}
 	return out
+}
+
+func inspectorPanel(m Model, w, h int, theme ColorTheme) string {
+	bodyW := maxInt(30, minInt(w-6, 84))
+	bodyH := maxInt(12, minInt(h-2, 18))
+	details := []string{
+		styleHelpLine(theme, false, "Track", fmt.Sprintf("%s · %s", m.algo, m.keyName)),
+		styleHelpLine(theme, false, "Seed", fmt.Sprintf("%d", m.seed)),
+		styleHelpLine(theme, false, "Slots", fmt.Sprintf("A %s   B %s   kept %d", slotSeedLabel(m.seedA), slotSeedLabel(m.seedB), len(m.kept))),
+		styleHelpLine(theme, false, "State", inspectorDebugLabel(m.debug)),
+		styleHelpLine(theme, false, "Export", "[e] export drawer   [r] record   --out/--stems/--midi available"),
+	}
+	if m.playlist != nil && m.playlistIdx < len(m.playlist.Tracks) {
+		details = append(details, styleHelpLine(theme, false, "Playlist",
+			fmt.Sprintf("%s · %d/%d · next %s", m.playlist.Name, m.playlistIdx+1, len(m.playlist.Tracks), shortDuration(time.Until(m.nextTrackAt)))))
+	}
+	panel := lipgloss.NewStyle().
+		Width(bodyW).
+		Height(bodyH).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(theme.BarFg).
+		Padding(1, 2).
+		Render(
+			lipgloss.JoinVertical(
+				lipgloss.Left,
+				lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render("TRACK INSPECTOR"),
+				"",
+				strings.Join(details, "\n"),
+				"",
+				lipgloss.NewStyle().Faint(true).Render("[i] close   [e] export   [q] quit"),
+			),
+		)
+	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, panel)
 }
 
 func libraryPanel(m Model, w, h int, theme ColorTheme) string {
