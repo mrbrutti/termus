@@ -28,7 +28,7 @@ cd termus
 go run ./cmd/termus
 ```
 
-First run with a SoundFont-based algorithm (`--algo sf2`, `eno-sf2`, etc.) auto-downloads a ~6 MB GM SoundFont (`TimGM6mb.sf2`) to `~/Library/Caches/termus/soundfonts/` (or the OS equivalent).
+First run with a SoundFont-based algorithm (`--algo sf2`, `eno-sf2`, etc.) auto-downloads a ~32 MB high-quality GM SoundFont (`GeneralUser-GS.sf2` by S. Christian Collins, MIT-licensed) to `~/Library/Caches/termus/soundfonts/` (or the OS equivalent). Use `--sf2 /path/to/your.sf2` to provide your own.
 
 ## Algorithms
 
@@ -118,7 +118,7 @@ The TUI is built with bubbletea + lipgloss; the oscilloscope renders to a Braill
 | [`sinshu/go-meltysynth`](https://github.com/sinshu/go-meltysynth) | MIT | Pure-Go SoundFont synthesizer |
 | [`madelynnblue/go-dsp`](https://github.com/madelynnblue/go-dsp) | BSD | FFT for partitioned convolution reverb |
 
-The auto-downloaded SoundFont is **TimGM6mb.sf2** by Tim Brechbill (originally bundled with MuseScore 1.0), licensed under GPL-2 and fetched from [`arbruijn/TimGM6mb`](https://github.com/arbruijn/TimGM6mb). It's not bundled with the binary — termus downloads it on first use to your OS cache directory, where you can replace or delete it freely.
+The auto-downloaded SoundFont is **GeneralUser-GS.sf2** by S. Christian Collins (~32 MB), MIT-licensed and fetched from [`mrbumpy409/GeneralUser-GS`](https://github.com/mrbumpy409/GeneralUser-GS). It's not bundled with the binary — termus downloads it on first use to your OS cache directory, where you can replace or delete it freely. Verified via SHA-256 after download to reject tampered files.
 
 ## License
 

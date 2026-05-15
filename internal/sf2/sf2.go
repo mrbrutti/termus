@@ -17,15 +17,21 @@ import (
 	"github.com/sinshu/go-meltysynth/meltysynth"
 )
 
-// DefaultURL is the GitHub-hosted copy of TimGM6mb.sf2 by Tim Brechbill.
-const DefaultURL = "https://github.com/arbruijn/TimGM6mb/raw/master/TimGM6mb.sf2"
+// DefaultURL is the GitHub-hosted copy of GeneralUser-GS.sf2 by S. Christian
+// Collins — a 30 MB MIT-licensed GM/GS SoundFont widely regarded as one of
+// the best free GM banks. We previously defaulted to TimGM6mb.sf2 (6 MB, a
+// 2008 MuseScore 1.0 bundle) but its samples — especially the drum kit and
+// electric piano — were the main quality ceiling on termus's output. The
+// upgrade trades a one-time 25 MB extra download on first run for
+// significantly more realistic samples across every algorithm.
+const DefaultURL = "https://github.com/mrbumpy409/GeneralUser-GS/raw/main/GeneralUser-GS.sf2"
 
 // DefaultSHA256 is the expected hash of the file at DefaultURL. Used to
 // verify downloads; if the URL ever serves a different file we reject it.
-const DefaultSHA256 = "c5378b62028c920cb11e4803327983fee2f2cdff5dc89c708e39da417e51c854"
+const DefaultSHA256 = "9575028c7a1f589f5770fccc8cff2734566af40cd26ed836944e9a5152688cfe"
 
 // DefaultFileName is what the cached file is called on disk.
-const DefaultFileName = "TimGM6mb.sf2"
+const DefaultFileName = "GeneralUser-GS.sf2"
 
 // CacheDir returns the directory we use to cache downloaded soundfonts.
 // Creates it if it doesn't exist.
