@@ -9,7 +9,7 @@
 - [x] Add a compact audio meter and clip indicator.
 - [x] Add a seed and track inspector overlay with algo, seed, A/B slots, kept count, chord, section, bar, and export actions.
 - [x] Add an in-TUI export drawer for record, WAV, stems, and MIDI actions.
-- [ ] Improve narrow-terminal behavior with a simplified compact layout.
+- [x] Improve narrow-terminal behavior with a simplified compact layout.
 - [ ] Add a reduced-chrome mode.
 - [ ] Add a startup splash / onboarding screen for the core controls.
 - [ ] Add transient volume feedback as a thin symmetric line in the existing color scheme that appears only while volume changes.

@@ -609,6 +609,7 @@ func (m Model) View() string {
 	if m.width < 40 || m.height < 10 {
 		return centerBox(m.width, m.height, "terminal too small — resize to ≥ 40 × 10")
 	}
+	compact := useCompactLayout(m.width, m.height)
 	chromeH := 3 // top + now-playing + bottom bars
 	if m.debugVisible {
 		chromeH++
@@ -625,9 +626,9 @@ func (m Model) View() string {
 		Theme: theme,
 	})
 
-	top := topBar(m, innerW, theme)
-	playback := playbackBar(m, innerW, theme, samples)
-	bottom := bottomBar(m, innerW, theme)
+	top := topBar(m, innerW, theme, compact)
+	playback := playbackBar(m, innerW, theme, samples, compact)
+	bottom := bottomBar(m, innerW, theme, compact)
 	body := scopeStr
 	if m.helpVisible {
 		body = helpPanel(m, innerW, innerH, theme)
@@ -684,15 +685,23 @@ func (m *Model) applyAudioState(state audio.BackendState) {
 	}
 }
 
-func topBar(m Model, w int, theme ColorTheme) string {
+func topBar(m Model, w int, theme ColorTheme, compact bool) string {
 	var label string
 	if m.playlist != nil {
-		label = fmt.Sprintf("termus · %s · %d/%d %s · seed=%d",
-			m.playlist.Name, m.playlistIdx+1, len(m.playlist.Tracks),
-			m.algo, m.seed)
+		if compact {
+			label = fmt.Sprintf("termus · %s · %d/%d · %d", m.algo, m.playlistIdx+1, len(m.playlist.Tracks), m.seed)
+		} else {
+			label = fmt.Sprintf("termus · %s · %d/%d %s · seed=%d",
+				m.playlist.Name, m.playlistIdx+1, len(m.playlist.Tracks),
+				m.algo, m.seed)
+		}
 	} else {
-		label = fmt.Sprintf("termus · %s · %s · seed=%d",
-			m.algo, m.keyName, m.seed)
+		if compact {
+			label = fmt.Sprintf("termus · %s · %d", m.algo, m.seed)
+		} else {
+			label = fmt.Sprintf("termus · %s · %s · seed=%d",
+				m.algo, m.keyName, m.seed)
+		}
 	}
 	right := ""
 	if m.recording {
@@ -703,12 +712,22 @@ func topBar(m Model, w int, theme ColorTheme) string {
 			right += "  " + rec
 		}
 	}
-	if seeds := m.seedSlotsLabel(); seeds != "" {
-		seeds = lipgloss.NewStyle().Faint(true).Render(seeds)
+	if !compact {
+		if seeds := m.seedSlotsLabel(); seeds != "" {
+			seeds = lipgloss.NewStyle().Faint(true).Render(seeds)
+			if right == "" {
+				right = seeds
+			} else {
+				right = seeds + "  " + right
+			}
+		}
+	}
+	if compact && len(m.kept) > 0 {
+		kept := lipgloss.NewStyle().Faint(true).Render(fmt.Sprintf("keep=%d", len(m.kept)))
 		if right == "" {
-			right = seeds
+			right = kept
 		} else {
-			right = seeds + "  " + right
+			right = kept + "  " + right
 		}
 	}
 	if right != "" {
@@ -746,15 +765,22 @@ func (m Model) seedSlotsLabel() string {
 	return out
 }
 
-func playbackBar(m Model, w int, theme ColorTheme, samples []float64) string {
+func playbackBar(m Model, w int, theme ColorTheme, samples []float64, compact bool) string {
 	leftParts := []string{formatElapsed("live", time.Since(m.startedAt))}
 	if m.playlist != nil && m.playlistIdx < len(m.playlist.Tracks) {
 		track := m.playlist.Tracks[m.playlistIdx]
-		leftParts = append(leftParts,
-			fmt.Sprintf("track %s/%s", shortDuration(time.Since(m.trackStartedAt)), shortDuration(track.Duration)),
-			fmt.Sprintf("next %s", shortDuration(time.Until(m.nextTrackAt))),
-			fmt.Sprintf("fade %s", shortDuration(time.Duration(m.playlistFade)*time.Second/44100)),
-		)
+		if compact {
+			leftParts = append(leftParts,
+				fmt.Sprintf("%s/%s", shortDuration(time.Since(m.trackStartedAt)), shortDuration(track.Duration)),
+				fmt.Sprintf("next %s", shortDuration(time.Until(m.nextTrackAt))),
+			)
+		} else {
+			leftParts = append(leftParts,
+				fmt.Sprintf("track %s/%s", shortDuration(time.Since(m.trackStartedAt)), shortDuration(track.Duration)),
+				fmt.Sprintf("next %s", shortDuration(time.Until(m.nextTrackAt))),
+				fmt.Sprintf("fade %s", shortDuration(time.Duration(m.playlistFade)*time.Second/44100)),
+			)
+		}
 		if len(m.playlist.Tracks) > 0 {
 			leftParts = append(leftParts, fmt.Sprintf("%d/%d", m.playlistIdx+1, len(m.playlist.Tracks)))
 		}
@@ -764,7 +790,11 @@ func playbackBar(m Model, w int, theme ColorTheme, samples []float64) string {
 	}
 	leftText := trimToWidth(strings.Join(leftParts, " · "), maxInt(0, w-22))
 	meter, clipped := meterSummary(samples)
-	right := renderCompactMeter(theme, meter, clipped, 14)
+	meterWidth := 14
+	if compact {
+		meterWidth = 8
+	}
+	right := renderCompactMeter(theme, meter, clipped, meterWidth)
 	left := lipgloss.NewStyle().Faint(true).Render(leftText)
 	pad := w - lipgloss.Width(left) - lipgloss.Width(right)
 	if pad < 1 {
@@ -846,19 +876,29 @@ func inspectorDebugLabel(status gen.DebugStatus) string {
 	return text
 }
 
-func bottomBar(m Model, w int, theme ColorTheme) string {
+func bottomBar(m Model, w int, theme ColorTheme, compact bool) string {
 	state := "play"
 	if m.paused {
 		state = "PAUSED"
 	}
-	hintParts := []string{
-		fmt.Sprintf("[space] %s", state),
-		fmt.Sprintf("[↑↓] %d%%", m.volume),
-		fmt.Sprintf("[C] %s", Visuals[m.visualIdx].Name),
-		"[l] library",
-		"[i] inspect",
-		"[e] export",
-		"[?] help",
+	hintParts := []string{}
+	if compact {
+		hintParts = []string{
+			fmt.Sprintf("[space] %s", state),
+			fmt.Sprintf("%d%%", m.volume),
+			"[?]",
+			"[q]",
+		}
+	} else {
+		hintParts = []string{
+			fmt.Sprintf("[space] %s", state),
+			fmt.Sprintf("[↑↓] %d%%", m.volume),
+			fmt.Sprintf("[C] %s", Visuals[m.visualIdx].Name),
+			"[l] library",
+			"[i] inspect",
+			"[e] export",
+			"[?] help",
+		}
 	}
 	if m.recording {
 		hintParts = append(hintParts, "[r] stop rec")
@@ -1117,6 +1157,10 @@ func shortDuration(d time.Duration) string {
 	mins := total / 60
 	secs := total % 60
 	return fmt.Sprintf("%02d:%02d", mins, secs)
+}
+
+func useCompactLayout(w, h int) bool {
+	return w < 72 || h < 18
 }
 
 func maxInt(a, b int) int {

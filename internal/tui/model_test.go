@@ -58,7 +58,7 @@ func TestBottomBarLeavesRoomForStatus(t *testing.T) {
 		stickyStatus: "audio: starting...",
 		themes:       []ColorTheme{DefaultTheme()},
 	}
-	bar := bottomBar(m, 120, DefaultTheme())
+	bar := bottomBar(m, 120, DefaultTheme(), false)
 	if !strings.Contains(bar, "audio: starting...") {
 		t.Fatalf("bottom bar missing status: %q", bar)
 	}
@@ -83,7 +83,7 @@ func TestTopBarShowsTitle(t *testing.T) {
 		debug:  gen.DebugStatus{Bar: 5, Section: "A'", Chord: "G7", Preset: "tyros4"},
 		themes: []ColorTheme{DefaultTheme()},
 	}
-	bar := topBar(m, 120, DefaultTheme())
+	bar := topBar(m, 120, DefaultTheme(), false)
 	if !strings.Contains(bar, "termus · Jazz") || !strings.Contains(bar, "seed=42") {
 		t.Fatalf("top bar missing title info: %q", bar)
 	}
@@ -105,7 +105,7 @@ func TestPlaybackBarShowsTimingAndMeter(t *testing.T) {
 		themes:         []ColorTheme{DefaultTheme()},
 	}
 	samples := []float64{0.1, 0.3, 0.85, -0.4}
-	bar := playbackBar(m, 120, DefaultTheme(), samples)
+	bar := playbackBar(m, 120, DefaultTheme(), samples, false)
 	for _, want := range []string{"live 01:35", "track 00:32/05:00", "next 04:28", "fade 00:02", "rec 00:17", "lvl"} {
 		if !strings.Contains(bar, want) {
 			t.Fatalf("playback bar missing %q: %q", want, bar)
@@ -266,6 +266,20 @@ func TestMeterSummaryDetectsClip(t *testing.T) {
 	peak, clipped := meterSummary([]float64{0.2, -0.99, 0.3})
 	if peak < 0.99 || !clipped {
 		t.Fatalf("meterSummary = (%v, %v), want clipped peak", peak, clipped)
+	}
+}
+
+func TestCompactBottomBarUsesMinimalHints(t *testing.T) {
+	m := Model{
+		volume: 70,
+		themes: []ColorTheme{DefaultTheme()},
+	}
+	bar := bottomBar(m, 64, DefaultTheme(), true)
+	if !strings.Contains(bar, "[?]") || !strings.Contains(bar, "[q]") {
+		t.Fatalf("compact bottom bar missing minimal hints: %q", bar)
+	}
+	if strings.Contains(bar, "[l] library") || strings.Contains(bar, "[i] inspect") {
+		t.Fatalf("compact bottom bar should omit extended chrome: %q", bar)
 	}
 }
 
