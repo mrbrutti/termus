@@ -20,4 +20,4 @@
 - [x] Add single-track WAV export to `./termus` via `--out` and `--seconds` so music generation works without live playback.
 - [x] Extend export workflow with `--playlist-out` and batch rendering from the main binary.
 - [x] Tighten cross-algorithm intros, outros, cadence handling, and loudness normalization so switching genres feels cohesive.
-- [ ] Surface chord, section, bar, and SF2 preset state in the TUI for debugging and tuning.
+- [x] Surface chord, section, bar, and SF2 preset state in the TUI for debugging and tuning.

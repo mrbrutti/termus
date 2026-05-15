@@ -7,6 +7,7 @@ import "github.com/mrbrutti/termus/internal/gen"
 // Commander is the narrow interface the TUI uses to control audio.
 type Commander interface {
 	SetVolume(pct int)
+	DebugStatus() gen.DebugStatus
 	TogglePause()
 	// ToggleRecord starts or stops recording. When starting, returns the
 	// output path. When stopping (or on failure), path is "".

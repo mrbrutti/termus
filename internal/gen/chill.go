@@ -840,6 +840,20 @@ func (a *Chill) SectionGain() float64 {
 	return SectionMixProfileFor(a.section).Gain
 }
 
+func (a *Chill) DebugStatus() DebugStatus {
+	bar := 0
+	chord := ""
+	if len(a.progression) > 0 {
+		bar = a.currentBar()
+		chord = a.progression[bar].label
+	}
+	return DebugStatus{
+		Chord:   chord,
+		Section: string(a.section.Kind),
+		Bar:     a.form.BarAt(a.samplesElapsed),
+	}
+}
+
 func (a *Chill) ghostSnareNoteAt(slot int) int {
 	bar := slot % maxInt(1, len(a.progression))
 	if (bar+1)%4 == 0 || bar == len(a.progression)-1 {

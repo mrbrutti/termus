@@ -736,12 +736,33 @@ func (a *Jazz) SectionGain() float64 {
 	return SectionMixProfileFor(a.section).Gain
 }
 
+func (a *Jazz) DebugStatus() DebugStatus {
+	bar := 0
+	chord := ""
+	if len(a.progression) > 0 {
+		bar = a.currentBar()
+		chord = a.progression[bar].label
+	}
+	return DebugStatus{
+		Chord:   chord,
+		Section: string(a.section.Kind),
+		Bar:     a.form.BarAt(a.samplesElapsed),
+	}
+}
+
 func (a *Jazz) crashNoteAt(slot int) int {
 	bar := slot % len(a.progression)
 	if bar == 0 || (bar+1)%4 == 0 {
 		return drumCrash
 	}
 	return -1
+}
+
+func (a *Jazz) currentBar() int {
+	if a.barSamples <= 0 || len(a.progression) == 0 {
+		return 0
+	}
+	return sampleBarIndex(a.samplesElapsed, a.barSamples) % len(a.progression)
 }
 
 func (a *Jazz) ghostSnareNoteAt(slot int) int {

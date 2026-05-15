@@ -264,3 +264,14 @@ func (a *SF2Drone) Next(left, right []float64) {
 	a.core.renderInto(left, right)
 	a.samplesElapsed += int64(len(left))
 }
+
+func (a *SF2Drone) DebugStatus() DebugStatus {
+	chord := ""
+	if len(a.chords) > 0 {
+		chord = a.chords[a.currentChordIdx].label
+	}
+	return DebugStatus{
+		Chord:   chord,
+		Section: "drone",
+	}
+}

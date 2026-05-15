@@ -23,6 +23,7 @@ type Model struct {
 	ring    *scope.Ring
 	cmd     audio.Commander
 	algo    string
+	debug   gen.DebugStatus
 	keyName string
 	seed    int64
 
@@ -57,6 +58,7 @@ func New(ring *scope.Ring, cmd audio.Commander, algo, keyName string, seed int64
 		ring:     ring,
 		cmd:      cmd,
 		algo:     algo,
+		debug:    cmd.DebugStatus(),
 		keyName:  keyName,
 		seed:     seed,
 		volume:   initialVol,
@@ -197,6 +199,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tickMsg:
+		m.debug = m.cmd.DebugStatus()
 		if m.playlist != nil && !m.paused && time.Now().After(m.nextTrackAt) {
 			m.advancePlaylist()
 		}
@@ -275,11 +278,23 @@ func topBar(m Model, w int, theme ColorTheme) string {
 		label = fmt.Sprintf("termus · %s · %s · seed=%d",
 			m.algo, m.keyName, m.seed)
 	}
-	left := lipgloss.NewStyle().Foreground(theme.BarFg).Render(label)
+	debug := trimToWidth(gen.FormatDebugStatus(m.debug), maxInt(0, w/2))
 	right := ""
-	if m.recording {
-		right = lipgloss.NewStyle().Foreground(lipgloss.Color("#ff5b5b")).Render("● REC")
+	if debug != "" {
+		right = lipgloss.NewStyle().Foreground(theme.BarHi).Render(debug)
 	}
+	if m.recording {
+		rec := lipgloss.NewStyle().Foreground(lipgloss.Color("#ff5b5b")).Render("● REC")
+		if right == "" {
+			right = rec
+		} else {
+			right += "  " + rec
+		}
+	}
+	if right != "" {
+		label = trimToWidth(label, maxInt(0, w-lipgloss.Width(right)-1))
+	}
+	left := lipgloss.NewStyle().Foreground(theme.BarFg).Render(label)
 	pad := w - lipgloss.Width(left) - lipgloss.Width(right)
 	if pad < 1 {
 		pad = 1

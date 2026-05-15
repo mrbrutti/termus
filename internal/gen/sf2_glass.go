@@ -329,6 +329,21 @@ func (a *SF2Glass) SetReverbIR(ir []float64, wet float64) {
 	}
 }
 
+func (a *SF2Glass) DebugStatus() DebugStatus {
+	section := "halo"
+	if a.musicBoxOn != nil && *a.musicBoxOn {
+		section = "halo+box"
+	}
+	chord := ""
+	if len(a.chordOffsets) > 0 {
+		chord = chordOffsetLabel(a.chordOffsets[a.currentChordIdx])
+	}
+	return DebugStatus{
+		Chord:   chord,
+		Section: section,
+	}
+}
+
 func (a *SF2Glass) Next(left, right []float64) {
 	if a.core == nil {
 		for i := range left {

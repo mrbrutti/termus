@@ -133,6 +133,13 @@ func (f FormPlan) SectionBoundaryCrossed(prev, curr int64) bool {
 
 func (f FormPlan) TotalBars() int { return f.totalBars }
 
+func (f FormPlan) BarAt(samples int64) int {
+	if len(f.sections) == 0 || f.barSamples <= 0 || f.totalBars <= 0 {
+		return 0
+	}
+	return sampleBarIndex(samples, f.barSamples)%f.totalBars + 1
+}
+
 func (f FormPlan) ListeningMarkers(cycles int) []ListeningMarker {
 	if cycles < 1 {
 		cycles = 1

@@ -144,10 +144,6 @@ func main() {
 			algo.Name(), *renderSeconds, frames, *outPath)
 		return
 	}
-	ring := scope.NewRing(4096)
-	root := audio.NewRoot(algo, ring)
-	root.SetSeed(*seed)
-	root.SetVolume(*initialVol)
 
 	// Build the switchable algorithm list. If we have a SoundFont loaded
 	// we expose all SF2-backed genres; otherwise we fall back to the
@@ -170,6 +166,15 @@ func main() {
 		}
 		return a
 	}
+	presetLabel := func(s gen.AlgoSpec) string {
+		if !s.RequiresSF2 {
+			return "synth"
+		}
+		if *sf2Path != "" {
+			return filepath.Base(*sf2Path)
+		}
+		return pickSFName(sfByPreset, s, *sf2Preset)
+	}
 	if *playlistOut != "" {
 		pl, err := buildPlaylist(*playlistMode, spec, genres, *playlistTracks, *seed, *playlistDur)
 		if err != nil {
@@ -189,11 +194,16 @@ func main() {
 			filepath.Join(*playlistOut, "manifest.json"), manifest.TrackCount, manifest.TotalDurationS)
 		return
 	}
+	liveAlgo := gen.WrapDebugStatus(buildAlgo(spec, *seed), presetLabel(spec))
+	ring := scope.NewRing(4096)
+	root := audio.NewRoot(liveAlgo, ring)
+	root.SetSeed(*seed)
+	root.SetVolume(*initialVol)
 	buildFn := func(s gen.AlgoSpec) gen.Algorithm {
-		return buildAlgo(s, *seed)
+		return gen.WrapDebugStatus(buildAlgo(s, *seed), presetLabel(s))
 	}
 
-	model := tui.New(ring, root, algo.Name(), "Cmin", *seed, *initialVol).
+	model := tui.New(ring, root, liveAlgo.Name(), "Cmin", *seed, *initialVol).
 		WithSwitcher(genres, startIdx, buildFn)
 
 	// Optional playlist. When set, the TUI auto-advances tracks with a
@@ -277,6 +287,27 @@ func pickSF(by map[string]*meltysynth.SoundFont, s gen.AlgoSpec, fallback string
 		return sf
 	}
 	return nil
+}
+
+func pickSFName(by map[string]*meltysynth.SoundFont, s gen.AlgoSpec, fallback string) string {
+	if !s.RequiresSF2 {
+		return "synth"
+	}
+	if _, ok := by[s.PreferredSF2]; ok && s.PreferredSF2 != "" {
+		return s.PreferredSF2
+	}
+	if _, ok := by[fallback]; ok && fallback != "" {
+		return fallback
+	}
+	for name := range by {
+		if name != "" {
+			return name
+		}
+	}
+	if fallback != "" {
+		return fallback
+	}
+	return "sf2"
 }
 
 // buildPlaylist constructs the requested playlist. mode is "same" or "mixed".

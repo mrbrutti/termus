@@ -69,6 +69,13 @@ type gainedAlgo struct {
 
 func (g *gainedAlgo) SectionGain() float64 { return g.sectionGain }
 
+type statusAlgo struct {
+	constantAlgo
+	status gen.DebugStatus
+}
+
+func (s *statusAlgo) DebugStatus() gen.DebugStatus { return s.status }
+
 func TestRootCrossfadeSwap(t *testing.T) {
 	ring := scope.NewRing(2048)
 	old := &constantAlgo{v: 1.0, n: "old"}
@@ -153,5 +160,17 @@ func TestRootAppliesEffectiveOutputGain(t *testing.T) {
 	want := 0.55 * 0.8
 	if math.Abs(frames[0][0]-want) > 1e-6 {
 		t.Fatalf("frame 0 = %g, want %g", frames[0][0], want)
+	}
+}
+
+func TestRootPublishesDebugStatus(t *testing.T) {
+	ring := scope.NewRing(64)
+	root := NewRoot(&statusAlgo{
+		constantAlgo: constantAlgo{v: 0.1, n: "stub"},
+		status:       gen.DebugStatus{Chord: "Dm7", Bar: 2},
+	}, ring)
+	status := root.DebugStatus()
+	if status.Chord != "Dm7" || status.Bar != 2 {
+		t.Fatalf("initial status = %+v", status)
 	}
 }

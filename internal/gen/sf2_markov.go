@@ -442,6 +442,19 @@ func (a *SF2Markov) SectionGain() float64 {
 	return SectionMixProfileFor(a.section).Gain
 }
 
+func (a *SF2Markov) DebugStatus() DebugStatus {
+	chord := ""
+	if len(a.progression) > 0 {
+		bar := sampleBarIndex(a.samplesElapsed, a.barSamples) % len(a.progression)
+		chord = a.progression[bar].label
+	}
+	return DebugStatus{
+		Chord:   chord,
+		Section: string(a.section.Kind),
+		Bar:     a.form.BarAt(a.samplesElapsed),
+	}
+}
+
 func (a *SF2Markov) ListeningMarkers() []ListeningMarker {
 	return a.form.ListeningMarkers(2)
 }

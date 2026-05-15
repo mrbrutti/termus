@@ -378,6 +378,26 @@ func (a *Ambient) advance() {
 	}
 }
 
+func (a *Ambient) DebugStatus() DebugStatus {
+	chord := ""
+	if len(a.chords) > 0 {
+		chord = a.chords[a.currentChordIdx].label
+	}
+	section := "pad"
+	switch {
+	case a.bellsOn != nil && *a.bellsOn && a.celestaOn != nil && *a.celestaOn:
+		section = "bells+celesta"
+	case a.bellsOn != nil && *a.bellsOn:
+		section = "bells"
+	case a.celestaOn != nil && *a.celestaOn:
+		section = "celesta"
+	}
+	return DebugStatus{
+		Chord:   chord,
+		Section: section,
+	}
+}
+
 // SetReverbIR installs a convolution reverb on the master bus.
 func (a *Ambient) SetReverbIR(ir []float64, wet float64) {
 	if a.core != nil {

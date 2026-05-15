@@ -22,9 +22,10 @@ type Root struct {
 	scope *scope.Ring
 
 	// hot-path atomics
-	volume    atomic.Uint32 // 0..100
-	paused    atomic.Bool
-	streaming atomic.Bool
+	volume      atomic.Uint32 // 0..100
+	paused      atomic.Bool
+	streaming   atomic.Bool
+	debugStatus atomic.Value
 
 	// command channels for non-hot-path events
 	recCmd   chan recordCmd
@@ -80,6 +81,7 @@ func NewRoot(algo gen.Algorithm, ring *scope.Ring) *Root {
 		algoSwap: make(chan swapReq, 4),
 	}
 	r.volume.Store(70)
+	r.storeDebugStatus(algo)
 	return r
 }
 
@@ -124,6 +126,15 @@ func (r *Root) SetVolume(pct int) {
 // runs the algorithm in the background to keep time moving (so unpausing feels
 // continuous). v1 keeps it simple: skip the algorithm and emit zeros.
 func (r *Root) TogglePause() { r.paused.Store(!r.paused.Load()) }
+
+// DebugStatus returns the latest status snapshot published by the audio
+// thread.
+func (r *Root) DebugStatus() gen.DebugStatus {
+	if v := r.debugStatus.Load(); v != nil {
+		return v.(gen.DebugStatus)
+	}
+	return gen.DebugStatus{}
+}
 
 // ToggleRecord starts or stops recording. Filename pattern:
 // `termus-<seed>-<unix>.wav` in the current directory.
@@ -183,6 +194,7 @@ func (r *Root) Stream(samples [][2]float64) (n int, ok bool) {
 			// v1: stop recording silently on write error. See spec error handling.
 		}
 	}
+	r.storeDebugStatus(r.algo)
 
 	return n, true
 }
@@ -223,6 +235,7 @@ func (r *Root) renderWithFades(samples [][2]float64) {
 				r.algo = r.pendingAlgo
 				r.pendingAlgo = nil
 				r.fadeInLeft = r.fadeTotal
+				r.storeDebugStatus(r.algo)
 			}
 		case r.fadeInLeft > 0:
 			// gain at segment offset j = 1 - (fadeInLeft - j) / fadeTotal
@@ -259,6 +272,7 @@ func (r *Root) handleCommands() {
 			}
 			if req.fadeFrames <= 0 {
 				r.algo = req.algo
+				r.storeDebugStatus(r.algo)
 				continue
 			}
 			r.fadeTotal = req.fadeFrames
@@ -296,4 +310,8 @@ func (r *Root) handleCommands() {
 			return
 		}
 	}
+}
+
+func (r *Root) storeDebugStatus(algo gen.Algorithm) {
+	r.debugStatus.Store(gen.SnapshotDebugStatus(algo))
 }

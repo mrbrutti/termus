@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/mrbrutti/termus/internal/audio"
+	"github.com/mrbrutti/termus/internal/gen"
 )
 
 func TestModelAudioStateLifecycle(t *testing.T) {
@@ -38,5 +39,18 @@ func TestBottomBarLeavesRoomForStatus(t *testing.T) {
 	bar := bottomBar(m, 80, DefaultTheme())
 	if !strings.Contains(bar, "audio: starting...") {
 		t.Fatalf("bottom bar missing status: %q", bar)
+	}
+}
+
+func TestTopBarShowsDebugStatus(t *testing.T) {
+	m := Model{
+		algo:   "Jazz",
+		seed:   42,
+		debug:  gen.DebugStatus{Bar: 5, Section: "A'", Chord: "G7", Preset: "tyros4"},
+		themes: []ColorTheme{DefaultTheme()},
+	}
+	bar := topBar(m, 120, DefaultTheme())
+	if !strings.Contains(bar, "bar 5") || !strings.Contains(bar, "G7") || !strings.Contains(bar, "sf2 tyros4") {
+		t.Fatalf("top bar missing debug info: %q", bar)
 	}
 }

@@ -314,6 +314,17 @@ func (a *Phase) advance() {
 	}
 }
 
+func (a *Phase) DebugStatus() DebugStatus {
+	chord := ""
+	if len(a.chordRoots) > 0 {
+		chord = chordOffsetLabel(a.chordRoots[a.currentChordIdx])
+	}
+	return DebugStatus{
+		Chord:   chord,
+		Section: "phase",
+	}
+}
+
 func (a *Phase) SetReverbIR(ir []float64, wet float64) {
 	if a.core != nil {
 		a.core.setConvolutionIR(ir, wet)

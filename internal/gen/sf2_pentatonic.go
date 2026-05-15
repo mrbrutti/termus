@@ -412,6 +412,22 @@ func (a *SF2Pentatonic) advance() {
 	}
 }
 
+func (a *SF2Pentatonic) DebugStatus() DebugStatus {
+	chord := ""
+	if len(a.progression) > 0 {
+		chord = a.progression[a.currentBar()].label
+	}
+	section := "waltz"
+	if a.glockOn != nil && *a.glockOn {
+		section = "waltz+glock"
+	}
+	return DebugStatus{
+		Chord:   chord,
+		Section: section,
+		Bar:     a.currentBar() + 1,
+	}
+}
+
 func (a *SF2Pentatonic) SetReverbIR(ir []float64, wet float64) {
 	if a.core != nil {
 		a.core.setConvolutionIR(ir, wet)
