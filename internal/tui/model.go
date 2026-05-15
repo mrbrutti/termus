@@ -43,6 +43,7 @@ type Model struct {
 	exportVisible    bool
 	exportBusy       bool
 	reducedChrome    bool
+	splashVisible    bool
 	status           string
 	statusTTL        time.Time
 	stickyStatus     string
@@ -70,6 +71,7 @@ type Model struct {
 	nextTrackAt     time.Time // when to advance to the next track
 	playlistFade    int       // crossfade length in audio frames (44.1 kHz)
 	startedAt       time.Time
+	splashUntil     time.Time
 	recordStartedAt time.Time
 }
 
@@ -78,19 +80,21 @@ func New(ring *scope.Ring, cmd audio.Commander, algo, keyName string, seed int64
 	ui := DetectAdaptiveUI()
 	savedSeeds, _ := loadSavedSeedRecords()
 	return Model{
-		ring:       ring,
-		cmd:        cmd,
-		algo:       algo,
-		debug:      cmd.DebugStatus(),
-		keyName:    keyName,
-		seed:       seed,
-		volume:     initialVol,
-		ui:         ui,
-		themes:     append([]ColorTheme(nil), ui.Themes...),
-		themeIdx:   ui.DefaultThemeIdx,
-		kept:       recordsToBookmarks(savedSeeds),
-		savedSeeds: savedSeeds,
-		startedAt:  time.Now(),
+		ring:          ring,
+		cmd:           cmd,
+		algo:          algo,
+		debug:         cmd.DebugStatus(),
+		keyName:       keyName,
+		seed:          seed,
+		volume:        initialVol,
+		ui:            ui,
+		themes:        append([]ColorTheme(nil), ui.Themes...),
+		themeIdx:      ui.DefaultThemeIdx,
+		kept:          recordsToBookmarks(savedSeeds),
+		savedSeeds:    savedSeeds,
+		startedAt:     time.Now(),
+		splashUntil:   time.Now().Add(5 * time.Second),
+		splashVisible: true,
 	}
 }
 
@@ -463,6 +467,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tea.KeyMsg:
+		if m.splashVisible {
+			m.splashVisible = false
+		}
 		if m.libraryVisible {
 			switch msg.String() {
 			case "q", "ctrl+c":
@@ -609,6 +616,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tickMsg:
 		m.debug = m.cmd.DebugStatus()
+		if m.splashVisible && time.Now().After(m.splashUntil) {
+			m.splashVisible = false
+		}
 		if m.playlist != nil && !m.paused && time.Now().After(m.nextTrackAt) {
 			m.advancePlaylist()
 		}
@@ -652,6 +662,8 @@ func (m Model) View() string {
 		body = inspectorPanel(m, innerW, innerH, theme)
 	} else if m.exportVisible {
 		body = exportPanel(m, innerW, innerH, theme)
+	} else if m.splashVisible {
+		body = splashPanel(m, innerW, innerH, theme)
 	}
 	if m.reducedChrome {
 		return lipgloss.JoinVertical(lipgloss.Left, body, bottom)
@@ -1022,6 +1034,29 @@ func filterHelpLines(lines []string, m Model) []string {
 		out = append(out, line)
 	}
 	return out
+}
+
+func splashPanel(m Model, w, h int, theme ColorTheme) string {
+	bodyW := maxInt(30, minInt(w-6, 72))
+	bodyH := maxInt(12, minInt(h-2, 16))
+	lines := []string{
+		lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render("TERMUS"),
+		"",
+		styleHelpLine(theme, false, "Play", "[space] pause/resume   [↑↓] volume   [C] visual"),
+		styleHelpLine(theme, false, "Browse", "[[/]] seed   [a/b] store   [tab] compare"),
+		styleHelpLine(theme, false, "Inspect", "[d] debug   [i] inspector   [l] library"),
+		styleHelpLine(theme, false, "Export", "[e] export drawer   [r] record   [z] zen"),
+		"",
+		lipgloss.NewStyle().Faint(true).Render("Press any key to start exploring."),
+	}
+	panel := lipgloss.NewStyle().
+		Width(bodyW).
+		Height(bodyH).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(theme.BarFg).
+		Padding(1, 2).
+		Render(strings.Join(lines, "\n"))
+	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, panel)
 }
 
 func inspectorPanel(m Model, w, h int, theme ColorTheme) string {

@@ -140,6 +140,19 @@ func TestHelpPanelShowsCoreControls(t *testing.T) {
 	}
 }
 
+func TestSplashPanelShowsOnboarding(t *testing.T) {
+	m := Model{
+		splashVisible: true,
+		themes:        []ColorTheme{DefaultTheme()},
+	}
+	panel := splashPanel(m, 90, 18, DefaultTheme())
+	for _, want := range []string{"TERMUS", "Play", "Browse", "Inspect", "Press any key"} {
+		if !strings.Contains(panel, want) {
+			t.Fatalf("splash panel missing %q:\n%s", want, panel)
+		}
+	}
+}
+
 func TestHelpBlocksNonHelpKeys(t *testing.T) {
 	cmd := &tuiCommanderStub{}
 	m := Model{
