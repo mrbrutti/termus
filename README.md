@@ -109,8 +109,41 @@ Synthetic IRs are generated from a deterministic xorshift seed, so the same pres
 | `space` | Play / pause |
 | `↑` `↓` `+` `-` | Volume ±5 |
 | `r` | Toggle WAV recording (writes `termus-<seed>-<timestamp>.wav` to CWD) |
-| `c` | Cycle oscilloscope color theme (indigo / amber / matrix / magenta / mono / rainbow) |
+| `c` | Cycle color theme (indigo / amber / matrix / magenta / mono / rainbow) |
+| `C` | Cycle visualization style (scope / spectrum / bars / mirror) |
+| `n` / `p` | Next / previous algorithm — hot-swap with ~200 ms crossfade |
+| `s` | Skip to next playlist track (only when a playlist is active) |
 | `q` `Ctrl-C` | Quit |
+
+## Playlists
+
+Termus can build a playlist that auto-advances tracks with a 2-second
+crossfade, so it keeps producing music for hours without intervention. Every
+playlist gets a stylized random name derived from the seed
+("Velvet Sessions Vol. 7", "Late Atlas").
+
+```bash
+# Six different seeds of lo-fi, 5 minutes each
+termus --algo lofi --playlist same --playlist-tracks 6 --playlist-duration 5m
+
+# Random genres throughout, 10 tracks
+termus --playlist mixed --playlist-tracks 10
+```
+
+## SoundFont strategy
+
+By default termus uses one SoundFont for everything (`--sf2-strategy=single`,
+balanced 32 MB GeneralUser-GS). For best quality across all genres, opt in
+to per-algorithm preferences:
+
+```bash
+# Downloads GeneralUser-GS (32 MB) + SGM (325 MB) on first run with a
+# progress bar; cycling/playlist switches between them automatically.
+termus --sf2-strategy optimal
+```
+
+Piano-heavy genres (`lullaby`, `classical`, `lofi`, `jazz`) prefer SGM;
+shimmery genres (`ambient`, `drone`, `bells`, `phase`) stay on GeneralUser-GS.
 
 ## How it works
 

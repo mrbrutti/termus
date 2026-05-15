@@ -29,6 +29,9 @@ func main() {
 	sf2Path := flag.String("sf2", "", "path to SoundFont file (overrides --sf2-preset)")
 	sf2Preset := flag.String("sf2-preset", "general",
 		"SoundFont preset: 'general' (32 MB GeneralUser-GS, balanced) | 'sgm' (325 MB, much better piano/guitar/bass)")
+	sf2Strategy := flag.String("sf2-strategy", "single",
+		"how to pick SoundFonts: 'single' (use --sf2-preset for everything) | "+
+			"'optimal' (download each algorithm's preferred preset; uses more disk)")
 	irPath := flag.String("ir", "", "convolution IR: WAV file path, or preset name: room | hall | cathedral | plate")
 	irWet := flag.Float64("ir-wet", 0.40, "convolution wet mix 0..1 when --ir is provided")
 	playlistMode := flag.String("playlist", "",
@@ -50,34 +53,39 @@ func main() {
 			*algoName, gen.AllAlgoNames())
 		os.Exit(2)
 	}
-	var sf *meltysynth.SoundFont
+	// sfByPreset is the lookup the build closure uses to pick the right
+	// SoundFont per algorithm. With strategy=single it contains exactly one
+	// entry, mapped under both the chosen preset name and a "" fallback for
+	// algorithms whose PreferredSF2 is empty.
+	sfByPreset := map[string]*meltysynth.SoundFont{}
+	var sf *meltysynth.SoundFont // the initial-algo SF
 	if spec.RequiresSF2 {
-		path := *sf2Path
-		if path == "" {
-			preset, ok := sf2.Presets[*sf2Preset]
-			if !ok {
-				fmt.Fprintf(os.Stderr, "unknown --sf2-preset %q\n", *sf2Preset)
-				os.Exit(2)
+		if *sf2Path != "" {
+			// User pinned a custom file — use it for everything.
+			loaded, err := sf2.Open(*sf2Path)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "sf2 open failed:", err)
+				os.Exit(1)
 			}
-			fmt.Fprintf(os.Stderr, "preparing SoundFont preset %q (%s, ~%d MB on first run)...\n",
-				preset.Name, preset.FileName, preset.SizeMB)
-			p, err := sf2.EnsurePreset(*sf2Preset, func(done, total int64) {
-				if total > 0 {
-					fmt.Fprintf(os.Stderr, "\r  %d / %d bytes", done, total)
-				}
-			})
-			fmt.Fprintln(os.Stderr)
+			sfByPreset[""] = loaded
+			sf = loaded
+		} else {
+			needed := neededPresets(*sf2Strategy, *sf2Preset, spec)
+			paths, err := sf2.EnsureAll(os.Stderr, needed)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "sf2 setup failed:", err)
 				os.Exit(1)
 			}
-			path = p
-		}
-		var err error
-		sf, err = sf2.Open(path)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "sf2 open failed:", err)
-			os.Exit(1)
+			for name, path := range paths {
+				loaded, err := sf2.Open(path)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "sf2 open %q failed: %v\n", path, err)
+					os.Exit(1)
+				}
+				sfByPreset[name] = loaded
+			}
+			// Pick the SF for the initially-requested algo.
+			sf = pickSF(sfByPreset, spec, *sf2Preset)
 		}
 	}
 	algo := spec.Build(sf)
@@ -126,7 +134,8 @@ func main() {
 	// re-seed with the original --seed so the same key stays deterministic
 	// across switches.
 	buildFn := func(s gen.AlgoSpec) gen.Algorithm {
-		a := s.Build(sf)
+		chosen := pickSF(sfByPreset, s, *sf2Preset)
+		a := s.Build(chosen)
 		a.Seed(*seed)
 		// If we had an IR loaded, propagate it onto the new algorithm so
 		// the room/hall/etc. carries across the switch.
@@ -163,6 +172,56 @@ func main() {
 		fmt.Fprintln(os.Stderr, "tui error:", err)
 		os.Exit(1)
 	}
+}
+
+// neededPresets returns the deduped list of SoundFont preset names the app
+// must have available given the strategy. In "single" mode, that's just the
+// user's chosen preset. In "optimal", we collect every SF2-backed algorithm's
+// PreferredSF2 so cycling and playlists can hot-swap to the right SF.
+func neededPresets(strategy, fallbackPreset string, initial gen.AlgoSpec) []string {
+	switch strategy {
+	case "optimal":
+		seen := map[string]bool{}
+		out := []string{}
+		// Ensure we have the initially-chosen preset even if no algo prefers it.
+		if fallbackPreset != "" && !seen[fallbackPreset] {
+			seen[fallbackPreset] = true
+			out = append(out, fallbackPreset)
+		}
+		for _, name := range gen.AllAlgoNames() {
+			s, _ := gen.Resolve(name)
+			if !s.RequiresSF2 || s.PreferredSF2 == "" {
+				continue
+			}
+			if !seen[s.PreferredSF2] {
+				seen[s.PreferredSF2] = true
+				out = append(out, s.PreferredSF2)
+			}
+		}
+		return out
+	default: // "single" or anything else
+		return []string{fallbackPreset}
+	}
+}
+
+// pickSF returns the SoundFont to use for `s` from the preloaded map. Falls
+// back to the user's --sf2-preset when the algo's preferred SF isn't loaded,
+// then to whatever's there. Empty map → nil (caller should have ensured the
+// algo doesn't require an SF in that case).
+func pickSF(by map[string]*meltysynth.SoundFont, s gen.AlgoSpec, fallback string) *meltysynth.SoundFont {
+	if !s.RequiresSF2 {
+		return nil
+	}
+	if sf, ok := by[s.PreferredSF2]; ok {
+		return sf
+	}
+	if sf, ok := by[fallback]; ok {
+		return sf
+	}
+	for _, sf := range by {
+		return sf
+	}
+	return nil
 }
 
 // buildPlaylist constructs the requested playlist. mode is "same" or "mixed".
