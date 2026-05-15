@@ -33,14 +33,15 @@ type Model struct {
 	keyName string
 	seed    int64
 
-	volume       int
-	paused       bool
-	recording    bool
-	debugVisible bool
-	helpVisible  bool
-	status       string
-	statusTTL    time.Time
-	stickyStatus string
+	volume         int
+	paused         bool
+	recording      bool
+	debugVisible   bool
+	helpVisible    bool
+	libraryVisible bool
+	status         string
+	statusTTL      time.Time
+	stickyStatus   string
 
 	themeIdx  int // index into Themes
 	visualIdx int // index into Visuals
@@ -48,12 +49,14 @@ type Model struct {
 	ui        AdaptiveUI
 
 	// Algorithm switching ([n]/[p]).
-	genres   []gen.AlgoSpec // ordered list of switchable algorithms
-	genreIdx int            // current index into genres
-	buildFn  BuildAlgoFn    // closure used to construct a new algorithm
-	seedA    *seedBookmark
-	seedB    *seedBookmark
-	kept     map[string]seedBookmark
+	genres     []gen.AlgoSpec // ordered list of switchable algorithms
+	genreIdx   int            // current index into genres
+	buildFn    BuildAlgoFn    // closure used to construct a new algorithm
+	seedA      *seedBookmark
+	seedB      *seedBookmark
+	kept       map[string]seedBookmark
+	savedSeeds []savedSeedRecord
+	libraryIdx int
 
 	// Playlist auto-advance.
 	playlist     *gen.Playlist
@@ -65,17 +68,20 @@ type Model struct {
 // New constructs a Model. keyName is e.g. "Cmin".
 func New(ring *scope.Ring, cmd audio.Commander, algo, keyName string, seed int64, initialVol int) Model {
 	ui := DetectAdaptiveUI()
+	savedSeeds, _ := loadSavedSeedRecords()
 	return Model{
-		ring:     ring,
-		cmd:      cmd,
-		algo:     algo,
-		debug:    cmd.DebugStatus(),
-		keyName:  keyName,
-		seed:     seed,
-		volume:   initialVol,
-		ui:       ui,
-		themes:   append([]ColorTheme(nil), ui.Themes...),
-		themeIdx: ui.DefaultThemeIdx,
+		ring:       ring,
+		cmd:        cmd,
+		algo:       algo,
+		debug:      cmd.DebugStatus(),
+		keyName:    keyName,
+		seed:       seed,
+		volume:     initialVol,
+		ui:         ui,
+		themes:     append([]ColorTheme(nil), ui.Themes...),
+		themeIdx:   ui.DefaultThemeIdx,
+		kept:       recordsToBookmarks(savedSeeds),
+		savedSeeds: savedSeeds,
 	}
 }
 
@@ -236,7 +242,76 @@ func (m *Model) keepSeed() {
 	}
 	key := bookmarkKey(spec, m.seed)
 	m.kept[key] = seedBookmark{Spec: spec, Seed: m.seed}
+	rec := savedSeedRecord{
+		Algo:    spec.Name,
+		Display: spec.Display,
+		Seed:    m.seed,
+		SavedAt: time.Now(),
+	}
+	m.savedSeeds = append([]savedSeedRecord{rec}, removeSavedSeedRecord(m.savedSeeds, spec.Name, m.seed)...)
+	if err := saveSavedSeedRecords(m.savedSeeds); err != nil {
+		m.flashStatus("keep saved locally failed", 3*time.Second)
+		return
+	}
 	m.flashStatus(fmt.Sprintf("kept %s/%d (%d)", spec.Display, m.seed, len(m.kept)), 2*time.Second)
+}
+
+func (m *Model) toggleLibrary() {
+	m.libraryVisible = !m.libraryVisible
+	if m.libraryVisible {
+		m.helpVisible = false
+		if m.libraryIdx >= len(m.savedSeeds) {
+			m.libraryIdx = maxInt(0, len(m.savedSeeds)-1)
+		}
+		m.flashStatus("library: on", 2*time.Second)
+		return
+	}
+	m.flashStatus("library: off", 2*time.Second)
+}
+
+func (m *Model) moveLibrary(delta int) {
+	if len(m.savedSeeds) == 0 {
+		m.libraryIdx = 0
+		return
+	}
+	m.libraryIdx = (m.libraryIdx + delta + len(m.savedSeeds)) % len(m.savedSeeds)
+}
+
+func (m *Model) recallLibrarySeed() {
+	if len(m.savedSeeds) == 0 {
+		return
+	}
+	rec := m.savedSeeds[m.libraryIdx]
+	bookmark, label, ok := resolveSavedSeedRecord(rec)
+	if !ok {
+		m.flashStatus("saved algo unavailable: "+label, 3*time.Second)
+		return
+	}
+	m.libraryVisible = false
+	m.swapToSeed(bookmark.Spec, bookmark.Seed, fmt.Sprintf("saved → %s/%d", label, bookmark.Seed))
+}
+
+func (m *Model) deleteLibrarySeed() {
+	if len(m.savedSeeds) == 0 {
+		return
+	}
+	rec := m.savedSeeds[m.libraryIdx]
+	m.savedSeeds = append([]savedSeedRecord(nil), removeSavedSeedRecord(m.savedSeeds, rec.Algo, rec.Seed)...)
+	if spec, ok := gen.Resolve(rec.Algo); ok && m.kept != nil {
+		delete(m.kept, bookmarkKey(spec, rec.Seed))
+	}
+	if m.libraryIdx >= len(m.savedSeeds) {
+		m.libraryIdx = maxInt(0, len(m.savedSeeds)-1)
+	}
+	if err := saveSavedSeedRecords(m.savedSeeds); err != nil {
+		m.flashStatus("library save failed", 3*time.Second)
+		return
+	}
+	if len(m.savedSeeds) == 0 {
+		m.flashStatus("library cleared", 2*time.Second)
+		return
+	}
+	m.flashStatus("removed saved seed", 2*time.Second)
 }
 
 func (m *Model) rejectSeed() {
@@ -284,6 +359,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyAudioState(msg)
 		return m, nil
 	case tea.KeyMsg:
+		if m.libraryVisible {
+			switch msg.String() {
+			case "q", "ctrl+c":
+				return m, tea.Quit
+			case "l", "esc":
+				m.toggleLibrary()
+			case "up":
+				m.moveLibrary(-1)
+			case "down":
+				m.moveLibrary(1)
+			case "enter":
+				m.recallLibrarySeed()
+			case "backspace", "delete", "x":
+				m.deleteLibrarySeed()
+			}
+			return m, nil
+		}
 		action := matchKey(msg)
 		if m.helpVisible && action != actionHelp && action != actionQuit {
 			return m, nil
@@ -336,10 +428,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case actionHelp:
 			m.helpVisible = !m.helpVisible
 			if m.helpVisible {
+				m.libraryVisible = false
 				m.flashStatus("help: on", 2*time.Second)
 			} else {
 				m.flashStatus("help: off", 2*time.Second)
 			}
+		case actionLibrary:
+			m.toggleLibrary()
 		case actionNextAlgo:
 			m.switchAlgo(1)
 		case actionPrevAlgo:
@@ -399,6 +494,8 @@ func (m Model) View() string {
 	body := scopeStr
 	if m.helpVisible {
 		body = helpPanel(m, innerW, innerH, theme)
+	} else if m.libraryVisible {
+		body = libraryPanel(m, innerW, innerH, theme)
 	}
 	if m.debugVisible {
 		debug := debugBar(m, innerW, theme)
@@ -535,6 +632,7 @@ func bottomBar(m Model, w int, theme ColorTheme) string {
 		fmt.Sprintf("[space] %s", state),
 		fmt.Sprintf("[↑↓] %d%%", m.volume),
 		fmt.Sprintf("[C] %s", Visuals[m.visualIdx].Name),
+		"[l] library",
 		"[?] help",
 	}
 	if m.recording {
@@ -557,6 +655,8 @@ func bottomBar(m Model, w int, theme ColorTheme) string {
 	hintParts = append(hintParts, "[q] quit")
 	if m.helpVisible {
 		hintParts = []string{"[?] close help", "[q] quit"}
+	} else if m.libraryVisible {
+		hintParts = []string{"[↑↓] browse", "[enter] load", "[delete] remove", "[l] close", "[q] quit"}
 	}
 	hint := strings.Join(hintParts, "   ")
 
@@ -583,7 +683,7 @@ func helpPanel(m Model, w, h int, theme ColorTheme) string {
 	lines := []string{
 		styleHelpLine(theme, false, "Playback", "[space] pause/resume   [↑↓] volume   [r] record"),
 		styleHelpLine(theme, false, "Look", "[C] visual   [c] theme   [d] debug"),
-		styleHelpLine(theme, false, "Seeds", "[[/]] browse   [a/b] store   [tab] compare   [k/x] keep/reject"),
+		styleHelpLine(theme, false, "Seeds", "[[/]] browse   [a/b] store   [tab] compare   [k/x] keep/reject   [l] library"),
 		styleHelpLine(theme, false, "Tracks", "[n/p] algorithm   [s] skip playlist track"),
 		styleHelpLine(theme, false, "Close", "[?] close this overlay   [q] quit"),
 	}
@@ -632,6 +732,53 @@ func filterHelpLines(lines []string, m Model) []string {
 		out = append(out, line)
 	}
 	return out
+}
+
+func libraryPanel(m Model, w, h int, theme ColorTheme) string {
+	bodyW := maxInt(28, minInt(w-6, 82))
+	bodyH := maxInt(10, minInt(h-2, 18))
+	lines := []string{
+		lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render("SAVED SEEDS"),
+		"",
+	}
+	if len(m.savedSeeds) == 0 {
+		lines = append(lines,
+			"No saved seeds yet.",
+			"",
+			lipgloss.NewStyle().Faint(true).Render("Press [k] while browsing seeds to keep one here."),
+		)
+	} else {
+		now := time.Now()
+		maxRows := maxInt(1, bodyH-5)
+		start := 0
+		if m.libraryIdx >= maxRows {
+			start = m.libraryIdx - maxRows + 1
+		}
+		end := minInt(len(m.savedSeeds), start+maxRows)
+		for i := start; i < end; i++ {
+			rec := m.savedSeeds[i]
+			_, label, ok := resolveSavedSeedRecord(rec)
+			entry := fmt.Sprintf("%s · %d · %s", label, rec.Seed, formatSavedSeedAge(now, rec.SavedAt))
+			if !ok {
+				entry += " · unavailable"
+			}
+			if i == m.libraryIdx {
+				entry = lipgloss.NewStyle().Foreground(theme.BarHi).Render("› " + entry)
+			} else {
+				entry = "  " + entry
+			}
+			lines = append(lines, entry)
+		}
+	}
+	lines = append(lines, "", lipgloss.NewStyle().Faint(true).Render("[↑↓] browse   [enter] load   [delete] remove   [l] close"))
+	panel := lipgloss.NewStyle().
+		Width(bodyW).
+		Height(bodyH).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(theme.BarFg).
+		Padding(1, 2).
+		Render(strings.Join(lines, "\n"))
+	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, panel)
 }
 
 func spaces(n int) string {

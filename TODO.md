@@ -4,7 +4,7 @@
 - [x] Auto-detect terminal color and adapt colors and controls.
 - [x] Improve alternate visualizers so they match the default scope's line-based design language.
 - [x] Add a `?` help overlay and reduce the always-visible footer chrome.
-- [ ] Persist kept seeds to disk and add a browsable saved-seed library overlay.
+- [x] Persist kept seeds to disk and add a browsable saved-seed library overlay.
 - [ ] Add a proper now-playing strip with elapsed time, playlist progress, crossfade countdown, and recording duration.
 - [ ] Add a compact audio meter and clip indicator.
 - [ ] Add a seed and track inspector overlay with algo, seed, A/B slots, kept count, chord, section, bar, and export actions.

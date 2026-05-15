@@ -57,12 +57,15 @@ func TestBottomBarLeavesRoomForStatus(t *testing.T) {
 		stickyStatus: "audio: starting...",
 		themes:       []ColorTheme{DefaultTheme()},
 	}
-	bar := bottomBar(m, 80, DefaultTheme())
+	bar := bottomBar(m, 120, DefaultTheme())
 	if !strings.Contains(bar, "audio: starting...") {
 		t.Fatalf("bottom bar missing status: %q", bar)
 	}
 	if !strings.Contains(bar, "[?] help") {
 		t.Fatalf("bottom bar should expose help entry point: %q", bar)
+	}
+	if !strings.Contains(bar, "[l] library") {
+		t.Fatalf("bottom bar should expose saved-seed library: %q", bar)
 	}
 	if strings.Contains(bar, "[[/]] seed") {
 		t.Fatalf("bottom bar should stay compact, got: %q", bar)
@@ -102,7 +105,7 @@ func TestHelpPanelShowsCoreControls(t *testing.T) {
 		themes:      []ColorTheme{DefaultTheme()},
 	}
 	panel := helpPanel(m, 90, 18, DefaultTheme())
-	for _, want := range []string{"TERMUS HELP", "Playback", "Seeds", "Tracks", "[?] close this overlay"} {
+	for _, want := range []string{"TERMUS HELP", "Playback", "Seeds", "[l] library", "Tracks", "[?] close this overlay"} {
 		if !strings.Contains(panel, want) {
 			t.Fatalf("help panel missing %q:\n%s", want, panel)
 		}
@@ -153,6 +156,23 @@ func TestSeedBrowserStoresAndTogglesAB(t *testing.T) {
 	}
 	if len(cmd.swaps) != 2 {
 		t.Fatalf("swap count = %d, want 2", len(cmd.swaps))
+	}
+}
+
+func TestLibraryPanelShowsSavedSeeds(t *testing.T) {
+	m := Model{
+		libraryVisible: true,
+		libraryIdx:     0,
+		savedSeeds: []savedSeedRecord{
+			{Algo: "ambient", Display: "Ambient", Seed: 42, SavedAt: time.Now().Add(-2 * time.Minute)},
+		},
+		themes: []ColorTheme{DefaultTheme()},
+	}
+	panel := libraryPanel(m, 90, 18, DefaultTheme())
+	for _, want := range []string{"SAVED SEEDS", "Ambient", "42", "[enter] load"} {
+		if !strings.Contains(panel, want) {
+			t.Fatalf("library panel missing %q:\n%s", want, panel)
+		}
 	}
 }
 
