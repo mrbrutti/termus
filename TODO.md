@@ -62,3 +62,11 @@
 - [x] Add tempo-aware rhythmic controls for groove-based genres and phrase-length controls for ambient-style genres behind the same panel.
 - [x] Add explicit audio recovery controls such as retry live audio and render-only fallback actions behind the panel.
 - [x] Improve endings with graceful cadences and export outros so rendered tracks stop feeling abruptly truncated.
+
+## Control Center Redesign
+
+- [ ] Make the default bottom status bar nearly empty, showing only the current music type plus very light `?` / `m` affordances and transient center status.
+- [ ] Rewrite the `?` help overlay so it teaches the two-layer model (`play view` + `control center`) instead of listing the full hotkey inventory.
+- [ ] Expand the control center from the current tabbed overlay into a left-nav general menu with sections for now, look, music, seeds, library, export, audio, and debug.
+- [ ] Move current overlay-first actions such as visual/theme switching, library browsing, export actions, debug toggles, and seed curation under the control center so the main interface stays minimal.
+- [ ] Reduce the visible global interaction model to the essential keys (`space`, `↑↓`, `m`, `?`, `q`) while keeping deeper actions discoverable inside the control center.
