@@ -413,6 +413,7 @@ func (a *Chill) Seed(seedVal int64) {
 	// over hours" is the lower half of that range. We were at 75 — drop to
 	// 65 nominal for a noticeably slower, deeper feel.
 	bpm := 61.0 + 8.0*a.rng.Float64()
+	bpm *= TempoScale(profileOrDefault(a.profile))
 	beatSec := 60.0 / bpm
 	barSec := beatSec * 4
 	a.barSamples = secondsToSamples(barSec)

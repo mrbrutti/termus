@@ -59,6 +59,6 @@
 - [x] Add favorites, ratings, tags, recent history, and best-takes browsing for seeds so curation can happen inside the app instead of only through raw seed numbers.
 - [x] Add live musical controls behind the panel, including density, brightness, swing, reverb, motion, and drone-depth style macros where the active algorithm supports them.
 - [ ] Add live seed morphing so the app can glide between takes instead of only hard-switching seeds.
-- [ ] Add tempo-aware rhythmic controls for groove-based genres and phrase-length controls for ambient-style genres behind the same panel.
+- [x] Add tempo-aware rhythmic controls for groove-based genres and phrase-length controls for ambient-style genres behind the same panel.
 - [ ] Add explicit audio recovery controls such as retry live audio and render-only fallback actions behind the panel.
 - [ ] Improve endings with graceful cadences and export outros so rendered tracks stop feeling abruptly truncated.

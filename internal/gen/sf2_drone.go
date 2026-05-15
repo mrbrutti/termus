@@ -82,6 +82,8 @@ func (a *SF2Drone) currentRoot() int { return a.rootMidi + a.keyOffset }
 
 func (a *SF2Drone) ApplyControlProfile(profile ControlProfile) { a.profile = profileOrDefault(profile) }
 
+func (a *SF2Drone) phraseScale() float64 { return PhraseScale(profileOrDefault(a.profile)) }
+
 func (a *SF2Drone) Seed(seedVal int64) {
 	a.rng = rand.New(rand.NewSource(seedVal)) //nolint:gosec
 	a.rootMidi = 30 + a.rng.Intn(7)           // Bb1..E2 — very low pedal
@@ -91,6 +93,7 @@ func (a *SF2Drone) Seed(seedVal int64) {
 	a.chords = droneCycles[a.rng.Intn(len(droneCycles))]
 	a.shimmerMotifs = a.makeShimmerMotifs()
 	a.scheduleNextChord()
+	phraseScale := a.phraseScale()
 	a.syncSection()
 
 	core, err := newSF2Core(a.sf, 3.6, seedVal)
@@ -141,7 +144,7 @@ func (a *SF2Drone) Seed(seedVal int64) {
 
 	// --- Bowed glass drone bed: 2 voices on long incommensurate periods.
 	// Fewer voices, longer periods = more space + clearer harmonic identity.
-	for ti, period := range []float64{53.3, 79.1} {
+	for ti, period := range []float64{53.3 * phraseScale, 79.1 * phraseScale} {
 		voice := ti
 		core.addTrack(SF2Track{
 			Channel: 0, Velocity: 52, Notes: []int{a.droneTone(voice, 0)},
@@ -159,7 +162,7 @@ func (a *SF2Drone) Seed(seedVal int64) {
 	}
 
 	// --- Synth strings parallel layer: 2 voices, slightly higher register.
-	for ti, period := range []float64{61.7, 89.3} {
+	for ti, period := range []float64{61.7 * phraseScale, 89.3 * phraseScale} {
 		voice := ti
 		core.addTrack(SF2Track{
 			Channel: 1, Velocity: 46, Notes: []int{a.droneTone(voice, 12)},
@@ -179,7 +182,7 @@ func (a *SF2Drone) Seed(seedVal int64) {
 	// --- Choir aahs: 1 voice in the upper register, very sparse.
 	core.addTrack(SF2Track{
 		Channel: 2, Velocity: 44, Notes: []int{a.choirTone(1)},
-		PeriodSec: 71.7, Phase01: a.rng.Float64(),
+		PeriodSec: 71.7 * phraseScale, Phase01: a.rng.Float64(),
 		MutationRate:       0.30,
 		MutateOne:          func(_ int, _ int) int { return a.choirTone(1) },
 		ResolveNote:        func(_ int, _ int) int { return a.choirTone(1) },
@@ -196,7 +199,7 @@ func (a *SF2Drone) Seed(seedVal int64) {
 	shimmerSlots := make([]int, len(a.shimmerMotifs.A))
 	core.addTrack(SF2Track{
 		Channel: 3, Velocity: 38, Notes: shimmerSlots,
-		PeriodSec: 91.1, Phase01: a.rng.Float64(),
+		PeriodSec: 91.1 * phraseScale, Phase01: a.rng.Float64(),
 		ResolveNote:        func(slot int, _ int) int { return a.shimmerNote(slot) },
 		ResolveModWheel:    func(slot int, key int) SF2ExpressionCurve { return gentleVibratoCurve(0, 12, 6) },
 		ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(92, 108, 94) },
@@ -209,7 +212,7 @@ func (a *SF2Drone) Seed(seedVal int64) {
 	// --- Sub-bass pedal: holds the chord root the entire chord cycle.
 	core.addTrack(SF2Track{
 		Channel: 4, Velocity: 56, Notes: []int{a.bassRoot()},
-		PeriodSec: 60.0, Phase01: 0,
+		PeriodSec: 60.0 * phraseScale, Phase01: 0,
 		MutationRate:   0.60,
 		MutateOne:      func(_ int, _ int) int { return a.bassRoot() },
 		ResolveNote:    func(_ int, _ int) int { return a.bassRoot() },
@@ -280,7 +283,7 @@ func (a *SF2Drone) shimmerNote(slot int) int {
 
 func (a *SF2Drone) scheduleNextChord() {
 	// 90–150 s per chord — even slower than ambient.
-	secs := 90.0 + 60.0*a.rng.Float64()
+	secs := (90.0 + 60.0*a.rng.Float64()) * a.phraseScale()
 	a.nextChordAt = a.samplesElapsed + int64(secs*44100)
 }
 

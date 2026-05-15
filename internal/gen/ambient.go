@@ -112,6 +112,8 @@ func (a *Ambient) currentRoot() int { return a.rootMidi + a.keyOffset }
 
 func (a *Ambient) ApplyControlProfile(profile ControlProfile) { a.profile = profileOrDefault(profile) }
 
+func (a *Ambient) phraseScale() float64 { return PhraseScale(profileOrDefault(a.profile)) }
+
 func (a *Ambient) Seed(seedVal int64) {
 	a.rng = rand.New(rand.NewSource(seedVal)) //nolint:gosec
 	// Root in the bass register so chord tones can stack upward through the
@@ -128,6 +130,7 @@ func (a *Ambient) Seed(seedVal int64) {
 	a.bellMotifs = a.makeBellMotifs()
 	a.celestaMotifs = a.makeCelestaMotifs()
 	a.scheduleNextChord()
+	phraseScale := a.phraseScale()
 
 	bellsStart := true
 	celestaStart := true
@@ -190,7 +193,7 @@ func (a *Ambient) Seed(seedVal int64) {
 	// --- String pad: 2-voice spread. Periods chosen from Eno's documented
 	// Music for Airports loop lengths (19.8s, 25.7s) — coprime in seconds
 	// so they never realign within the listener's attention window.
-	for ti, period := range []float64{19.8, 25.7} {
+	for ti, period := range []float64{19.8 * phraseScale, 25.7 * phraseScale} {
 		voice := ti
 		core.addTrack(SF2Track{
 			Channel: 0, Velocity: 56, Notes: []int{a.padNote(voice, 0)},
@@ -207,7 +210,7 @@ func (a *Ambient) Seed(seedVal int64) {
 		})
 	}
 	// Warm pad layered in parallel — also documented Eno periods.
-	for ti, period := range []float64{23.6, 31.0} {
+	for ti, period := range []float64{23.6 * phraseScale, 31.0 * phraseScale} {
 		voice := ti
 		core.addTrack(SF2Track{
 			Channel: 1, Velocity: 50, Notes: []int{a.padNote(voice, 0)},
@@ -228,7 +231,7 @@ func (a *Ambient) Seed(seedVal int64) {
 	// Eno-documented loop length).
 	core.addTrack(SF2Track{
 		Channel: 2, Velocity: 48, Notes: []int{a.choirNote(0)},
-		PeriodSec: 29.2, Phase01: a.rng.Float64(),
+		PeriodSec: 29.2 * phraseScale, Phase01: a.rng.Float64(),
 		MutationRate:       0.35,
 		MutateOne:          func(_ int, _ int) int { return a.choirNote(0) },
 		ResolveNote:        func(_ int, _ int) int { return a.choirNote(0) },
@@ -243,7 +246,7 @@ func (a *Ambient) Seed(seedVal int64) {
 	// --- Tubular bell motif: three canon-like loop voices sharing one contour
 	// but offset against each other. The contour stays recognizable while the
 	// actual notes are resolved against the current chord at fire time.
-	bellPeriods := []float64{25.7, 31.0, 36.1}
+	bellPeriods := []float64{25.7 * phraseScale, 31.0 * phraseScale, 36.1 * phraseScale}
 	for ti, period := range bellPeriods {
 		voice := ti
 		bellSlots := make([]int, len(a.bellContour))
@@ -263,7 +266,7 @@ func (a *Ambient) Seed(seedVal int64) {
 	celestaSlots := make([]int, len(a.celestaContour))
 	core.addTrack(SF2Track{
 		Channel: 4, Velocity: 44, Notes: celestaSlots,
-		PeriodSec: 53.7, Phase01: a.rng.Float64(),
+		PeriodSec: 53.7 * phraseScale, Phase01: a.rng.Float64(),
 		ResolveNote:        func(slot int, _ int) int { return a.celestaNote(slot) },
 		ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(104, 122, 108) },
 		ResolveDetuneCents: slotDetunePattern(1, -2, 0, 2),
@@ -276,7 +279,7 @@ func (a *Ambient) Seed(seedVal int64) {
 	// bottom of the register so the texture has a foundation.
 	core.addTrack(SF2Track{
 		Channel: 5, Velocity: 60, Notes: []int{a.bassRoot()},
-		PeriodSec: 41.7, Phase01: 0,
+		PeriodSec: 41.7 * phraseScale, Phase01: 0,
 		MutationRate:   0.50,
 		MutateOne:      func(_ int, _ int) int { return a.bassRoot() },
 		ResolveNote:    func(_ int, _ int) int { return a.bassRoot() },
@@ -381,13 +384,13 @@ func (a *Ambient) bassRoot() int {
 
 func (a *Ambient) scheduleNextChord() {
 	// 45-75 seconds per chord — very slow harmonic motion.
-	secs := 45.0 + 30.0*a.rng.Float64()
+	secs := (45.0 + 30.0*a.rng.Float64()) * a.phraseScale()
 	a.nextChordAt = a.samplesElapsed + int64(secs*44100)
 }
 
 func (a *Ambient) scheduleNextSection() {
 	// 2–4 min between section toggles (which ornaments are on).
-	secs := 120.0 + 120.0*a.rng.Float64()
+	secs := (120.0 + 120.0*a.rng.Float64()) * a.phraseScale()
 	a.nextSectionAt = a.samplesElapsed + int64(secs*44100)
 }
 

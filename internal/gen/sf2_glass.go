@@ -70,6 +70,8 @@ func (a *SF2Glass) currentRoot() int { return a.rootMidi + a.keyOffset }
 
 func (a *SF2Glass) ApplyControlProfile(profile ControlProfile) { a.profile = profileOrDefault(profile) }
 
+func (a *SF2Glass) phraseScale() float64 { return PhraseScale(profileOrDefault(a.profile)) }
+
 func (a *SF2Glass) Seed(seedVal int64) {
 	a.rng = rand.New(rand.NewSource(seedVal)) //nolint:gosec
 	a.rootMidi = 48 + a.rng.Intn(7)           // C3..F#3
@@ -98,6 +100,7 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	a.celestaMotifs = a.makeCelestaMotifs()
 	a.musicBoxMotifs = a.makeMusicBoxMotifs()
 	a.scheduleNextChord()
+	phraseScale := a.phraseScale()
 
 	musicBoxStart := true
 	a.musicBoxOn = &musicBoxStart
@@ -165,7 +168,7 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	bellSlots := make([]int, len(a.bellContour))
 	core.addTrack(SF2Track{
 		Channel: 0, Velocity: 72, Notes: bellSlots,
-		PeriodSec: 21.7, Phase01: a.rng.Float64(),
+		PeriodSec: 21.7 * phraseScale, Phase01: a.rng.Float64(),
 		ResolveNote:        func(slot int, _ int) int { return a.bellPhraseNote(slot) },
 		ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(112, 124, 114) },
 		ResolveDetuneCents: slotDetunePattern(0, 2, -2, 3),
@@ -178,7 +181,7 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	celestaSlots := make([]int, len(a.celestaContour))
 	core.addTrack(SF2Track{
 		Channel: 1, Velocity: 56, Notes: celestaSlots,
-		PeriodSec: 29.7, Phase01: a.rng.Float64(),
+		PeriodSec: 29.7 * phraseScale, Phase01: a.rng.Float64(),
 		ResolveNote:        func(slot int, _ int) int { return a.celestaPhraseNote(slot) },
 		ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(108, 124, 110) },
 		ResolveDetuneCents: slotDetunePattern(1, -1, 2, -2),
@@ -190,7 +193,7 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	// long period, just the chord's brightest tone.
 	core.addTrack(SF2Track{
 		Channel: 2, Velocity: 48, Notes: []int{a.bellNote(0, 24)},
-		PeriodSec: 37.3, Phase01: a.rng.Float64(),
+		PeriodSec: 37.3 * phraseScale, Phase01: a.rng.Float64(),
 		MutationRate:       0.40,
 		MutateOne:          func(_ int, _ int) int { return a.bellNote(0, 24) },
 		ResolveNote:        func(_ int, _ int) int { return a.bellNote(0, 24) },
@@ -207,7 +210,7 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	musicBoxSlots := make([]int, len(a.musicBoxContour)+2)
 	core.addTrack(SF2Track{
 		Channel: 3, Velocity: 44, Notes: musicBoxSlots,
-		PeriodSec: 43.1, Phase01: a.rng.Float64(),
+		PeriodSec: 43.1 * phraseScale, Phase01: a.rng.Float64(),
 		ResolveNote: func(slot int, _ int) int {
 			if slot%len(musicBoxSlots) >= len(a.musicBoxMotifs.PhraseFor(a.section.Kind)) {
 				return -1
@@ -222,7 +225,7 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	})
 
 	// --- Warm pad bed: 2 voices spread, sustained, slow retrigger.
-	for ti, period := range []float64{31.3, 43.7} {
+	for ti, period := range []float64{31.3 * phraseScale, 43.7 * phraseScale} {
 		voice := ti
 		core.addTrack(SF2Track{
 			Channel: 4, Velocity: 44, Notes: []int{a.padNote(voice)},
@@ -242,7 +245,7 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	// --- Choir aahs: 1 voice in upper register, very slow.
 	core.addTrack(SF2Track{
 		Channel: 5, Velocity: 40, Notes: []int{a.padNote(1) + 12},
-		PeriodSec: 53.9, Phase01: a.rng.Float64(),
+		PeriodSec: 53.9 * phraseScale, Phase01: a.rng.Float64(),
 		MutationRate:       0.35,
 		MutateOne:          func(_ int, _ int) int { return a.padNote(1) + 12 },
 		ResolveNote:        func(_ int, _ int) int { return a.padNote(1) + 12 },
@@ -257,7 +260,7 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	// --- Sub-bass pedal: holds the chord root.
 	core.addTrack(SF2Track{
 		Channel: 6, Velocity: 60, Notes: []int{a.bassRoot()},
-		PeriodSec: 51.3, Phase01: 0,
+		PeriodSec: 51.3 * phraseScale, Phase01: 0,
 		MutationRate:   0.50,
 		MutateOne:      func(_ int, _ int) int { return a.bassRoot() },
 		ResolveNote:    func(_ int, _ int) int { return a.bassRoot() },
@@ -351,12 +354,12 @@ func (a *SF2Glass) bassRoot() int {
 
 func (a *SF2Glass) scheduleNextChord() {
 	// 40-70 s per chord — slow but noticeable harmonic shifts.
-	secs := 40.0 + 30.0*a.rng.Float64()
+	secs := (40.0 + 30.0*a.rng.Float64()) * a.phraseScale()
 	a.nextChordAt = a.samplesElapsed + int64(secs*44100)
 }
 
 func (a *SF2Glass) scheduleNextSection() {
-	secs := 90.0 + 90.0*a.rng.Float64()
+	secs := (90.0 + 90.0*a.rng.Float64()) * a.phraseScale()
 	a.nextSectionAt = a.samplesElapsed + int64(secs*44100)
 }
 

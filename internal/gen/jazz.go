@@ -283,6 +283,7 @@ func (a *Jazz) Seed(seedVal int64) {
 
 	// Tempo: 120–148 BPM medium swing.
 	bpm := 120.0 + 28.0*a.rng.Float64()
+	bpm *= TempoScale(profileOrDefault(a.profile))
 	beatSec := 60.0 / bpm
 	barSec := beatSec * 4
 	a.barSamples = secondsToSamples(barSec)

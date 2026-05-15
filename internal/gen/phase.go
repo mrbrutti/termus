@@ -56,6 +56,8 @@ func (a *Phase) currentRoot() int { return a.rootMidi + a.keyOffset }
 
 func (a *Phase) ApplyControlProfile(profile ControlProfile) { a.profile = profileOrDefault(profile) }
 
+func (a *Phase) phraseScale() float64 { return PhraseScale(profileOrDefault(a.profile)) }
+
 func (a *Phase) Seed(seedVal int64) {
 	a.rng = rand.New(rand.NewSource(seedVal)) //nolint:gosec
 	a.rootMidi = 48 + a.rng.Intn(7)           // C3..F#3
@@ -76,6 +78,7 @@ func (a *Phase) Seed(seedVal int64) {
 	a.crotalesMotifs = a.makeCrotalesMotifs()
 	a.currentChordIdx = 0
 	a.scheduleNextChord()
+	phraseScale := a.phraseScale()
 	a.syncSection()
 
 	core, err := newSF2Core(a.sf, 2.8, seedVal)
@@ -138,7 +141,7 @@ func (a *Phase) Seed(seedVal int64) {
 	figureSlots := make([]int, len(a.phaseFigure))
 
 	// Cycle period: 6.5–8.5 s for the 8-note pattern → ~1 note per second-ish.
-	basePeriod := 6.5 + 2.0*a.rng.Float64()
+	basePeriod := (6.5 + 2.0*a.rng.Float64()) * phraseScale
 	// Drift ratio: voice B's period is 0.7% shorter than voice A's, so each
 	// pass voice B "gains" ~0.05 s. After many minutes they fully wrap around.
 	const driftRatio = 0.993
@@ -171,7 +174,7 @@ func (a *Phase) Seed(seedVal int64) {
 		v := voice
 		core.addTrack(SF2Track{
 			Channel: 2, Velocity: 38, Notes: []int{a.padTone(v)},
-			PeriodSec: 19.3 + 9*float64(v), Phase01: a.rng.Float64(),
+			PeriodSec: (19.3 + 9*float64(v)) * phraseScale, Phase01: a.rng.Float64(),
 			MutationRate:       0.40,
 			MutateOne:          func(_ int, _ int) int { return a.padTone(v) },
 			ResolveNote:        func(_ int, _ int) int { return a.padTone(v) },
@@ -187,7 +190,7 @@ func (a *Phase) Seed(seedVal int64) {
 	// --- FM-EP harmonic backing: 1 voice in upper register (thinned from 2).
 	core.addTrack(SF2Track{
 		Channel: 3, Velocity: 36, Notes: []int{a.padTone(1) + 12},
-		PeriodSec: 27.3, Phase01: a.rng.Float64(),
+		PeriodSec: 27.3 * phraseScale, Phase01: a.rng.Float64(),
 		MutationRate:       0.30,
 		MutateOne:          func(_ int, _ int) int { return a.padTone(1) + 12 },
 		ResolveNote:        func(_ int, _ int) int { return a.padTone(1) + 12 },
@@ -202,7 +205,7 @@ func (a *Phase) Seed(seedVal int64) {
 	// --- Sub-bass pedal: chord root, very slow retrigger.
 	core.addTrack(SF2Track{
 		Channel: 4, Velocity: 60, Notes: []int{a.bassRoot()},
-		PeriodSec: 41.7, Phase01: 0,
+		PeriodSec: 41.7 * phraseScale, Phase01: 0,
 		MutationRate:   0.50,
 		MutateOne:      func(_ int, _ int) int { return a.bassRoot() },
 		ResolveNote:    func(_ int, _ int) int { return a.bassRoot() },
@@ -215,7 +218,7 @@ func (a *Phase) Seed(seedVal int64) {
 	crotalesSlots := make([]int, len(a.crotalesMotifs.A))
 	core.addTrack(SF2Track{
 		Channel: 5, Velocity: 40, Notes: crotalesSlots,
-		PeriodSec: 47.3, Phase01: a.rng.Float64(),
+		PeriodSec: 47.3 * phraseScale, Phase01: a.rng.Float64(),
 		ResolveNote:        func(slot int, _ int) int { return a.crotalesNote(slot) },
 		ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(118, 127, 120) },
 		ResolveDetuneCents: slotDetunePattern(0, 2, -2, 3),
@@ -306,7 +309,7 @@ func (a *Phase) crotalesNote(slot int) int {
 func (a *Phase) scheduleNextChord() {
 	// 50-80 s per chord — slow enough to feel static, fast enough to feel
 	// motion over a few minutes.
-	secs := 50.0 + 30.0*a.rng.Float64()
+	secs := (50.0 + 30.0*a.rng.Float64()) * a.phraseScale()
 	a.nextChordAt = a.samplesElapsed + int64(secs*44100)
 }
 

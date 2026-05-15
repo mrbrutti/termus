@@ -174,6 +174,9 @@ func (m *Model) loadSelectedSession() {
 		m.volume = rec.Volume
 		m.cmd.SetVolume(rec.Volume)
 	}
+	if rec.Controls == (gen.ControlProfile{}) {
+		rec.Controls = gen.DefaultControlProfile()
+	}
 	*m.ensureMusicProfile() = rec.Controls
 	spec, resolved := gen.Resolve(rec.Algo)
 	if !resolved {

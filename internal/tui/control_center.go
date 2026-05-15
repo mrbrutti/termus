@@ -152,6 +152,26 @@ func (m Model) controlItems() []controlItem {
 					})
 				},
 			},
+			{
+				Title: "tempo",
+				Value: macroLabel(profile.Tempo, []string{"slower", "laid back", "natural", "driven", "urgent"}),
+				Hint:  "rhythmic genres",
+				Adjust: func(m *Model, delta int) {
+					m.updateMusicProfile("tempo", func(profile *gen.ControlProfile) {
+						profile.Tempo += delta
+					})
+				},
+			},
+			{
+				Title: "phrase length",
+				Value: macroLabel(profile.Phrase, []string{"short", "trim", "natural", "long", "floating"}),
+				Hint:  "ambient textures",
+				Adjust: func(m *Model, delta int) {
+					m.updateMusicProfile("phrase length", func(profile *gen.ControlProfile) {
+						profile.Phrase += delta
+					})
+				},
+			},
 		}
 	case controlTabCurate:
 		rec, ok := m.currentSeedRecord()
