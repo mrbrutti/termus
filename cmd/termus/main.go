@@ -24,7 +24,9 @@ func main() {
 		"algorithm: eno | drone | glass | pentatonic | markov | sf2 | "+
 			"eno-sf2 | drone-sf2 | glass-sf2 | pentatonic-sf2 | markov-sf2 | phase | chill")
 	initialVol := flag.Int("volume", 70, "initial volume 0..100")
-	sf2Path := flag.String("sf2", "", "path to SoundFont file for the sf2 algorithm (default: auto-download GeneralUser-GS.sf2, ~32 MB)")
+	sf2Path := flag.String("sf2", "", "path to SoundFont file (overrides --sf2-preset)")
+	sf2Preset := flag.String("sf2-preset", "general",
+		"SoundFont preset: 'general' (32 MB GeneralUser-GS, balanced) | 'sgm' (325 MB, much better piano/guitar/bass)")
 	irPath := flag.String("ir", "", "convolution IR: WAV file path, or preset name: room | hall | cathedral | plate")
 	irWet := flag.Float64("ir-wet", 0.40, "convolution wet mix 0..1 when --ir is provided")
 	flag.Parse()
@@ -50,8 +52,14 @@ func main() {
 		// Resolve the SoundFont: --sf2 overrides, otherwise auto-download.
 		path := *sf2Path
 		if path == "" {
-			fmt.Fprintln(os.Stderr, "preparing SoundFont (GeneralUser-GS.sf2, ~32 MB on first run, cached thereafter)...")
-			p, err := sf2.EnsureDefault(func(done, total int64) {
+			preset, ok := sf2.Presets[*sf2Preset]
+			if !ok {
+				fmt.Fprintf(os.Stderr, "unknown --sf2-preset %q\n", *sf2Preset)
+				os.Exit(2)
+			}
+			fmt.Fprintf(os.Stderr, "preparing SoundFont preset %q (%s, ~%d MB on first run)...\n",
+				preset.Name, preset.FileName, preset.SizeMB)
+			p, err := sf2.EnsurePreset(*sf2Preset, func(done, total int64) {
 				if total > 0 {
 					fmt.Fprintf(os.Stderr, "\r  %d / %d bytes", done, total)
 				}

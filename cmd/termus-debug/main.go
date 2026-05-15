@@ -22,7 +22,8 @@ func main() {
 	algoName := flag.String("algo", "eno",
 		"algorithm: eno|drone|glass|pentatonic|markov|sf2|"+
 			"eno-sf2|drone-sf2|glass-sf2|pentatonic-sf2|markov-sf2")
-	sf2Path := flag.String("sf2", "", "SoundFont path for the sf2 algorithm (default: auto-download)")
+	sf2Path := flag.String("sf2", "", "SoundFont path (overrides --sf2-preset)")
+	sf2Preset := flag.String("sf2-preset", "general", "SoundFont preset: general | sgm")
 	irPath := flag.String("ir", "", "convolution IR WAV path, or 'synthetic'")
 	irWet := flag.Float64("ir-wet", 0.40, "convolution wet mix 0..1")
 	flag.Parse()
@@ -42,7 +43,7 @@ func main() {
 	case "sf2", "eno-sf2", "drone-sf2", "glass-sf2", "pentatonic-sf2", "markov-sf2", "phase", "chill":
 		path := *sf2Path
 		if path == "" {
-			p, err := sf2.EnsureDefault(nil)
+			p, err := sf2.EnsurePreset(*sf2Preset, nil)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "sf2 setup failed:", err)
 				os.Exit(1)

@@ -28,7 +28,18 @@ cd termus
 go run ./cmd/termus
 ```
 
-First run with a SoundFont-based algorithm (`--algo sf2`, `eno-sf2`, etc.) auto-downloads a ~32 MB high-quality GM SoundFont (`GeneralUser-GS.sf2` by S. Christian Collins, MIT-licensed) to `~/Library/Caches/termus/soundfonts/` (or the OS equivalent). Use `--sf2 /path/to/your.sf2` to provide your own.
+First run with a SoundFont-based algorithm (`--algo sf2`, `eno-sf2`, etc.) auto-downloads a SoundFont into `~/Library/Caches/termus/soundfonts/` (or the OS equivalent). Two curated presets:
+
+| Preset | Size | What it is |
+|-|-|-|
+| `general` (default) | 32 MB | **GeneralUser-GS** by S. Christian Collins. MIT. 261 instruments, 13 drum kits. Balanced. |
+| `sgm` | 325 MB | **SGM v2.01 NicePianosGuitarsBass** by Sergio Acuña. Substantially better piano/guitar/bass — best for `chill`, `pentatonic-sf2`, `markov-sf2`. ~10× the download. |
+
+```bash
+termus --algo chill              # default: GeneralUser-GS (32 MB)
+termus --algo chill --sf2-preset sgm   # audiophile: SGM (325 MB on first run)
+termus --algo chill --sf2 ~/Music/MyFavorite.sf2   # your own file
+```
 
 ## Algorithms
 

@@ -81,6 +81,7 @@ func main() {
 	case "markov":
 		algo = gen.NewMarkov()
 	case "sf2", "eno-sf2", "drone-sf2", "glass-sf2", "pentatonic-sf2", "markov-sf2", "phase", "chill":
+		// termus-headless is a diagnostic; just use the default preset.
 		p, err := sf2.EnsureDefault(nil)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "sf2 setup:", err)
