@@ -1,0 +1,104 @@
+name: release
+
+# Builds termus binaries for macOS (arm64 + amd64) and Linux (amd64) on every
+# v* tag push, then attaches them to the GitHub Release for that tag along
+# with a checksums.txt file.
+#
+# Homebrew picks these up via mrbrutti/homebrew-termus → Formula/termus.rb.
+# After this workflow finishes, run `scripts/update-homebrew-formula.sh` to
+# recompute SHA-256s and push a formula update to the tap repo.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: darwin-arm64
+            runner: macos-latest
+            goos: darwin
+            goarch: arm64
+          - target: darwin-amd64
+            runner: macos-13
+            goos: darwin
+            goarch: amd64
+          - target: linux-amd64
+            runner: ubuntu-latest
+            goos: linux
+            goarch: amd64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          TARGET: ${{ matrix.target }}
+          REF_NAME: ${{ github.ref_name }}
+          CGO_ENABLED: '1'
+        run: |
+          VERSION="${REF_NAME#v}"
+          OUT="termus_${VERSION}_${TARGET}"
+          mkdir -p dist
+          go build -trimpath \
+            -ldflags="-s -w -X main.version=${VERSION}" \
+            -o "dist/termus" \
+            ./cmd/termus
+          cd dist
+          tar czf "../${OUT}.tar.gz" termus
+          cd ..
+          # shasum works on both macOS and ubuntu-latest (perl-based).
+          shasum -a 256 "${OUT}.tar.gz" > "${OUT}.sha256"
+          ls -la "${OUT}.tar.gz" "${OUT}.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: termus-${{ matrix.target }}
+          path: |
+            termus_*.tar.gz
+            termus_*.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: github release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Aggregate checksums + list contents
+        run: |
+          cd artifacts
+          # Combine per-target .sha256 files into one checksums.txt and drop
+          # the individual files so the release page is tidy.
+          cat termus_*.sha256 > checksums.txt
+          rm termus_*.sha256
+          ls -la
+
+      - name: Create / update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/termus_*.tar.gz
+            artifacts/checksums.txt
+          generate_release_notes: true
+          fail_on_unmatched_files: true
