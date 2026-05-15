@@ -148,7 +148,7 @@ func TestControlsPanelShowsTabbedOverlay(t *testing.T) {
 		themes:          []ColorTheme{DefaultTheme()},
 	}
 	panel := controlsPanel(m, 100, 22, DefaultTheme())
-	for _, want := range []string{"CONTROL CENTER", "MUSIC", "CURATE", "SESSIONS", "AUDIO", "density", "brightness", "reverb", "[tab] switch"} {
+	for _, want := range []string{"CONTROL CENTER", "NOW", "LOOK", "MUSIC", "SEEDS", "LIBRARY", "EXPORT", "AUDIO", "DEBUG", "density", "brightness", "reverb", "[tab] next section"} {
 		if !strings.Contains(panel, want) {
 			t.Fatalf("controls panel missing %q:\n%s", want, panel)
 		}
@@ -165,7 +165,7 @@ func TestControlsPanelShowsAudioRecoveryActions(t *testing.T) {
 		themes:          []ColorTheme{DefaultTheme()},
 	}
 	panel := controlsPanel(m, 100, 22, DefaultTheme())
-	for _, want := range []string{"CONTROL CENTER", "retry live audio", "render-only fallback", "debug inspector"} {
+	for _, want := range []string{"CONTROL CENTER", "retry live audio", "render-only fallback", "backend"} {
 		if !strings.Contains(panel, want) {
 			t.Fatalf("audio controls panel missing %q:\n%s", want, panel)
 		}
