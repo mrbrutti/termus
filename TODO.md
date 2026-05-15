@@ -2,6 +2,17 @@
 
 ## UI Improvements
 - [x] Auto-detect terminal color and adapt colors and controls.
+- [ ] Improve alternate visualizers so they match the default scope's line-based design language.
+- [ ] Add a `?` help overlay and reduce the always-visible footer chrome.
+- [ ] Persist kept seeds to disk and add a browsable saved-seed library overlay.
+- [ ] Add a proper now-playing strip with elapsed time, playlist progress, crossfade countdown, and recording duration.
+- [ ] Add a compact audio meter and clip indicator.
+- [ ] Add a seed and track inspector overlay with algo, seed, A/B slots, kept count, chord, section, bar, and export actions.
+- [ ] Add an in-TUI export drawer for record, WAV, stems, and MIDI actions.
+- [ ] Improve narrow-terminal behavior with a simplified compact layout.
+- [ ] Add a reduced-chrome mode.
+- [ ] Add a startup splash / onboarding screen for the core controls.
+- [ ] Add transient volume feedback as a thin symmetric line in the existing color scheme that appears only while volume changes.
 
 ## Music Realism
 
