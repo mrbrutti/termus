@@ -32,7 +32,8 @@ type Model struct {
 	status    string
 	statusTTL time.Time
 
-	themeIdx int // index into Themes
+	themeIdx  int // index into Themes
+	visualIdx int // index into Visuals
 
 	// Algorithm switching ([n]/[p]).
 	genres   []gen.AlgoSpec // ordered list of switchable algorithms
@@ -176,6 +177,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.themeIdx = (m.themeIdx + 1) % len(Themes)
 			m.status = "theme: " + Themes[m.themeIdx].Name
 			m.statusTTL = time.Now().Add(2 * time.Second)
+		case actionVisual:
+			m.visualIdx = (m.visualIdx + 1) % len(Visuals)
+			m.status = "visual: " + Visuals[m.visualIdx].Name
+			m.statusTTL = time.Now().Add(2 * time.Second)
 		case actionNextAlgo:
 			m.switchAlgo(1)
 		case actionPrevAlgo:
@@ -202,11 +207,12 @@ func (m Model) View() string {
 	innerH := m.height - 2 // minus top + bottom bars
 	innerW := m.width
 
-	// Snapshot scope and render with the active theme.
+	// Snapshot scope and render with the active visual + theme.
 	samples := make([]float64, innerW*2)
 	m.ring.Snapshot(samples)
 	theme := Themes[m.themeIdx]
-	scopeStr := RenderBrailleThemed(samples, innerW, innerH, theme)
+	visual := Visuals[m.visualIdx]
+	scopeStr := visual.Render(samples, innerW, innerH, theme)
 
 	top := topBar(m, innerW, theme)
 	bottom := bottomBar(m, innerW, theme)
@@ -240,8 +246,8 @@ func bottomBar(m Model, w int, theme ColorTheme) string {
 	if m.paused {
 		state = "PAUSED"
 	}
-	hint := fmt.Sprintf("[space] %s   [↑↓] vol %d%%   [r] rec   [c] %s",
-		state, m.volume, theme.Name)
+	hint := fmt.Sprintf("[space] %s   [↑↓] vol %d%%   [r] rec   [c] %s   [C] %s",
+		state, m.volume, theme.Name, Visuals[m.visualIdx].Name)
 	if len(m.genres) > 1 {
 		hint += "   [n/p] algo"
 	}
