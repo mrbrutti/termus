@@ -42,6 +42,29 @@ func TestSpectrumQuietSignalIsMostlyEmpty(t *testing.T) {
 	}
 }
 
+func TestAlternateVisualsUseBrailleTexture(t *testing.T) {
+	samples := testSamples(2048)
+	ctx := RenderContext{Theme: DefaultTheme()}
+	for _, v := range Visuals[1:] {
+		out := v.Render(samples, 60, 10, ctx)
+		hasBraille := false
+		for _, r := range out {
+			if r >= 0x2801 && r <= 0x28FF {
+				hasBraille = true
+				break
+			}
+		}
+		if !hasBraille {
+			t.Fatalf("%s: expected braille-style texture, got:\n%s", v.Name, out)
+		}
+		for _, glyph := range []rune{'█', '▇', '▆', '▅', '▄', '▃', '▂', '▁'} {
+			if strings.ContainsRune(out, glyph) {
+				t.Fatalf("%s: should avoid block-bar glyph %q, got:\n%s", v.Name, string(glyph), out)
+			}
+		}
+	}
+}
+
 func TestDetectAdaptiveUIForAscii(t *testing.T) {
 	ui := detectAdaptiveUIWith(termenv.Ascii, true)
 	if len(ui.Themes) != 1 || ui.Themes[0].Name != "mono" {

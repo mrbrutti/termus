@@ -24,15 +24,14 @@ type RenderContext struct {
 // TUI cycles through them.
 var Visuals = []VisualStyle{
 	{Name: "scope", Render: RenderBrailleWithContext},
-	{Name: "spectrum", Render: RenderSpectrum},
-	{Name: "bars", Render: RenderBars},
-	{Name: "mirror", Render: RenderMirror},
+	{Name: "ridge", Render: RenderSpectrum},
+	{Name: "ribbon", Render: RenderBars},
+	{Name: "double", Render: RenderMirror},
 }
 
-// RenderSpectrum draws a frequency-domain magnitude plot using block-character
-// vertical bars. Computes a real FFT over the most-recent power-of-two prefix
-// of `samples`, log-binned into w bars; each bar's height is rendered with
-// block-element characters (▁▂▃…█).
+// RenderSpectrum draws the frequency-domain envelope as one continuous ridge
+// line rather than a bar chart, so it stays visually aligned with the default
+// scope view.
 func RenderSpectrum(samples []float64, w, h int, ctx RenderContext) string {
 	if w < 4 || h < 1 {
 		return "(too small)\n"
@@ -101,13 +100,30 @@ func RenderSpectrum(samples []float64, w, h int, ctx RenderContext) string {
 		bars[i] = nrm
 	}
 
-	return renderBarColumns(bars, h, ctx)
+	bars = smoothSeries(bars, 2)
+	grid := newDotGrid(w, h)
+	dotsX := len(grid[0])
+	dotsY := len(grid)
+	prevX, prevY := 0, dotsY-2
+	for px := 0; px < dotsX; px++ {
+		si := px * len(bars) / dotsX
+		if si >= len(bars) {
+			si = len(bars) - 1
+		}
+		y := dotsY - 2 - int(bars[si]*float64(dotsY-3))
+		if y < 0 {
+			y = 0
+		}
+		drawLine(grid, prevX, prevY, px, y)
+		plotThickDot(grid, px, y, 1)
+		prevX, prevY = px, y
+	}
+	return renderBrailleGrid(grid, w, h, ctx)
 }
 
-// RenderBars draws a stylized waveform: each column is a vertical bar whose
-// height is the peak |sample| in that column's slice of the buffer. Quieter
-// passages → shorter bars. Cheaper than the spectrum view and a nice
-// rest-state when you want less visual stimulation.
+// RenderBars draws a symmetric amplitude ribbon around the centerline. It uses
+// the same fine braille texture as the default scope, but reads as energy mass
+// rather than an instantaneous waveform.
 func RenderBars(samples []float64, w, h int, ctx RenderContext) string {
 	if w < 4 || h < 1 || len(samples) == 0 {
 		return blankCells(w, h)
@@ -135,131 +151,165 @@ func RenderBars(samples []float64, w, h int, ctx RenderContext) string {
 		}
 		bars[bx] = peak
 	}
-	return renderBarColumns(bars, h, ctx)
+	bars = smoothSeries(bars, 3)
+	grid := newDotGrid(w, h)
+	dotsX := len(grid[0])
+	dotsY := len(grid)
+	center := dotsY / 2
+	maxAmp := maxInt(2, dotsY/2-2)
+	prevTop, prevBottom := center, center
+	for px := 0; px < dotsX; px++ {
+		si := px * len(bars) / dotsX
+		if si >= len(bars) {
+			si = len(bars) - 1
+		}
+		amp := 1 + int(bars[si]*float64(maxAmp))
+		top := center - amp
+		bottom := center + amp
+		drawLine(grid, maxInt(0, px-1), prevTop, px, top)
+		drawLine(grid, maxInt(0, px-1), prevBottom, px, bottom)
+		if amp <= 2 || px%4 == 0 {
+			drawLine(grid, px, top, px, bottom)
+		}
+		prevTop, prevBottom = top, bottom
+	}
+	return renderBrailleGrid(grid, w, h, ctx)
 }
 
-// RenderMirror draws the waveform symmetrically around the middle row, so the
-// top half plots the positive envelope of the signal and the bottom half
-// mirrors it downward. Visually emphasizes amplitude dynamics.
+// RenderMirror draws two synchronized waveform traces, one in the upper half
+// and one reflected below. It preserves the default scope's line quality while
+// creating a denser, more architectural composition.
 func RenderMirror(samples []float64, w, h int, ctx RenderContext) string {
 	if w < 4 || h < 1 || len(samples) == 0 {
 		return blankCells(w, h)
 	}
-	bars := make([]float64, w)
-	for bx := 0; bx < w; bx++ {
-		lo := bx * len(samples) / w
-		hi := (bx + 1) * len(samples) / w
-		if hi > len(samples) {
-			hi = len(samples)
+	grid := newDotGrid(w, h)
+	dotsX := len(grid[0])
+	dotsY := len(grid)
+	topCenter := dotsY / 4
+	bottomCenter := (3 * dotsY) / 4
+	span := maxInt(2, dotsY/4-2)
+	prevTopX, prevTopY := 0, topCenter
+	prevBottomX, prevBottomY := 0, bottomCenter
+	for px := 0; px < dotsX; px++ {
+		si := px * len(samples) / dotsX
+		if si >= len(samples) {
+			si = len(samples) - 1
 		}
-		var sumSq float64
+		s := samples[si]
+		if s > 1 {
+			s = 1
+		}
+		if s < -1 {
+			s = -1
+		}
+		topY := topCenter - int(s*float64(span))
+		bottomY := bottomCenter + int(s*float64(span))
+		drawLine(grid, prevTopX, prevTopY, px, topY)
+		drawLine(grid, prevBottomX, prevBottomY, px, bottomY)
+		plotThickDot(grid, px, topY, 1)
+		plotThickDot(grid, px, bottomY, 1)
+		prevTopX, prevTopY = px, topY
+		prevBottomX, prevBottomY = px, bottomY
+	}
+	return renderBrailleGrid(grid, w, h, ctx)
+}
+
+func newDotGrid(w, h int) [][]bool {
+	dotsX := 2 * w
+	dotsY := 4 * h
+	grid := make([][]bool, dotsY)
+	for i := range grid {
+		grid[i] = make([]bool, dotsX)
+	}
+	return grid
+}
+
+func renderBrailleGrid(grid [][]bool, w, h int, ctx RenderContext) string {
+	var b strings.Builder
+	for cy := 0; cy < h; cy++ {
+		for cx := 0; cx < w; cx++ {
+			r := brailleCell(grid, cx, cy)
+			b.WriteString(renderCell(r, cx, cy, w, h, ctx))
+		}
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+func plotDot(grid [][]bool, x, y int) {
+	if y < 0 || y >= len(grid) || len(grid) == 0 || x < 0 || x >= len(grid[0]) {
+		return
+	}
+	grid[y][x] = true
+}
+
+func plotThickDot(grid [][]bool, x, y, radius int) {
+	for dy := -radius; dy <= radius; dy++ {
+		plotDot(grid, x, y+dy)
+	}
+}
+
+func drawLine(grid [][]bool, x0, y0, x1, y1 int) {
+	dx := absInt(x1 - x0)
+	dy := -absInt(y1 - y0)
+	sx := -1
+	if x0 < x1 {
+		sx = 1
+	}
+	sy := -1
+	if y0 < y1 {
+		sy = 1
+	}
+	err := dx + dy
+	for {
+		plotDot(grid, x0, y0)
+		if x0 == x1 && y0 == y1 {
+			return
+		}
+		e2 := 2 * err
+		if e2 >= dy {
+			err += dy
+			x0 += sx
+		}
+		if e2 <= dx {
+			err += dx
+			y0 += sy
+		}
+	}
+}
+
+func smoothSeries(in []float64, radius int) []float64 {
+	if radius <= 0 || len(in) == 0 {
+		out := make([]float64, len(in))
+		copy(out, in)
+		return out
+	}
+	out := make([]float64, len(in))
+	for i := range in {
+		sum := 0.0
 		count := 0
-		for i := lo; i < hi; i++ {
-			sumSq += samples[i] * samples[i]
+		for j := i - radius; j <= i+radius; j++ {
+			if j < 0 || j >= len(in) {
+				continue
+			}
+			sum += in[j]
 			count++
 		}
 		if count == 0 {
+			out[i] = in[i]
 			continue
 		}
-		bars[bx] = math.Sqrt(sumSq / float64(count))
+		out[i] = sum / float64(count)
 	}
-	return renderMirrorColumns(bars, h, ctx)
+	return out
 }
 
-// renderBarColumns turns a w-long slice of [0,1] bar heights into a grid of
-// bottom-anchored bars using the 8-step block-element characters.
-func renderBarColumns(bars []float64, h int, ctx RenderContext) string {
-	w := len(bars)
-	const eighths = " ▁▂▃▄▅▆▇█"
-	runes := []rune(eighths)
-
-	// Compute, for each column, the height in eighths (0..8h).
-	hEighths := make([]int, w)
-	for i, v := range bars {
-		hEighths[i] = int(math.Round(v * float64(h*8)))
-		if hEighths[i] < 0 {
-			hEighths[i] = 0
-		}
-		if hEighths[i] > h*8 {
-			hEighths[i] = h * 8
-		}
+func absInt(v int) int {
+	if v < 0 {
+		return -v
 	}
-
-	var b strings.Builder
-	for cy := 0; cy < h; cy++ {
-		// Row 0 is the top — we want the bar to grow from the bottom.
-		rowFromBottom := h - 1 - cy
-		rowStart := rowFromBottom * 8
-		for cx := 0; cx < w; cx++ {
-			level := hEighths[cx] - rowStart
-			if level < 0 {
-				level = 0
-			}
-			if level > 8 {
-				level = 8
-			}
-			b.WriteString(renderCell(runes[level], cx, cy, w, h, ctx))
-		}
-		b.WriteByte('\n')
-	}
-	return b.String()
-}
-
-// renderMirrorColumns draws each column as a bar that grows up from the
-// midline AND down from it — a symmetric envelope shape. Bottom half uses
-// graduated 8th-block characters (smooth); top half uses full/empty cells
-// (block elements don't have a clean top-anchored 8-step variant).
-func renderMirrorColumns(bars []float64, h int, ctx RenderContext) string {
-	w := len(bars)
-	const eighths = " ▁▂▃▄▅▆▇█"
-	runesBot := []rune(eighths)
-	half := h / 2
-
-	hCells := make([]int, w) // bar height in whole cells (top half uses this)
-	hEighths := make([]int, w)
-	for i, v := range bars {
-		eight := int(math.Round(v * float64(half*8)))
-		if eight < 0 {
-			eight = 0
-		}
-		if eight > half*8 {
-			eight = half * 8
-		}
-		hEighths[i] = eight
-		hCells[i] = eight / 8 // round-down whole cells for top
-	}
-
-	var b strings.Builder
-	for cy := 0; cy < h; cy++ {
-		for cx := 0; cx < w; cx++ {
-			var ch rune
-			switch {
-			case cy < half:
-				// Top half: full block if covered, space otherwise.
-				rowFromCenter := half - cy
-				if rowFromCenter <= hCells[cx] {
-					ch = '█'
-				} else {
-					ch = ' '
-				}
-			default:
-				// Bottom half: bar growing from midline downward.
-				rowFromCenter := cy - half
-				rowStart := rowFromCenter * 8
-				level := hEighths[cx] - rowStart
-				if level < 0 {
-					level = 0
-				}
-				if level > 8 {
-					level = 8
-				}
-				ch = runesBot[level]
-			}
-			b.WriteString(renderCell(ch, cx, cy, w, h, ctx))
-		}
-		b.WriteByte('\n')
-	}
-	return b.String()
+	return v
 }
 
 func renderCell(ch rune, cx, cy, w, h int, ctx RenderContext) string {
