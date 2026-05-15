@@ -2,3 +2,9 @@
 /termus.exe
 *.wav
 .DS_Store
+
+# Reference video clips used to tune the landing-page wave — kept
+# locally for analysis, not published to the docs site.
+docs/*.mov
+docs/*.mp4
+docs/*.webm
