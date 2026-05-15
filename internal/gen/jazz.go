@@ -57,6 +57,7 @@ type Jazz struct {
 	accentBeat4 []bool
 	accentAnd4  []bool
 	saxPlan     []int
+	saxMotifs   MotifMemory
 }
 
 // jazzChord is one bar of harmony. tones are MIDI semitone offsets from
@@ -214,7 +215,8 @@ func (a *Jazz) Seed(seedVal int64) {
 		9: a.buildCompLine(9, numBars),
 	}
 	a.accentAnd2, a.accentBeat4, a.accentAnd4 = a.makeCompAccentPlans(numBars)
-	a.saxPlan = a.makeSaxPlan(2 * numBars)
+	a.saxMotifs = a.makeSaxMotifs()
+	a.saxPlan = trimOrRepeatPhrase(a.saxMotifs.A, 2*numBars, jazzPlanRest)
 	a.applyArrangement()
 
 	// --- Walking bass: 4 quarter notes per bar, hits every beat.
@@ -403,7 +405,7 @@ func (a *Jazz) Seed(seedVal int64) {
 		Legato:                 true,
 		TieRepeats:             true,
 		OverlapSec:             0.022,
-		ResolveTimingOffsetSec: jazzSaxTiming(a.saxPlan),
+		ResolveTimingOffsetSec: jazzSaxTiming(a.saxPlanCodeAt),
 		ResolveVelocity: func(slot int, key int, base int32) int32 {
 			switch a.section.Kind {
 			case FormB, FormCadence:
@@ -534,7 +536,7 @@ func (a *Jazz) saxNoteAt(slot int) int {
 	chordIdx := (slot / 2) % len(a.progression)
 	chord := a.progression[chordIdx]
 	next := a.progression[(chordIdx+1)%len(a.progression)]
-	switch a.saxPlan[slot%len(a.saxPlan)] {
+	switch a.saxPlanCodeAt(slot) {
 	case jazzPlanRest:
 		return -1
 	case jazzPlanRoot:
@@ -649,6 +651,22 @@ func (a *Jazz) makeCompAccentPlans(numBars int) ([]bool, []bool, []bool) {
 }
 
 func (a *Jazz) makeSaxPlan(numSlots int) []int {
+	return trimOrRepeatPhrase(a.saxMotifs.A, numSlots, jazzPlanRest)
+}
+
+func (a *Jazz) saxPlanCodeAt(slot int) int {
+	phrase := a.saxMotifs.PhraseFor(a.section.Kind)
+	if len(phrase) == 0 {
+		phrase = a.saxPlan
+	}
+	if len(phrase) == 0 {
+		return jazzPlanRest
+	}
+	slot = ((slot % len(phrase)) + len(phrase)) % len(phrase)
+	return phrase[slot]
+}
+
+func (a *Jazz) makeSaxMotifs() MotifMemory {
 	callTemplates := [][]int{
 		{jazzPlanRest, jazzPlanNinth, jazzPlanApproachBelow, jazzPlanResolveThird},
 		{jazzPlanThird, jazzPlanRest, jazzPlanSuspendFourth, jazzPlanResolveThird},
@@ -656,25 +674,26 @@ func (a *Jazz) makeSaxPlan(numSlots int) []int {
 	}
 	call := callTemplates[a.rng.Intn(len(callTemplates))]
 	answer := []int{jazzPlanThird, jazzPlanNinth, jazzPlanApproachBelow, jazzPlanResolveThird}
-	out := make([]int, numSlots)
-	for i := 0; i < numSlots; i++ {
-		switch {
-		case i < len(call):
-			out[i] = call[i]
-		case i < len(call)+len(answer):
-			out[i] = answer[i-len(call)]
-		default:
-			if i%4 == 0 {
-				out[i] = jazzPlanRest
-			} else {
-				out[i] = jazzPlanThird
-			}
-		}
+	aPhrase := stitchPhrase(call, answer)
+	aPrime := sequencePhrase(aPhrase, map[int]int{
+		jazzPlanNinth:              jazzPlanSeventh,
+		jazzPlanSeventh:            jazzPlanNinth,
+		jazzPlanApproachBelow:      jazzPlanApproachAbove,
+		jazzPlanAnticipateNextRoot: jazzPlanApproachBelow,
+	})
+	bPhrase := stitchPhrase(
+		[]int{jazzPlanRest, jazzPlanSeventh, jazzPlanApproachAbove, jazzPlanAnticipateNextRoot},
+		[]int{jazzPlanThird, jazzPlanSuspendFourth, jazzPlanApproachBelow, jazzPlanResolveThird},
+	)
+	cadence := stitchPhrase(aPhrase[:4], []int{jazzPlanThird, jazzPlanNinth, jazzPlanApproachBelow, jazzPlanRoot})
+	outro := stitchPhrase([]int{jazzPlanRest, jazzPlanThird, jazzPlanResolveThird, jazzPlanRoot})
+	return MotifMemory{
+		A:       aPhrase,
+		Aprime:  aPrime,
+		B:       bPhrase,
+		Cadence: cadence,
+		Outro:   outro,
 	}
-	if len(out) > 0 {
-		out[len(out)-1] = jazzPlanRoot
-	}
-	return out
 }
 
 // scheduleNextDrift picks when the next macro key-drift will fire.
