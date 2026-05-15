@@ -387,7 +387,8 @@ func (a *Chill) Seed(seedVal int64) {
 			Channel: 0, Velocity: 72, Notes: notes,
 			PeriodSec: cycleSec, Phase01: 0,
 			MutationRate: 1.0, MutateOne: mutate,
-			Gate: 0.52,
+			Gate:                   0.52,
+			ResolveTimingOffsetSec: cyclicTimingOffset(0, 12),
 			ResolveVelocity: func(slot int, key int, base int32) int32 {
 				if slot%2 == 0 {
 					return base + 8
@@ -415,6 +416,9 @@ func (a *Chill) Seed(seedVal int64) {
 		Legato:       true,
 		TieRepeats:   true,
 		OverlapSec:   0.012,
+		ResolveTimingOffsetSec: cyclicTimingOffset(
+			4, 7, 5, 0,
+		),
 		ResolveVelocity: func(slot int, key int, base int32) int32 {
 			if slot%4 == 0 {
 				return base + 5
@@ -432,8 +436,9 @@ func (a *Chill) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 2, Velocity: 68, Notes: vibeNotes,
 		PeriodSec: cycleSec, Phase01: 0,
-		ResolveNote: func(slot int, _ int) int { return a.vibeNoteAt(slot) },
-		Gate:        0.68,
+		ResolveNote:            func(slot int, _ int) int { return a.vibeNoteAt(slot) },
+		Gate:                   0.68,
+		ResolveTimingOffsetSec: cyclicTimingOffset(16, 11, 14, 9),
 		ResolveVelocity: func(slot int, key int, base int32) int32 {
 			if a.section.TextureLevel > 1 {
 				return base + 6
@@ -452,10 +457,11 @@ func (a *Chill) Seed(seedVal int64) {
 	}
 	core.addTrack(SF2Track{
 		Channel: 4, Velocity: 50, Notes: guitarNotes,
-		PeriodSec:   cycleSec,
-		Phase01:     1.5 / float64(4*numBars), // 1.5 beats into the first bar
-		ResolveNote: func(slot int, _ int) int { return a.guitarNoteAt(slot) },
-		Gate:        0.44,
+		PeriodSec:              cycleSec,
+		Phase01:                1.5 / float64(4*numBars), // 1.5 beats into the first bar
+		ResolveNote:            func(slot int, _ int) int { return a.guitarNoteAt(slot) },
+		Gate:                   0.44,
+		ResolveTimingOffsetSec: cyclicTimingOffset(18),
 		ResolveVelocity: func(slot int, key int, base int32) int32 {
 			if a.section.Kind == FormCadence {
 				return base + 8
@@ -473,13 +479,14 @@ func (a *Chill) Seed(seedVal int64) {
 	}
 	core.addTrack(SF2Track{
 		Channel: 3, Velocity: 64, Notes: saxNotes,
-		PeriodSec:   cycleSec,
-		Phase01:     0.5 / float64(numBars), // enter on beat 3 of bar 1
-		ResolveNote: func(slot int, _ int) int { return a.saxNoteAt(slot) },
-		Gate:        0.94,
-		Legato:      true,
-		TieRepeats:  true,
-		OverlapSec:  0.026,
+		PeriodSec:              cycleSec,
+		Phase01:                0.5 / float64(numBars), // enter on beat 3 of bar 1
+		ResolveNote:            func(slot int, _ int) int { return a.saxNoteAt(slot) },
+		Gate:                   0.94,
+		Legato:                 true,
+		TieRepeats:             true,
+		OverlapSec:             0.026,
+		ResolveTimingOffsetSec: chillLeadTiming(a.saxPlan),
 		ResolveVelocity: func(slot int, key int, base int32) int32 {
 			switch a.section.Kind {
 			case FormB, FormCadence:
@@ -512,8 +519,9 @@ func (a *Chill) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: drumChannel, Velocity: 92, Notes: kickNotes,
 		PeriodSec: cycleSec, Phase01: 0,
-		Gate:           0.08,
-		VelocityJitter: 8, TimingJitterSec: 0.003, // kick — anchors the groove, must be tight
+		Gate:                   0.08,
+		ResolveTimingOffsetSec: cyclicTimingOffset(-4, 0),
+		VelocityJitter:         8, TimingJitterSec: 0.003, // kick — anchors the groove, must be tight
 		FireProbability: 0.90, // occasional skip so the groove varies subtly
 		OnFire:          core.triggerDuck,
 	})
@@ -528,10 +536,11 @@ func (a *Chill) Seed(seedVal int64) {
 	const dillaSnareLagSec = 0.030
 	core.addTrack(SF2Track{
 		Channel: drumChannel, Velocity: 82, Notes: snareNotes,
-		PeriodSec:      cycleSec,
-		Phase01:        0.5/float64(2*numBars) + dillaSnareLagSec/cycleSec,
-		Gate:           0.10,
-		VelocityJitter: 6, TimingJitterSec: 0.004,
+		PeriodSec:              cycleSec,
+		Phase01:                0.5/float64(2*numBars) + dillaSnareLagSec/cycleSec,
+		Gate:                   0.10,
+		ResolveTimingOffsetSec: cyclicTimingOffset(4, 6),
+		VelocityJitter:         6, TimingJitterSec: 0.004,
 		FireProbability: 0.88, // snare almost always lands, with rare skips
 	})
 	hihatNotes := make([]int, 8*numBars) // 8 hits per bar
@@ -545,11 +554,12 @@ func (a *Chill) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: drumChannel, Velocity: 38, Notes: hihatNotes,
 		PeriodSec: cycleSec, Phase01: 0,
-		Gate:            0.06,
-		VelocityJitter:  10,
-		TimingJitterSec: 0.006,
-		SwingAmount:     0.05,
-		FireProbability: 0.78,
+		Gate:                   0.06,
+		ResolveTimingOffsetSec: cyclicTimingOffset(0, 12, -2, 11, -1, 13, -3, 8),
+		VelocityJitter:         10,
+		TimingJitterSec:        0.006,
+		SwingAmount:            0.05,
+		FireProbability:        0.78,
 	})
 	ghostNotes := make([]int, numBars)
 	for i := range ghostNotes {

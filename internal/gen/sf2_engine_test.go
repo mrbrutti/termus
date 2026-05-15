@@ -129,3 +129,21 @@ func TestSF2TrackStateRestDoesNotForceHeldNoteOff(t *testing.T) {
 		t.Fatalf("release after held rest = %+v, want %+v", got, want)
 	}
 }
+
+func TestSF2TrackStateDeterministicTimingOffsetShapesNextFire(t *testing.T) {
+	sink := &fakeSF2Sink{}
+	state := testTrackState(SF2Track{
+		Channel:                0,
+		Velocity:               90,
+		Notes:                  []int{60, 62},
+		PeriodSec:              2,
+		Gate:                   1.0,
+		ResolveTimingOffsetSec: cyclicTimingOffset(5),
+	}, 2*int64(synth.SampleRate))
+
+	state.fireTransition(0, sink, rand.New(rand.NewSource(1))) //nolint:gosec
+	want := int64(synth.SampleRate) + secondsToSamples(0.005)
+	if state.nextFireT != want {
+		t.Fatalf("nextFireT = %d, want %d", state.nextFireT, want)
+	}
+}

@@ -230,6 +230,9 @@ func (a *Jazz) Seed(seedVal int64) {
 		Legato:      true,
 		TieRepeats:  true,
 		OverlapSec:  0.010,
+		ResolveTimingOffsetSec: cyclicTimingOffset(
+			0, 3, 1, -6,
+		),
 		ResolveVelocity: func(slot int, key int, base int32) int32 {
 			if slot%4 == 0 {
 				return base + 4
@@ -253,8 +256,9 @@ func (a *Jazz) Seed(seedVal int64) {
 		core.addTrack(SF2Track{
 			Channel: 0, Velocity: 74, Notes: notes,
 			PeriodSec: cycleSec, Phase01: 0,
-			ResolveNote: func(slot int, _ int) int { return a.compRootless(slot, intv) },
-			Gate:        0.48,
+			ResolveNote:            func(slot int, _ int) int { return a.compRootless(slot, intv) },
+			Gate:                   0.48,
+			ResolveTimingOffsetSec: cyclicTimingOffset(0),
 			ResolveVelocity: func(slot int, key int, base int32) int32 {
 				if a.section.TextureLevel > 1 {
 					return base + 5
@@ -278,27 +282,30 @@ func (a *Jazz) Seed(seedVal int64) {
 	}
 	core.addTrack(SF2Track{
 		Channel: 0, Velocity: 60, Notes: pianoAccentAnd2,
-		PeriodSec:      cycleSec,
-		Phase01:        0.417 / float64(numBars),
-		ResolveNote:    func(slot int, _ int) int { return a.compAccentNoteAt(slot, a.accentAnd2, 9) },
-		Gate:           0.34,
-		VelocityJitter: 12, TimingJitterSec: 0.020,
+		PeriodSec:              cycleSec,
+		Phase01:                0.417 / float64(numBars),
+		ResolveNote:            func(slot int, _ int) int { return a.compAccentNoteAt(slot, a.accentAnd2, 9) },
+		Gate:                   0.34,
+		ResolveTimingOffsetSec: cyclicTimingOffset(11),
+		VelocityJitter:         12, TimingJitterSec: 0.020,
 	})
 	core.addTrack(SF2Track{
 		Channel: 0, Velocity: 54, Notes: pianoAccentBeat4,
-		PeriodSec:      cycleSec,
-		Phase01:        0.75 / float64(numBars),
-		ResolveNote:    func(slot int, _ int) int { return a.compAccentNoteAt(slot, a.accentBeat4, 7) },
-		Gate:           0.32,
-		VelocityJitter: 10, TimingJitterSec: 0.018,
+		PeriodSec:              cycleSec,
+		Phase01:                0.75 / float64(numBars),
+		ResolveNote:            func(slot int, _ int) int { return a.compAccentNoteAt(slot, a.accentBeat4, 7) },
+		Gate:                   0.32,
+		ResolveTimingOffsetSec: cyclicTimingOffset(7),
+		VelocityJitter:         10, TimingJitterSec: 0.018,
 	})
 	core.addTrack(SF2Track{
 		Channel: 0, Velocity: 58, Notes: pianoAccentAnd4,
-		PeriodSec:      cycleSec,
-		Phase01:        0.917 / float64(numBars),
-		ResolveNote:    func(slot int, _ int) int { return a.compAccentNoteAt(slot, a.accentAnd4, 5) },
-		Gate:           0.34,
-		VelocityJitter: 12, TimingJitterSec: 0.020,
+		PeriodSec:              cycleSec,
+		Phase01:                0.917 / float64(numBars),
+		ResolveNote:            func(slot int, _ int) int { return a.compAccentNoteAt(slot, a.accentAnd4, 5) },
+		Gate:                   0.34,
+		ResolveTimingOffsetSec: cyclicTimingOffset(10),
+		VelocityJitter:         12, TimingJitterSec: 0.020,
 	})
 
 	// --- Ride cymbal: quarter notes (4 hits per bar). Bell on beat 1, plain
@@ -314,8 +321,9 @@ func (a *Jazz) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: drumChannel, Velocity: 78, Notes: rideQuarterNotes,
 		PeriodSec: cycleSec, Phase01: 0,
-		Gate:           0.08,
-		VelocityJitter: 10, TimingJitterSec: 0.004,
+		Gate:                   0.08,
+		ResolveTimingOffsetSec: cyclicTimingOffset(-2, -4, -1, -3),
+		VelocityJitter:         10, TimingJitterSec: 0.004,
 	})
 	// --- Ride: swung "& of 2" and "& of 4" — completes the jazz ride pattern.
 	// 2 hits per bar at swung-8th positions 1.667/4 and 3.667/4.
@@ -325,10 +333,11 @@ func (a *Jazz) Seed(seedVal int64) {
 	}
 	core.addTrack(SF2Track{
 		Channel: drumChannel, Velocity: 62, Notes: rideSwungNotes,
-		PeriodSec:      cycleSec,
-		Phase01:        0.417 / float64(numBars), // start at "& of 2" of bar 0
-		Gate:           0.08,
-		VelocityJitter: 10, TimingJitterSec: 0.006,
+		PeriodSec:              cycleSec,
+		Phase01:                0.417 / float64(numBars), // start at "& of 2" of bar 0
+		Gate:                   0.08,
+		ResolveTimingOffsetSec: cyclicTimingOffset(-6, -4),
+		VelocityJitter:         10, TimingJitterSec: 0.006,
 		FireProbability: 0.92,
 	})
 
@@ -341,10 +350,11 @@ func (a *Jazz) Seed(seedVal int64) {
 	}
 	core.addTrack(SF2Track{
 		Channel: drumChannel, Velocity: 66, Notes: hatNotes,
-		PeriodSec:      cycleSec,
-		Phase01:        0.25 / float64(numBars), // beats 2 & 4
-		Gate:           0.08,
-		VelocityJitter: 8, TimingJitterSec: 0.004,
+		PeriodSec:              cycleSec,
+		Phase01:                0.25 / float64(numBars), // beats 2 & 4
+		Gate:                   0.08,
+		ResolveTimingOffsetSec: cyclicTimingOffset(8, 10),
+		VelocityJitter:         8, TimingJitterSec: 0.004,
 	})
 
 	// --- Brushed snare backing: occasional weak hit on beat 4. Sparse —
@@ -355,10 +365,11 @@ func (a *Jazz) Seed(seedVal int64) {
 	}
 	core.addTrack(SF2Track{
 		Channel: drumChannel, Velocity: 52, Notes: snareNotes,
-		PeriodSec:      cycleSec,
-		Phase01:        0.75 / float64(numBars), // beat 4
-		Gate:           0.08,
-		VelocityJitter: 12, TimingJitterSec: 0.010,
+		PeriodSec:              cycleSec,
+		Phase01:                0.75 / float64(numBars), // beat 4
+		Gate:                   0.08,
+		ResolveTimingOffsetSec: cyclicTimingOffset(18),
+		VelocityJitter:         12, TimingJitterSec: 0.010,
 		FireProbability: 0.40, // sparse fills only
 	})
 
@@ -371,8 +382,9 @@ func (a *Jazz) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: drumChannel, Velocity: 38, Notes: kickNotes,
 		PeriodSec: cycleSec, Phase01: 0,
-		Gate:           0.08,
-		VelocityJitter: 6, TimingJitterSec: 0.004,
+		Gate:                   0.08,
+		ResolveTimingOffsetSec: cyclicTimingOffset(0, 3),
+		VelocityJitter:         6, TimingJitterSec: 0.004,
 		FireProbability: 0.60, // sometimes drops out, like a real bassist
 	})
 
@@ -384,13 +396,14 @@ func (a *Jazz) Seed(seedVal int64) {
 	}
 	core.addTrack(SF2Track{
 		Channel: 2, Velocity: 70, Notes: saxNotes,
-		PeriodSec:   cycleSec,
-		Phase01:     0,
-		ResolveNote: func(slot int, _ int) int { return a.saxNoteAt(slot) },
-		Gate:        0.96,
-		Legato:      true,
-		TieRepeats:  true,
-		OverlapSec:  0.022,
+		PeriodSec:              cycleSec,
+		Phase01:                0,
+		ResolveNote:            func(slot int, _ int) int { return a.saxNoteAt(slot) },
+		Gate:                   0.96,
+		Legato:                 true,
+		TieRepeats:             true,
+		OverlapSec:             0.022,
+		ResolveTimingOffsetSec: jazzSaxTiming(a.saxPlan),
 		ResolveVelocity: func(slot int, key int, base int32) int32 {
 			switch a.section.Kind {
 			case FormB, FormCadence:

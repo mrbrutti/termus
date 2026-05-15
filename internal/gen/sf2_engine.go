@@ -85,6 +85,10 @@ type SF2Track struct {
 	// from TimingJitterSec which is random; swing is deterministic and
 	// applies to every odd slot.
 	SwingAmount float64
+	// ResolveTimingOffsetSec adds a deterministic per-slot timing offset on
+	// top of swing, before random jitter. Negative values pull the slot
+	// earlier; positive values lay it back.
+	ResolveTimingOffsetSec func(slot int) float64
 
 	// FireProbability, if > 0, randomly skips firing the slot's NoteOn.
 	// 1.0 = always fire (default behavior when 0 — left unset acts as 1).
@@ -744,6 +748,16 @@ func (s *sf2TrackState) fireTransition(t int64, syn sf2EventSink, rng *rand.Rand
 		if nextSlotIdx%2 == 1 {
 			naturalBoundary += int64(s.cfg.SwingAmount * float64(slotLen))
 		}
+		if s.cfg.ResolveTimingOffsetSec != nil {
+			naturalBoundary += secondsToSamples(s.cfg.ResolveTimingOffsetSec(nextSlotIdx))
+		}
+	}
+	if s.cfg.SwingAmount == 0 && s.cfg.ResolveTimingOffsetSec != nil {
+		nextSlotIdx := newSlot + 1
+		if int64(nextSlotIdx) >= s.notesLen {
+			nextSlotIdx = 0
+		}
+		naturalBoundary += secondsToSamples(s.cfg.ResolveTimingOffsetSec(nextSlotIdx))
 	}
 
 	jitter := int64(0)
