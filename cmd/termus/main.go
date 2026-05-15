@@ -111,13 +111,65 @@ func main() {
 	defer speaker.Close()
 	speaker.Play(root)
 
+	// Build the switchable algorithm list. If we have a SoundFont loaded
+	// we expose all SF2-backed genres; otherwise we fall back to the
+	// pure-synth variants so cycling never crashes on a nil SoundFont.
+	genres, startIdx := buildGenreList(sf, spec.Name)
+
+	// Closure used by the TUI to build a fresh algorithm on swap. We
+	// re-seed with the original --seed so the same key stays deterministic
+	// across switches.
+	buildFn := func(s gen.AlgoSpec) gen.Algorithm {
+		a := s.Build(sf)
+		a.Seed(*seed)
+		// If we had an IR loaded, propagate it onto the new algorithm so
+		// the room/hall/etc. carries across the switch.
+		if *irPath != "" {
+			if rev, ok := a.(gen.SF2Reverberator); ok {
+				if ir, _, err := loadIR(*irPath, *seed); err == nil {
+					rev.SetReverbIR(ir, *irWet)
+				}
+			}
+		}
+		return a
+	}
+
 	// Launch TUI.
-	model := tui.New(ring, root, algo.Name(), "Cmin", *seed, *initialVol)
+	model := tui.New(ring, root, algo.Name(), "Cmin", *seed, *initialVol).
+		WithSwitcher(genres, startIdx, buildFn)
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "tui error:", err)
 		os.Exit(1)
 	}
+}
+
+// buildGenreList returns the ordered list of algorithms the TUI can cycle
+// through, filtered by SoundFont availability, plus the index of the
+// currently-playing algorithm. Falls back to the first entry if the current
+// name isn't in the filtered list.
+func buildGenreList(sf *meltysynth.SoundFont, currentName string) ([]gen.AlgoSpec, int) {
+	var out []gen.AlgoSpec
+	for _, name := range gen.AllAlgoNames() {
+		spec, _ := gen.Resolve(name)
+		if spec.RequiresSF2 && sf == nil {
+			continue
+		}
+		// Hide the -synth siblings when a SoundFont is loaded — they
+		// would just duplicate the genre list and confuse cycling.
+		if sf != nil && !spec.RequiresSF2 {
+			continue
+		}
+		out = append(out, spec)
+	}
+	idx := 0
+	for i, s := range out {
+		if s.Name == currentName {
+			idx = i
+			break
+		}
+	}
+	return out, idx
 }
 
 // loadIR resolves an --ir argument to an actual impulse response. Accepts:

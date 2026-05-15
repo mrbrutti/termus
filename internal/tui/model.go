@@ -8,8 +8,13 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/mrbrutti/termus/internal/audio"
+	"github.com/mrbrutti/termus/internal/gen"
 	"github.com/mrbrutti/termus/internal/scope"
 )
+
+// BuildAlgoFn constructs a fresh Algorithm for the given spec. main.go closes
+// over the loaded SoundFont (or nil) and any per-build wiring like IR setup.
+type BuildAlgoFn func(spec gen.AlgoSpec) gen.Algorithm
 
 // Model is the bubbletea model for termus.
 type Model struct {
@@ -28,6 +33,11 @@ type Model struct {
 	statusTTL time.Time
 
 	themeIdx int // index into Themes
+
+	// Algorithm switching ([n]/[p]).
+	genres   []gen.AlgoSpec // ordered list of switchable algorithms
+	genreIdx int            // current index into genres
+	buildFn  BuildAlgoFn    // closure used to construct a new algorithm
 }
 
 // New constructs a Model. keyName is e.g. "Cmin".
@@ -40,6 +50,31 @@ func New(ring *scope.Ring, cmd audio.Commander, algo, keyName string, seed int64
 		seed:    seed,
 		volume:  initialVol,
 	}
+}
+
+// WithSwitcher enables in-app algorithm switching. genres is the ordered list
+// the user cycles through; startIdx is the index of the algorithm currently
+// playing; buildFn constructs a fresh Algorithm for a chosen spec.
+func (m Model) WithSwitcher(genres []gen.AlgoSpec, startIdx int, buildFn BuildAlgoFn) Model {
+	m.genres = genres
+	m.genreIdx = startIdx
+	m.buildFn = buildFn
+	return m
+}
+
+// switchAlgo cycles the current algorithm by step (+1 or -1) and asks the
+// audio thread to swap in a freshly-built instance.
+func (m *Model) switchAlgo(step int) {
+	if len(m.genres) == 0 || m.buildFn == nil {
+		return
+	}
+	m.genreIdx = (m.genreIdx + step + len(m.genres)) % len(m.genres)
+	spec := m.genres[m.genreIdx]
+	algo := m.buildFn(spec)
+	m.cmd.SwapAlgorithm(algo)
+	m.algo = spec.Display
+	m.status = "switched: " + spec.Display
+	m.statusTTL = time.Now().Add(2 * time.Second)
 }
 
 type tickMsg time.Time
@@ -94,6 +129,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.themeIdx = (m.themeIdx + 1) % len(Themes)
 			m.status = "theme: " + Themes[m.themeIdx].Name
 			m.statusTTL = time.Now().Add(2 * time.Second)
+		case actionNextAlgo:
+			m.switchAlgo(1)
+		case actionPrevAlgo:
+			m.switchAlgo(-1)
 		}
 		return m, nil
 	case tickMsg:
@@ -140,10 +179,13 @@ func bottomBar(m Model, w int, theme ColorTheme) string {
 	if m.paused {
 		state = "PAUSED"
 	}
-	left := lipgloss.NewStyle().Faint(true).Render(
-		fmt.Sprintf("[space] %s   [↑↓] vol %d%%   [r] rec   [c] %s   [q] quit",
-			state, m.volume, theme.Name),
-	)
+	hint := fmt.Sprintf("[space] %s   [↑↓] vol %d%%   [r] rec   [c] %s",
+		state, m.volume, theme.Name)
+	if len(m.genres) > 1 {
+		hint += "   [n/p] algo"
+	}
+	hint += "   [q] quit"
+	left := lipgloss.NewStyle().Faint(true).Render(hint)
 	right := ""
 	if time.Now().Before(m.statusTTL) {
 		right = lipgloss.NewStyle().Foreground(theme.BarHi).Render(m.status)

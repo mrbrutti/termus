@@ -25,8 +25,9 @@ type Root struct {
 	volume atomic.Uint32 // 0..100
 	paused atomic.Bool
 
-	// command channel for record start/stop (non-hot-path)
-	recCmd chan recordCmd
+	// command channels for non-hot-path events
+	recCmd     chan recordCmd
+	algoSwap   chan gen.Algorithm // UI thread pushes; audio thread picks up on next Stream call
 
 	// audio-thread-owned state (do not touch from UI)
 	wav *WAVWriter
@@ -51,12 +52,23 @@ type recordReply struct {
 // NewRoot constructs a Root for the given algorithm and scope sink.
 func NewRoot(algo gen.Algorithm, ring *scope.Ring) *Root {
 	r := &Root{
-		algo:   algo,
-		scope:  ring,
-		recCmd: make(chan recordCmd, 4),
+		algo:     algo,
+		scope:    ring,
+		recCmd:   make(chan recordCmd, 4),
+		algoSwap: make(chan gen.Algorithm, 4),
 	}
 	r.volume.Store(70)
 	return r
+}
+
+// SwapAlgorithm hot-swaps the running algorithm. Called from UI thread; the
+// audio thread picks up the new algorithm at the top of the next Stream call.
+// Non-blocking: drops the swap if the channel is full (UI mash protection).
+func (r *Root) SwapAlgorithm(algo gen.Algorithm) {
+	select {
+	case r.algoSwap <- algo:
+	default:
+	}
 }
 
 // SetSeed records the seed used to construct the algorithm; used in WAV filenames.
@@ -144,10 +156,12 @@ func (r *Root) Stream(samples [][2]float64) (n int, ok bool) {
 // Err implements beep.Streamer.
 func (r *Root) Err() error { return nil }
 
-// handleCommands drains record commands. Audio thread only.
+// handleCommands drains record and algo-swap commands. Audio thread only.
 func (r *Root) handleCommands() {
 	for {
 		select {
+		case newAlgo := <-r.algoSwap:
+			r.algo = newAlgo
 		case cmd := <-r.recCmd:
 			if cmd.start {
 				if r.wav != nil {

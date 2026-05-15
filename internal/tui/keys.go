@@ -12,6 +12,8 @@ const (
 	actionVolDown
 	actionRecord
 	actionTheme
+	actionNextAlgo
+	actionPrevAlgo
 )
 
 func matchKey(msg tea.KeyMsg) keyAction {
@@ -28,6 +30,10 @@ func matchKey(msg tea.KeyMsg) keyAction {
 		return actionRecord
 	case "c":
 		return actionTheme
+	case "n", "right":
+		return actionNextAlgo
+	case "p", "left":
+		return actionPrevAlgo
 	}
 	return actionNone
 }
