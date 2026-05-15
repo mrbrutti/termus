@@ -172,6 +172,15 @@ func (m Model) controlItems() []controlItem {
 					})
 				},
 			},
+			{
+				Title: "seed morph",
+				Value: macroLabel(m.morphMode, []string{"cut", "quick", "blend", "wash", "drift"}),
+				Hint:  "seed and algo swaps",
+				Adjust: func(m *Model, delta int) {
+					m.morphMode = clampInt(m.morphMode+delta, 0, 4)
+					m.flashStatus("seed morph: "+macroLabel(m.morphMode, []string{"cut", "quick", "blend", "wash", "drift"}), 2*time.Second)
+				},
+			},
 		}
 	case controlTabCurate:
 		rec, ok := m.currentSeedRecord()

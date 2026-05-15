@@ -55,6 +55,7 @@ type Model struct {
 	themes       []ColorTheme
 	ui           AdaptiveUI
 	musicProfile *gen.ControlProfile
+	morphMode    int
 
 	// Algorithm switching ([n]/[p]).
 	genres          []gen.AlgoSpec // ordered list of switchable algorithms
@@ -103,6 +104,7 @@ func New(ring *scope.Ring, cmd audio.Commander, algo, keyName string, seed int64
 		ui:            ui,
 		themes:        append([]ColorTheme(nil), ui.Themes...),
 		themeIdx:      ui.DefaultThemeIdx,
+		morphMode:     2,
 		kept:          recordsToBookmarks(savedSeeds),
 		savedSeeds:    savedSeeds,
 		savedSessions: savedSessions,
@@ -184,6 +186,12 @@ func (m *Model) advancePlaylist() {
 	}
 }
 
+func (m Model) morphFadeFrames() int {
+	seconds := []float64{0.0, 0.18, 0.40, 0.90, 1.60}
+	idx := clampInt(m.morphMode, 0, len(seconds)-1)
+	return int(seconds[idx] * 44100.0)
+}
+
 // switchAlgo cycles the current algorithm by step (+1 or -1) and asks the
 // audio thread to swap in a freshly-built instance.
 func (m *Model) switchAlgo(step int) {
@@ -193,7 +201,7 @@ func (m *Model) switchAlgo(step int) {
 	m.genreIdx = (m.genreIdx + step + len(m.genres)) % len(m.genres)
 	spec := m.genres[m.genreIdx]
 	algo := m.buildFn(spec, m.seed)
-	m.cmd.SwapAlgorithm(algo)
+	m.cmd.SwapAlgorithmFade(algo, m.morphFadeFrames())
 	m.algo = spec.Display
 	m.touchCurrentSeed()
 	m.flashStatus("switched: "+spec.Display, 2*time.Second)
@@ -214,7 +222,7 @@ func (m *Model) swapToSeed(spec gen.AlgoSpec, seed int64, status string) {
 		seed = 0
 	}
 	algo := m.buildFn(spec, seed)
-	m.cmd.SwapAlgorithm(algo)
+	m.cmd.SwapAlgorithmFade(algo, m.morphFadeFrames())
 	m.algo = spec.Display
 	m.seed = seed
 	for i, g := range m.genres {
@@ -411,7 +419,11 @@ func (m *Model) refreshCurrentTake(label string) {
 		return
 	}
 	algo := m.buildFn(spec, m.seed)
-	m.cmd.SwapAlgorithmFade(algo, 15435)
+	fade := m.morphFadeFrames()
+	if fade == 0 {
+		fade = 15435
+	}
+	m.cmd.SwapAlgorithmFade(algo, fade)
 	m.algo = spec.Display
 	m.flashStatus(label, 2*time.Second)
 }

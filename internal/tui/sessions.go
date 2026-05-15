@@ -21,6 +21,7 @@ type savedSessionRecord struct {
 	Theme    string             `json:"theme"`
 	Volume   int                `json:"volume"`
 	Controls gen.ControlProfile `json:"controls"`
+	Morph    int                `json:"morph"`
 	Playlist string             `json:"playlist,omitempty"`
 	Track    int                `json:"track,omitempty"`
 	SavedAt  time.Time          `json:"saved_at"`
@@ -124,6 +125,7 @@ func (m *Model) saveCurrentSession() {
 		Theme:    m.activeTheme().Name,
 		Volume:   m.volume,
 		Controls: gen.DefaultControlProfile(),
+		Morph:    m.morphMode,
 		SavedAt:  time.Now(),
 	}
 	if m.musicProfile != nil {
@@ -178,6 +180,7 @@ func (m *Model) loadSelectedSession() {
 		rec.Controls = gen.DefaultControlProfile()
 	}
 	*m.ensureMusicProfile() = rec.Controls
+	m.morphMode = clampInt(rec.Morph, 0, 4)
 	spec, resolved := gen.Resolve(rec.Algo)
 	if !resolved {
 		label := rec.Display
