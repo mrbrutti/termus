@@ -115,9 +115,9 @@ func (m Model) controlItems() []controlItem {
 				},
 			},
 			{
-				Title: "theme",
-				Value: m.activeTheme().Name,
-				Hint:  "left/right cycle",
+				Title:    "theme",
+				Value:    m.activeTheme().Name,
+				Hint:     "left/right cycle",
 				Disabled: len(m.themes) <= 1,
 				Adjust: func(m *Model, delta int) {
 					if len(m.themes) <= 1 {
@@ -129,6 +129,33 @@ func (m Model) controlItems() []controlItem {
 			},
 		}
 	case controlTabCurate:
+		rec, ok := m.currentSeedRecord()
+		recent, hasRecent := m.selectedRecentRecord()
+		best, hasBest := m.selectedBestRecord()
+		tagName := ""
+		if len(curationTags) > 0 {
+			tagName = curationTags[m.curateTagIdx%len(curationTags)]
+		}
+		ratingValue := "0"
+		favoriteValue := "off"
+		tagsValue := "none"
+		if ok {
+			ratingValue = ratingString(rec.Rating)
+			favoriteValue = onOff(rec.Favorite)
+			tagsValue = currentTagsLabel(rec.Tags)
+		}
+		recentValue := "no history yet"
+		recentHint := "browse after playing"
+		if hasRecent {
+			recentValue = curationLabel(recent)
+			recentHint = "left/right browse · enter load"
+		}
+		bestValue := "no rated takes yet"
+		bestHint := "favorite or rate a take"
+		if hasBest {
+			bestValue = curationLabel(best)
+			bestHint = "left/right browse · enter load"
+		}
 		return []controlItem{
 			{
 				Title: "keep current",
@@ -140,29 +167,66 @@ func (m Model) controlItems() []controlItem {
 				},
 			},
 			{
+				Title: "rating",
+				Value: ratingValue,
+				Hint:  "left/right adjust",
+				Adjust: func(m *Model, delta int) {
+					m.adjustCurrentRating(delta)
+				},
+			},
+			{
+				Title: "favorite",
+				Value: favoriteValue,
+				Hint:  "enter toggle",
+				Activate: func(m *Model) tea.Cmd {
+					m.toggleCurrentFavorite()
+					return nil
+				},
+			},
+			{
+				Title: "tags",
+				Value: tagsValue,
+				Hint:  fmt.Sprintf("left/right pick · enter toggle %s", tagName),
+				Adjust: func(m *Model, delta int) {
+					m.cycleCurationTag(delta)
+				},
+				Activate: func(m *Model) tea.Cmd {
+					m.toggleCurrentTag()
+					return nil
+				},
+			},
+			{
+				Title:    "recent history",
+				Value:    recentValue,
+				Hint:     recentHint,
+				Disabled: !hasRecent,
+				Adjust: func(m *Model, delta int) {
+					m.browseRecent(delta)
+				},
+				Activate: func(m *Model) tea.Cmd {
+					m.loadSelectedRecent()
+					return nil
+				},
+			},
+			{
+				Title:    "best takes",
+				Value:    bestValue,
+				Hint:     bestHint,
+				Disabled: !hasBest,
+				Adjust: func(m *Model, delta int) {
+					m.browseBest(delta)
+				},
+				Activate: func(m *Model) tea.Cmd {
+					m.loadSelectedBest()
+					return nil
+				},
+			},
+			{
 				Title: "saved library",
 				Value: fmt.Sprintf("%d items", len(m.savedSeeds)),
 				Hint:  "enter open",
 				Activate: func(m *Model) tea.Cmd {
 					m.toggleLibrary()
-					return nil
-				},
-			},
-			{
-				Title: "slot A",
-				Value: slotSeedLabel(m.seedA),
-				Hint:  "enter store",
-				Activate: func(m *Model) tea.Cmd {
-					m.storeSeed("A")
-					return nil
-				},
-			},
-			{
-				Title: "slot B",
-				Value: slotSeedLabel(m.seedB),
-				Hint:  "enter store",
-				Activate: func(m *Model) tea.Cmd {
-					m.storeSeed("B")
 					return nil
 				},
 			},
@@ -186,18 +250,18 @@ func (m Model) controlItems() []controlItem {
 				},
 			},
 			{
-				Title: "saved sessions",
-				Value: sessionValue,
-				Hint:  sessionHint,
+				Title:    "saved sessions",
+				Value:    sessionValue,
+				Hint:     sessionHint,
 				Disabled: !ok,
 				Adjust: func(m *Model, delta int) {
 					m.browseSession(delta)
 				},
 			},
 			{
-				Title: "load selected",
-				Value: "restore algo / seed / view / volume",
-				Hint:  "enter load",
+				Title:    "load selected",
+				Value:    "restore algo / seed / view / volume",
+				Hint:     "enter load",
 				Disabled: !ok,
 				Activate: func(m *Model) tea.Cmd {
 					m.loadSelectedSession()
@@ -205,9 +269,9 @@ func (m Model) controlItems() []controlItem {
 				},
 			},
 			{
-				Title: "remove selected",
-				Value: "delete saved snapshot",
-				Hint:  "enter remove",
+				Title:    "remove selected",
+				Value:    "delete saved snapshot",
+				Hint:     "enter remove",
 				Disabled: !ok,
 				Activate: func(m *Model) tea.Cmd {
 					m.deleteSelectedSession()
@@ -218,9 +282,9 @@ func (m Model) controlItems() []controlItem {
 	default:
 		return []controlItem{
 			{
-				Title: "backend",
-				Value: m.currentStatusLabel(),
-				Hint:  "status",
+				Title:    "backend",
+				Value:    m.currentStatusLabel(),
+				Hint:     "status",
 				Disabled: true,
 			},
 			{

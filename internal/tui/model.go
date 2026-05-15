@@ -56,19 +56,23 @@ type Model struct {
 	ui        AdaptiveUI
 
 	// Algorithm switching ([n]/[p]).
-	genres     []gen.AlgoSpec // ordered list of switchable algorithms
-	genreIdx   int            // current index into genres
-	buildFn    BuildAlgoFn    // closure used to construct a new algorithm
-	seedA      *seedBookmark
-	seedB      *seedBookmark
-	kept       map[string]seedBookmark
-	savedSeeds []savedSeedRecord
-	savedSessions []savedSessionRecord
-	libraryIdx int
-	exporter   *ExportController
-	controlTab controlTab
-	controlRow int
-	sessionIdx int
+	genres          []gen.AlgoSpec // ordered list of switchable algorithms
+	genreIdx        int            // current index into genres
+	buildFn         BuildAlgoFn    // closure used to construct a new algorithm
+	seedA           *seedBookmark
+	seedB           *seedBookmark
+	kept            map[string]seedBookmark
+	savedSeeds      []savedSeedRecord
+	savedSessions   []savedSessionRecord
+	curation        map[string]seedCurationRecord
+	libraryIdx      int
+	exporter        *ExportController
+	controlTab      controlTab
+	controlRow      int
+	sessionIdx      int
+	curateTagIdx    int
+	curateRecentIdx int
+	curateBestIdx   int
 
 	// Playlist auto-advance.
 	playlist        *gen.Playlist
@@ -86,7 +90,8 @@ func New(ring *scope.Ring, cmd audio.Commander, algo, keyName string, seed int64
 	ui := DetectAdaptiveUI()
 	savedSeeds, _ := loadSavedSeedRecords()
 	savedSessions, _ := loadSavedSessionRecords()
-	return Model{
+	curation, _ := loadSeedCuration()
+	m := Model{
 		ring:          ring,
 		cmd:           cmd,
 		algo:          algo,
@@ -100,10 +105,13 @@ func New(ring *scope.Ring, cmd audio.Commander, algo, keyName string, seed int64
 		kept:          recordsToBookmarks(savedSeeds),
 		savedSeeds:    savedSeeds,
 		savedSessions: savedSessions,
+		curation:      curation,
 		startedAt:     time.Now(),
 		splashUntil:   time.Now().Add(5 * time.Second),
 		splashVisible: true,
 	}
+	m.touchCurrentSeed()
+	return m
 }
 
 // WithSwitcher enables in-app algorithm switching. genres is the ordered list
@@ -113,6 +121,7 @@ func (m Model) WithSwitcher(genres []gen.AlgoSpec, startIdx int, buildFn BuildAl
 	m.genres = genres
 	m.genreIdx = startIdx
 	m.buildFn = buildFn
+	m.touchCurrentSeed()
 	return m
 }
 
@@ -154,6 +163,7 @@ func (m *Model) advancePlaylist() {
 	m.cmd.SwapAlgorithmFade(algo, m.playlistFade)
 	m.algo = track.Spec.Display
 	m.seed = track.Seed
+	m.touchCurrentSeed()
 	m.trackStartedAt = time.Now()
 	m.nextTrackAt = time.Now().Add(track.Duration)
 	m.flashStatus(fmt.Sprintf("▶ %d/%d %s",
@@ -179,6 +189,7 @@ func (m *Model) switchAlgo(step int) {
 	algo := m.buildFn(spec, m.seed)
 	m.cmd.SwapAlgorithm(algo)
 	m.algo = spec.Display
+	m.touchCurrentSeed()
 	m.flashStatus("switched: "+spec.Display, 2*time.Second)
 }
 
@@ -206,6 +217,7 @@ func (m *Model) swapToSeed(spec gen.AlgoSpec, seed int64, status string) {
 			break
 		}
 	}
+	m.touchCurrentSeed()
 	m.flashStatus(status, 2*time.Second)
 }
 
@@ -277,6 +289,7 @@ func (m *Model) keepSeed() {
 		SavedAt: time.Now(),
 	}
 	m.savedSeeds = append([]savedSeedRecord{rec}, removeSavedSeedRecord(m.savedSeeds, spec.Name, m.seed)...)
+	m.markCurrentSeedKept()
 	if err := saveSavedSeedRecords(m.savedSeeds); err != nil {
 		m.flashStatus("keep saved locally failed", 3*time.Second)
 		return
@@ -419,8 +432,18 @@ func (m *Model) deleteLibrarySeed() {
 	}
 	rec := m.savedSeeds[m.libraryIdx]
 	m.savedSeeds = append([]savedSeedRecord(nil), removeSavedSeedRecord(m.savedSeeds, rec.Algo, rec.Seed)...)
-	if spec, ok := gen.Resolve(rec.Algo); ok && m.kept != nil {
-		delete(m.kept, bookmarkKey(spec, rec.Seed))
+	if spec, ok := gen.Resolve(rec.Algo); ok {
+		if m.kept != nil {
+			delete(m.kept, bookmarkKey(spec, rec.Seed))
+		}
+		if m.curation != nil {
+			key := bookmarkKey(spec, rec.Seed)
+			if cur, found := m.curation[key]; found {
+				cur.Kept = false
+				m.curation[key] = cur
+				_ = saveSeedCuration(m.curation)
+			}
+		}
 	}
 	if m.libraryIdx >= len(m.savedSeeds) {
 		m.libraryIdx = maxInt(0, len(m.savedSeeds)-1)
@@ -1260,8 +1283,25 @@ func libraryPanel(m Model, w, h int, theme ColorTheme) string {
 		end := minInt(len(m.savedSeeds), start+maxRows)
 		for i := start; i < end; i++ {
 			rec := m.savedSeeds[i]
-			_, label, ok := resolveSavedSeedRecord(rec)
+			bookmark, label, ok := resolveSavedSeedRecord(rec)
 			entry := fmt.Sprintf("%s · %d · %s", label, rec.Seed, formatSavedSeedAge(now, rec.SavedAt))
+			if ok {
+				if cur, found := m.curation[bookmarkKey(bookmark.Spec, bookmark.Seed)]; found {
+					badges := make([]string, 0, 3)
+					if cur.Favorite {
+						badges = append(badges, "★")
+					}
+					if cur.Rating > 0 {
+						badges = append(badges, ratingString(cur.Rating))
+					}
+					if len(cur.Tags) > 0 {
+						badges = append(badges, strings.Join(cur.Tags, ","))
+					}
+					if len(badges) > 0 {
+						entry += " · " + strings.Join(badges, " ")
+					}
+				}
+			}
 			if !ok {
 				entry += " · unavailable"
 			}
