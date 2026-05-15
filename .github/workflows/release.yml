@@ -44,6 +44,16 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Install Linux audio dev headers
+        # oto (audio output for beep) requires ALSA + pkg-config on Linux for
+        # its CGO bindings. macOS uses native CoreAudio bindings and needs no
+        # extra packages.
+        if: matrix.goos == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev pkg-config
+
       - name: Build
         env:
           GOOS: ${{ matrix.goos }}
