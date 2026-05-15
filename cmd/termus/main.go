@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/gopxl/beep/v2"
 	"github.com/gopxl/beep/v2/speaker"
+	"github.com/sinshu/go-meltysynth/meltysynth"
 
 	"github.com/mrbrutti/termus/internal/audio"
 	"github.com/mrbrutti/termus/internal/gen"
@@ -20,9 +21,10 @@ import (
 
 func main() {
 	seed := flag.Int64("seed", time.Now().UnixNano(), "RNG seed (default: time-based)")
-	algoName := flag.String("algo", "eno",
-		"algorithm: eno | drone | glass | pentatonic | markov | sf2 | "+
-			"eno-sf2 | drone-sf2 | glass-sf2 | pentatonic-sf2 | markov-sf2 | phase | chill")
+	algoName := flag.String("algo", "ambient",
+		"algorithm name. Genre names: ambient | drone | bells | lullaby | "+
+			"classical | phase | lofi | jazz. Append -synth for the no-download "+
+			"versions. Legacy names (eno, chill, glass, etc.) also accepted.")
 	initialVol := flag.Int("volume", 70, "initial volume 0..100")
 	sf2Path := flag.String("sf2", "", "path to SoundFont file (overrides --sf2-preset)")
 	sf2Preset := flag.String("sf2-preset", "general",
@@ -36,20 +38,14 @@ func main() {
 		os.Exit(2)
 	}
 
-	var algo gen.Algorithm
-	switch *algoName {
-	case "eno":
-		algo = gen.NewEno()
-	case "drone":
-		algo = gen.NewDrone()
-	case "glass":
-		algo = gen.NewGlass()
-	case "pentatonic":
-		algo = gen.NewPentatonic()
-	case "markov":
-		algo = gen.NewMarkov()
-	case "sf2", "eno-sf2", "drone-sf2", "glass-sf2", "pentatonic-sf2", "markov-sf2", "phase", "chill":
-		// Resolve the SoundFont: --sf2 overrides, otherwise auto-download.
+	spec, ok := gen.Resolve(*algoName)
+	if !ok {
+		fmt.Fprintf(os.Stderr, "unknown algorithm %q (available: %v)\n",
+			*algoName, gen.AllAlgoNames())
+		os.Exit(2)
+	}
+	var sf *meltysynth.SoundFont
+	if spec.RequiresSF2 {
 		path := *sf2Path
 		if path == "" {
 			preset, ok := sf2.Presets[*sf2Preset]
@@ -71,35 +67,14 @@ func main() {
 			}
 			path = p
 		}
-		sf, err := sf2.Open(path)
+		var err error
+		sf, err = sf2.Open(path)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "sf2 open failed:", err)
 			os.Exit(1)
 		}
-		switch *algoName {
-		case "sf2":
-			algo = gen.NewSF2(sf)
-		case "eno-sf2":
-			algo = gen.NewSF2Eno(sf)
-		case "drone-sf2":
-			algo = gen.NewSF2Drone(sf)
-		case "glass-sf2":
-			algo = gen.NewSF2Glass(sf)
-		case "pentatonic-sf2":
-			algo = gen.NewSF2Pentatonic(sf)
-		case "markov-sf2":
-			algo = gen.NewSF2Markov(sf)
-		case "phase":
-			algo = gen.NewPhase(sf)
-		case "chill":
-			algo = gen.NewChill(sf)
-		}
-	default:
-		fmt.Fprintf(os.Stderr,
-			"unknown algorithm %q (eno, drone, glass, pentatonic, markov, sf2, "+
-				"eno-sf2, drone-sf2, glass-sf2, pentatonic-sf2, markov-sf2)\n", *algoName)
-		os.Exit(2)
 	}
+	algo := spec.Build(sf)
 	algo.Seed(*seed)
 
 	// Optional convolution IR.

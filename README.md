@@ -43,19 +43,22 @@ termus --algo chill --sf2 ~/Music/MyFavorite.sf2   # your own file
 
 ## Algorithms
 
-Termus ships nine algorithms. Six are pure-synthesis (~3 MB binary, no downloads); the others run through a SoundFont sampled-instrument engine. All produce indefinitely-long output via per-note mutation, macro key drift, instrument swaps, and section toggling.
+Termus ships eight genre-named algorithms, each with an SF2 sampled version (default) and a `-synth` pure-synthesis fallback (no download needed). All produce indefinitely-long output via per-note mutation, macro key drift, instrument swaps, and section toggling.
 
-| Algorithm | What it is |
-|-|-|
-| `eno` | Brian Eno "Music for Airports" — pad-bell voices on incommensurate loop periods over a slow drone, pure synthesis |
-| `drone` | Stars of the Lid / pure drone — multiple long-sustained voices with a shimmer voice on top |
-| `glass` | FM-synthesis bells with subtle vibrato — bright, crystalline, late-night focus music |
-| `pentatonic` | Random walk through pentatonic minor — never clashes, perpetually melodic |
-| `markov` | Hand-crafted minor-key transition matrix — feels "composed" rather than random |
-| `sf2` | Hi-fi chord-progression algorithm — piano arpeggio + strings + warm pad + bass + flute melody over an 8-chord A-B form with modal interchange |
-| `eno-sf2` / `drone-sf2` / `glass-sf2` / `pentatonic-sf2` / `markov-sf2` | Same scheduling logic as the pure-synth versions, but each voice plays a real sampled instrument with stereo placement, reverb sends, filter LFOs, and macro instrument swaps over time |
-| `phase` | Reich-style phase-shift — two vibraphone voices play the same 4-note pentatonic figure at slightly different tempos, drifting continuously in and out of rhythmic alignment |
-| `chill` | Lofi hip-hop — drum kit + Rhodes EP chord stabs + walking bass + vibe melody + sparse sax + nylon guitar comping, with swing, tape saturation, vinyl crackle, sidechain ducking, and the typical "muffled tape" low-pass |
+| `--algo` | Genre | What it is |
+|-|-|-|
+| `ambient` | Ambient | Music for Airports — pad-bell on incommensurate loops, sampled |
+| `drone` | Drone | Stars of the Lid — held strings + flute shimmer over deep bed |
+| `bells` | Bells | Tubular bells + crystal pad — bright, late-night focus |
+| `lullaby` | Lullaby | Pentatonic random walk — piano, harp, kalimba, never clashes |
+| `classical` | Classical | Markov melody on piano + strings + clarinet — feels composed |
+| `phase` | Phase | Reich-style — two vibraphones drift in tempo, ever-changing pattern |
+| `lofi` | Lo-fi | Hip-hop drums + Rhodes EP + walking bass + sax + nylon guitar |
+| `jazz` | Jazz | Piano + strings + warm pad + bass + flute melody, A-B chord form |
+
+Each genre name has a `-synth` variant (e.g. `ambient-synth`, `lofi-synth` (n/a — only ambient/drone/bells/lullaby/classical have synth variants)) that uses pure synthesis instead of a SoundFont — useful if you want to skip the SoundFont download.
+
+Legacy algorithm names (`eno`, `eno-sf2`, `chill`, `glass`, `markov-sf2`, etc.) still work and resolve to the corresponding genre name.
 
 ## Usage
 
@@ -67,20 +70,24 @@ termus [--algo NAME] [--seed N] [--volume 0..100]
 Examples:
 
 ```bash
-# Default — pure-synthesis Eno
+# Default — sampled ambient (Music for Airports style)
 termus
 
-# Pick an algorithm + seed (same seed = same music)
-termus --algo chill --seed 42
+# Pick a genre + seed (same seed = same music)
+termus --algo lofi --seed 42
+termus --algo classical --seed 99
 
-# Use the SoundFont chord-progression algorithm in a cathedral
-termus --algo sf2 --ir cathedral
+# Jazz in a cathedral
+termus --algo jazz --ir cathedral
 
 # Bring your own impulse response
-termus --algo eno-sf2 --ir ~/Downloads/concert-hall.wav --ir-wet 0.4
+termus --algo ambient --ir ~/Downloads/concert-hall.wav --ir-wet 0.4
 
-# Start louder
-termus --algo phase --volume 90
+# Use the 325 MB high-quality SoundFont
+termus --algo lofi --sf2-preset sgm
+
+# Skip the SoundFont download (pure synthesis)
+termus --algo ambient-synth
 ```
 
 ### `--ir` presets

@@ -9,6 +9,8 @@ import (
 	"math"
 	"os"
 
+	"github.com/sinshu/go-meltysynth/meltysynth"
+
 	"github.com/mrbrutti/termus/internal/audio"
 	"github.com/mrbrutti/termus/internal/gen"
 	"github.com/mrbrutti/termus/internal/sf2"
@@ -28,19 +30,13 @@ func main() {
 	irWet := flag.Float64("ir-wet", 0.40, "convolution wet mix 0..1")
 	flag.Parse()
 
-	var algo gen.Algorithm
-	switch *algoName {
-	case "eno":
-		algo = gen.NewEno()
-	case "drone":
-		algo = gen.NewDrone()
-	case "glass":
-		algo = gen.NewGlass()
-	case "pentatonic":
-		algo = gen.NewPentatonic()
-	case "markov":
-		algo = gen.NewMarkov()
-	case "sf2", "eno-sf2", "drone-sf2", "glass-sf2", "pentatonic-sf2", "markov-sf2", "phase", "chill":
+	spec, ok := gen.Resolve(*algoName)
+	if !ok {
+		fmt.Fprintf(os.Stderr, "unknown algorithm %q\n", *algoName)
+		os.Exit(2)
+	}
+	var sf *meltysynth.SoundFont
+	if spec.RequiresSF2 {
 		path := *sf2Path
 		if path == "" {
 			p, err := sf2.EnsurePreset(*sf2Preset, nil)
@@ -50,33 +46,14 @@ func main() {
 			}
 			path = p
 		}
-		sf, err := sf2.Open(path)
+		var err error
+		sf, err = sf2.Open(path)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "sf2 open failed:", err)
 			os.Exit(1)
 		}
-		switch *algoName {
-		case "sf2":
-			algo = gen.NewSF2(sf)
-		case "eno-sf2":
-			algo = gen.NewSF2Eno(sf)
-		case "drone-sf2":
-			algo = gen.NewSF2Drone(sf)
-		case "glass-sf2":
-			algo = gen.NewSF2Glass(sf)
-		case "pentatonic-sf2":
-			algo = gen.NewSF2Pentatonic(sf)
-		case "markov-sf2":
-			algo = gen.NewSF2Markov(sf)
-		case "phase":
-			algo = gen.NewPhase(sf)
-		case "chill":
-			algo = gen.NewChill(sf)
-		}
-	default:
-		fmt.Fprintf(os.Stderr, "unknown algorithm %q\n", *algoName)
-		os.Exit(2)
 	}
+	algo := spec.Build(sf)
 	algo.Seed(*seed)
 
 	if *irPath != "" {
