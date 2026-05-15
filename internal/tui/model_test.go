@@ -283,6 +283,19 @@ func TestCompactBottomBarUsesMinimalHints(t *testing.T) {
 	}
 }
 
+func TestReducedChromeBottomBarShowsReturnHint(t *testing.T) {
+	m := Model{
+		algo:          "Ambient",
+		volume:        70,
+		reducedChrome: true,
+		themes:        []ColorTheme{DefaultTheme()},
+	}
+	bar := bottomBar(m, 90, DefaultTheme(), false)
+	if !strings.Contains(bar, "[z] full") {
+		t.Fatalf("reduced chrome bar missing return hint: %q", bar)
+	}
+}
+
 func keyMsg(key string) tea.KeyMsg {
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)}
 }

@@ -42,6 +42,7 @@ type Model struct {
 	inspectorVisible bool
 	exportVisible    bool
 	exportBusy       bool
+	reducedChrome    bool
 	status           string
 	statusTTL        time.Time
 	stickyStatus     string
@@ -317,6 +318,15 @@ func (m *Model) toggleExportDrawer() {
 	m.flashStatus("export: off", 2*time.Second)
 }
 
+func (m *Model) toggleReducedChrome() {
+	m.reducedChrome = !m.reducedChrome
+	if m.reducedChrome {
+		m.flashStatus("zen: on", 2*time.Second)
+		return
+	}
+	m.flashStatus("zen: off", 2*time.Second)
+}
+
 func (m Model) currentExportTarget() (gen.AlgoSpec, int64, bool) {
 	spec, ok := m.currentSpec()
 	if !ok {
@@ -502,10 +512,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		action := matchKey(msg)
-		if m.helpVisible && action != actionHelp && action != actionQuit {
+		if m.helpVisible && action != actionHelp && action != actionQuit && action != actionZen {
 			return m, nil
 		}
-		if m.inspectorVisible && action != actionInspector && action != actionQuit && action != actionExport {
+		if m.inspectorVisible && action != actionInspector && action != actionQuit && action != actionExport && action != actionZen {
 			return m, nil
 		}
 		switch action {
@@ -571,6 +581,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.toggleInspector()
 		case actionExport:
 			m.toggleExportDrawer()
+		case actionZen:
+			m.toggleReducedChrome()
 		case actionNextAlgo:
 			m.switchAlgo(1)
 		case actionPrevAlgo:
@@ -611,7 +623,9 @@ func (m Model) View() string {
 	}
 	compact := useCompactLayout(m.width, m.height)
 	chromeH := 3 // top + now-playing + bottom bars
-	if m.debugVisible {
+	if m.reducedChrome {
+		chromeH = 1
+	} else if m.debugVisible {
 		chromeH++
 	}
 	innerH := m.height - chromeH
@@ -638,6 +652,9 @@ func (m Model) View() string {
 		body = inspectorPanel(m, innerW, innerH, theme)
 	} else if m.exportVisible {
 		body = exportPanel(m, innerW, innerH, theme)
+	}
+	if m.reducedChrome {
+		return lipgloss.JoinVertical(lipgloss.Left, body, bottom)
 	}
 	if m.debugVisible {
 		debug := debugBar(m, innerW, theme)
@@ -897,6 +914,7 @@ func bottomBar(m Model, w int, theme ColorTheme, compact bool) string {
 			"[l] library",
 			"[i] inspect",
 			"[e] export",
+			"[z] zen",
 			"[?] help",
 		}
 	}
@@ -926,6 +944,8 @@ func bottomBar(m Model, w int, theme ColorTheme, compact bool) string {
 		hintParts = []string{"[i] close", "[e] export", "[r] record", "[q] quit"}
 	} else if m.exportVisible {
 		hintParts = []string{"[w] wav", "[m] midi", "[t] stems", "[r] record", "[e] close", "[q] quit"}
+	} else if m.reducedChrome {
+		hintParts = []string{fmt.Sprintf("%s · %d%%", m.algo, m.volume), "[z] full", "[?] help", "[q] quit"}
 	}
 	hint := strings.Join(hintParts, "   ")
 
@@ -951,7 +971,7 @@ func helpPanel(m Model, w, h int, theme ColorTheme) string {
 	bodyH := maxInt(10, minInt(h-2, 18))
 	lines := []string{
 		styleHelpLine(theme, false, "Playback", "[space] pause/resume   [↑↓] volume   [r] record"),
-		styleHelpLine(theme, false, "Look", "[C] visual   [c] theme   [d] debug   [i] inspect"),
+		styleHelpLine(theme, false, "Look", "[C] visual   [c] theme   [d] debug   [i] inspect   [z] zen"),
 		styleHelpLine(theme, false, "Seeds", "[[/]] browse   [a/b] store   [tab] compare   [k/x] keep/reject   [l] library"),
 		styleHelpLine(theme, false, "Export", "[e] drawer   [w] wav   [m] midi   [t] stems"),
 		styleHelpLine(theme, false, "Tracks", "[n/p] algorithm   [s] skip playlist track"),
