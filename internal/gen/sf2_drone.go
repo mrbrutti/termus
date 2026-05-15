@@ -50,6 +50,15 @@ func (a *SF2Drone) Seed(seedVal int64) {
 	core.setPan(3, 64)
 	core.setPan(4, 64)
 
+	// Per-channel base cutoffs. Drone wants smooth sustained tones — slight
+	// darkening on the strings/choir helps remove brittleness on long held
+	// notes. Flute kept bright since it's the high-register shimmer.
+	core.setChannelCutoff(0, 72)  // string ensemble 1
+	core.setChannelCutoff(1, 68)  // string ensemble 2 slow
+	core.setChannelCutoff(2, 88)  // flute shimmer
+	core.setChannelCutoff(3, 64)  // choir warmth
+	core.setChannelCutoff(4, 76)  // bass
+
 	// Filter LFOs on the sustained string and choir layers. Different rates
 	// per channel so they breathe out of phase with each other.
 	core.addFilterLFO(0, 1.0/14.0, 62, 28)

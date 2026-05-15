@@ -79,6 +79,14 @@ func (a *Phase) Seed(seedVal int64) {
 	// Vibraphones get no LFO (would mask the phase-shift rhythmic effect).
 	core.addFilterLFO(2, 1.0/18.0, 60, 32)
 
+	// Per-channel base cutoffs. Vibraphones bright so attack transients
+	// stay defined (essential for hearing the rhythmic interference);
+	// choir and bass darker for atmosphere.
+	core.setChannelCutoff(0, 92) // vibe A
+	core.setChannelCutoff(1, 92) // vibe B
+	core.setChannelCutoff(2, 50) // choir pad
+	core.setChannelCutoff(3, 60) // bass
+
 	// Phase wants HEAVY reverb on the vibraphones — the long tail is what
 	// blurs the two voices' interlocking patterns into a continuous wash.
 	core.setReverbSend(0, 115)

@@ -48,6 +48,13 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	core.setPan(2, 64)
 	core.setPan(3, 64)
 
+	// Glass-family base cutoffs: bells and crystal kept bright for their
+	// shimmer; pad and marimba darker to provide body underneath.
+	core.setChannelCutoff(0, 96)  // tubular bells
+	core.setChannelCutoff(1, 100) // crystal
+	core.setChannelCutoff(2, 52)  // bowed glass pad (dark body)
+	core.setChannelCutoff(3, 60)  // marimba
+
 	// Filter LFO on the bowed-glass pad — bells/crystal already shimmer
 	// from their natural envelopes, but the pad below benefits from a slow
 	// breathing sweep.

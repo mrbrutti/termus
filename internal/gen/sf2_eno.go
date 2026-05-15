@@ -68,6 +68,15 @@ func (a *SF2Eno) Seed(seedVal int64) {
 	core.setPan(3, 100)
 	core.setPan(4, 64)
 
+	// Per-channel base cutoffs (CC 74). Strings and pad slightly darkened
+	// for "warm wash" feel; piano leads kept bright to cut through the bed;
+	// celesta full bright for sparkle; horn warm but not muffled.
+	core.setChannelCutoff(0, 80) // strings
+	core.setChannelCutoff(1, 70) // warm pad
+	core.setChannelCutoff(2, 96) // piano leads
+	core.setChannelCutoff(3, 100) // celesta sparkle
+	core.setChannelCutoff(4, 64) // french horn
+
 	// Slow filter modulation on the sustained pads — gives the texture a
 	// breathing quality. ~12 s cycle on strings, ~17 s on the warm pad
 	// (different rates so the two pads don't pulse in sync).

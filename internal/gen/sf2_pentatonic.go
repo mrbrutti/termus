@@ -48,6 +48,13 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 	core.setPan(2, 100)
 	core.setPan(3, 64)
 
+	// Pentatonic-sf2 leans lullaby. Darken the piano to "music box" register
+	// (CC 74 ≈ 56), keep harp clear, music box natural bright, bass moderate.
+	core.setChannelCutoff(0, 56)  // piano — music-box-y darken
+	core.setChannelCutoff(1, 80)  // orchestral harp
+	core.setChannelCutoff(2, 70)  // music box
+	core.setChannelCutoff(3, 64)  // bass
+
 	core.setReverbSend(0, 70)  // piano: moderate
 	core.setReverbSend(1, 80)  // harp: a bit more for that "music box" halo
 	core.setReverbSend(2, 110) // music box: drenched

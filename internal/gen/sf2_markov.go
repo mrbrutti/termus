@@ -48,6 +48,12 @@ func (a *SF2Markov) Seed(seedVal int64) {
 	core.setPan(2, 90)
 	core.setPan(3, 64)
 
+	// Markov-sf2: piano slightly darkened, clarinet bright for solo voice.
+	core.setChannelCutoff(0, 64)  // piano
+	core.setChannelCutoff(1, 64)  // slow strings
+	core.setChannelCutoff(2, 84)  // clarinet — clear for solo voice
+	core.setChannelCutoff(3, 60)  // bass
+
 	core.setReverbSend(0, 72)  // piano: medium
 	core.setReverbSend(1, 100) // strings: deeply wet
 	core.setReverbSend(2, 88)  // clarinet solo voice: wet for "concert hall" feel

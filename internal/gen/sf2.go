@@ -234,11 +234,21 @@ func (s *SF2) Seed(seedVal int64) {
 	//   3 — Acoustic Bass       (GM #32)     bass note
 	//   4 — Flute               (GM #73)     melody lead
 	const ccProgramChange = 0xC0
+	const ccControlChange = 0xB0
+	const ccBrightness = 74
 	s.syn.ProcessMidiMessage(0, ccProgramChange, 0, 0)
 	s.syn.ProcessMidiMessage(1, ccProgramChange, 48, 0)
 	s.syn.ProcessMidiMessage(2, ccProgramChange, 89, 0)
 	s.syn.ProcessMidiMessage(3, ccProgramChange, 32, 0)
 	s.syn.ProcessMidiMessage(4, ccProgramChange, 73, 0)
+	// Per-channel base cutoffs (CC 74) — same darkening pattern used by
+	// other SF2 algorithms. Piano + strings + flute kept bright for clarity;
+	// warm pad slightly darkened; bass moderate.
+	s.syn.ProcessMidiMessage(0, ccControlChange, ccBrightness, 80) // piano
+	s.syn.ProcessMidiMessage(1, ccControlChange, ccBrightness, 76) // strings
+	s.syn.ProcessMidiMessage(2, ccControlChange, ccBrightness, 64) // warm pad
+	s.syn.ProcessMidiMessage(3, ccControlChange, ccBrightness, 64) // bass
+	s.syn.ProcessMidiMessage(4, ccControlChange, ccBrightness, 96) // flute melody
 }
 
 // buildChordAt returns a 4-note chord rooted on the given scale degree of
