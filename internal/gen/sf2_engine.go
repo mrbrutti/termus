@@ -75,6 +75,16 @@ type SF2Track struct {
 	// the channel (MIDI CC 11). It is best used on channels with one musical
 	// voice, such as solo leads or single pads.
 	ResolveExpression func(slot int, key int) SF2ExpressionCurve
+	// ResolveModWheel optionally shapes MIDI CC 1 per note for vibrato /
+	// modulation depth on SoundFonts that map mod-wheel musically.
+	ResolveModWheel func(slot int, key int) SF2ExpressionCurve
+	// ResolveBrightness optionally reshapes MIDI CC 74 per note so attacks
+	// can bloom brighter than the sustain.
+	ResolveBrightness func(slot int, key int) SF2ExpressionCurve
+	// ResolveDetuneCents optionally applies a small per-note pitch bend,
+	// expressed in cents and interpreted against the default +/-2 semitone
+	// MIDI bend range.
+	ResolveDetuneCents func(slot int, key int) int32
 
 	VelocityJitter  int32   // ±range added to Velocity per NoteOn
 	TimingJitterSec float64 // ±range added to fire time per NoteOn (seconds)
@@ -145,6 +155,12 @@ type sf2TrackState struct {
 	exprNextT     int64
 	exprStage     int
 	exprCurve     SF2ExpressionCurve
+	modNextT      int64
+	modStage      int
+	modCurve      SF2ExpressionCurve
+	brightNextT   int64
+	brightStage   int
+	brightCurve   SF2ExpressionCurve
 }
 
 // sf2Core is a shared SoundFont rendering engine. Each SF2-mode algorithm
@@ -511,6 +527,19 @@ func (e *sf2Core) setChannelExpression(channel, value int32) {
 	e.processMIDI(channel, ccControlChange, ccExpression, value)
 }
 
+func (e *sf2Core) setPitchBend(channel, value int32) {
+	const pitchBend = 0xE0
+	if value < 0 {
+		value = 0
+	}
+	if value > 16383 {
+		value = 16383
+	}
+	lsb := value & 0x7F
+	msb := (value >> 7) & 0x7F
+	e.processMIDI(channel, pitchBend, lsb, msb)
+}
+
 // setMasterEQ overrides the default master-bus shelf EQ. The engine builds
 // in a +2.5 dB low shelf at 180 Hz and a +3 dB high shelf at 7.5 kHz as
 // sensible defaults — algorithms can pass different parameters to dial in
@@ -703,6 +732,22 @@ func (s *sf2TrackState) samplesUntilNextEvent(t int64) int64 {
 			ahead = d
 		}
 	}
+	if s.modNextT > 0 {
+		if t >= s.modNextT {
+			return 0
+		}
+		if d := s.modNextT - t; d < ahead {
+			ahead = d
+		}
+	}
+	if s.brightNextT > 0 {
+		if t >= s.brightNextT {
+			return 0
+		}
+		if d := s.brightNextT - t; d < ahead {
+			ahead = d
+		}
+	}
 	return ahead
 }
 
@@ -766,6 +811,12 @@ func (s *sf2TrackState) fireTransition(t int64, syn sf2EventSink, rng *rand.Rand
 			if s.cfg.ResolveExpression != nil {
 				s.updateTiedExpression(newSlot, key, t)
 			}
+			if s.cfg.ResolveModWheel != nil {
+				s.updateTiedControlCurve(newSlot, key, t, &s.modCurve, &s.modStage, &s.modNextT, s.cfg.ResolveModWheel)
+			}
+			if s.cfg.ResolveBrightness != nil {
+				s.updateTiedControlCurve(newSlot, key, t, &s.brightCurve, &s.brightStage, &s.brightNextT, s.cfg.ResolveBrightness)
+			}
 		} else {
 			if s.curKey >= 0 {
 				s.releaseCurrentForNext(t, syn, slotLen)
@@ -790,8 +841,22 @@ func (s *sf2TrackState) fireTransition(t int64, syn sf2EventSink, rng *rand.Rand
 			s.releaseT = t + hold
 			s.exprNextT = 0
 			s.exprStage = 0
+			s.modNextT = 0
+			s.modStage = 0
+			s.brightNextT = 0
+			s.brightStage = 0
 			if s.cfg.ResolveExpression != nil {
 				s.startExpression(newSlot, key, hold, t, syn)
+			}
+			if s.cfg.ResolveModWheel != nil {
+				s.startControlCurve(newSlot, key, hold, t, syn, 1, 0, &s.modCurve, &s.modStage, &s.modNextT, s.cfg.ResolveModWheel)
+			}
+			if s.cfg.ResolveBrightness != nil {
+				s.startControlCurve(newSlot, key, hold, t, syn, 74, 96, &s.brightCurve, &s.brightStage, &s.brightNextT, s.cfg.ResolveBrightness)
+			}
+			if s.cfg.ResolveDetuneCents != nil {
+				cents := s.cfg.ResolveDetuneCents(newSlot, key)
+				syn.ProcessMidiMessage(s.cfg.Channel, 0xE0, pitchBendLSB(cents), pitchBendMSB(cents))
 			}
 			if s.cfg.OnFire != nil {
 				s.cfg.OnFire()
@@ -871,27 +936,24 @@ func (s *sf2TrackState) handleDueEvents(t int64, syn sf2EventSink, rng *rand.Ran
 		if s.curKey >= 0 {
 			syn.NoteOff(s.cfg.Channel, int32(s.curKey))
 			s.curKey = -1
+			syn.ProcessMidiMessage(s.cfg.Channel, 0xE0, pitchBendLSB(0), pitchBendMSB(0))
 		}
 		s.releaseT = 0
 		s.exprNextT = 0
 		s.exprStage = 0
+		s.modNextT = 0
+		s.modStage = 0
+		s.brightNextT = 0
+		s.brightStage = 0
 	}
 	if s.exprNextT > 0 && t >= s.exprNextT {
-		switch s.exprStage {
-		case 1:
-			syn.ProcessMidiMessage(s.cfg.Channel, ccControlChange, 11, s.exprCurve.Peak)
-			if s.exprCurve.End != s.exprCurve.Peak && s.releaseT > t+1 {
-				s.exprStage = 2
-				s.exprNextT = s.releaseT - 1
-			} else {
-				s.exprNextT = 0
-				s.exprStage = 0
-			}
-		case 2:
-			syn.ProcessMidiMessage(s.cfg.Channel, ccControlChange, 11, s.exprCurve.End)
-			s.exprNextT = 0
-			s.exprStage = 0
-		}
+		s.handleControlCurve(t, syn, 11, &s.exprCurve, &s.exprStage, &s.exprNextT)
+	}
+	if s.modNextT > 0 && t >= s.modNextT {
+		s.handleControlCurve(t, syn, 1, &s.modCurve, &s.modStage, &s.modNextT)
+	}
+	if s.brightNextT > 0 && t >= s.brightNextT {
+		s.handleControlCurve(t, syn, 74, &s.brightCurve, &s.brightStage, &s.brightNextT)
 	}
 	if s.nextFireT <= t {
 		s.fireTransition(t, syn, rng)
@@ -942,56 +1004,107 @@ func (s *sf2TrackState) releaseCurrentForNext(t int64, syn sf2EventSink, slotLen
 	s.releaseT = 0
 	s.exprNextT = 0
 	s.exprStage = 0
+	s.modNextT = 0
+	s.modStage = 0
+	s.brightNextT = 0
+	s.brightStage = 0
 }
 
 func (s *sf2TrackState) startExpression(slot, key int, hold, t int64, syn sf2EventSink) {
-	s.exprCurve = s.cfg.ResolveExpression(slot, key)
-	if s.exprCurve.Start <= 0 {
-		s.exprCurve.Start = 96
-	}
-	if s.exprCurve.Peak <= 0 {
-		s.exprCurve.Peak = s.exprCurve.Start
-	}
-	if s.exprCurve.End <= 0 {
-		s.exprCurve.End = s.exprCurve.Peak
-	}
-	if s.exprCurve.PeakAt01 <= 0 || s.exprCurve.PeakAt01 >= 1 {
-		s.exprCurve.PeakAt01 = 0.35
-	}
-	syn.ProcessMidiMessage(s.cfg.Channel, ccControlChange, 11, s.exprCurve.Start)
-	if s.exprCurve.Peak != s.exprCurve.Start {
-		s.exprStage = 1
-		s.exprNextT = t + int64(float64(hold)*s.exprCurve.PeakAt01)
-		if s.exprNextT <= t {
-			s.exprNextT = t + 1
-		}
-	} else if s.exprCurve.End != s.exprCurve.Peak && s.releaseT > t+1 {
-		s.exprStage = 2
-		s.exprNextT = s.releaseT - 1
-	}
+	s.startControlCurve(slot, key, hold, t, syn, 11, 96, &s.exprCurve, &s.exprStage, &s.exprNextT, s.cfg.ResolveExpression)
 }
 
 func (s *sf2TrackState) updateTiedExpression(slot, key int, t int64) {
-	curve := s.cfg.ResolveExpression(slot, key)
-	if curve.End <= 0 {
-		curve.End = s.exprCurve.End
+	s.updateTiedControlCurve(slot, key, t, &s.exprCurve, &s.exprStage, &s.exprNextT, s.cfg.ResolveExpression)
+}
+
+func (s *sf2TrackState) startControlCurve(slot, key int, hold, t int64, syn sf2EventSink, control, defaultStart int32, curve *SF2ExpressionCurve, stage *int, nextT *int64, resolve func(int, int) SF2ExpressionCurve) {
+	*curve = resolve(slot, key)
+	if curve.Start <= 0 {
+		curve.Start = defaultStart
 	}
-	s.exprCurve.End = curve.End
-	if curve.Peak > s.exprCurve.Peak {
-		s.exprCurve.Peak = curve.Peak
+	if curve.Peak <= 0 {
+		curve.Peak = curve.Start
+	}
+	if curve.End <= 0 {
+		curve.End = curve.Peak
+	}
+	if curve.PeakAt01 <= 0 || curve.PeakAt01 >= 1 {
+		curve.PeakAt01 = 0.35
+	}
+	syn.ProcessMidiMessage(s.cfg.Channel, ccControlChange, control, curve.Start)
+	if curve.Peak != curve.Start {
+		*stage = 1
+		*nextT = t + int64(float64(hold)*curve.PeakAt01)
+		if *nextT <= t {
+			*nextT = t + 1
+		}
+	} else if curve.End != curve.Peak && s.releaseT > t+1 {
+		*stage = 2
+		*nextT = s.releaseT - 1
+	}
+}
+
+func (s *sf2TrackState) updateTiedControlCurve(slot, key int, t int64, curve *SF2ExpressionCurve, stage *int, nextT *int64, resolve func(int, int) SF2ExpressionCurve) {
+	if resolve == nil {
+		return
+	}
+	nextCurve := resolve(slot, key)
+	if nextCurve.End <= 0 {
+		nextCurve.End = curve.End
+	}
+	curve.End = nextCurve.End
+	if nextCurve.Peak > curve.Peak {
+		curve.Peak = nextCurve.Peak
 		if s.releaseT > t+1 {
-			s.exprStage = 1
-			s.exprNextT = t + int64(float64(s.releaseT-t)*curve.PeakAt01)
-			if s.exprNextT <= t {
-				s.exprNextT = t + 1
+			*stage = 1
+			*nextT = t + int64(float64(s.releaseT-t)*nextCurve.PeakAt01)
+			if *nextT <= t {
+				*nextT = t + 1
 			}
 		}
 		return
 	}
 	if s.releaseT > t+1 {
-		s.exprStage = 2
-		s.exprNextT = s.releaseT - 1
+		*stage = 2
+		*nextT = s.releaseT - 1
 	}
+}
+
+func (s *sf2TrackState) handleControlCurve(t int64, syn sf2EventSink, control int32, curve *SF2ExpressionCurve, stage *int, nextT *int64) {
+	switch *stage {
+	case 1:
+		syn.ProcessMidiMessage(s.cfg.Channel, ccControlChange, control, curve.Peak)
+		if curve.End != curve.Peak && s.releaseT > t+1 {
+			*stage = 2
+			*nextT = s.releaseT - 1
+		} else {
+			*nextT = 0
+			*stage = 0
+		}
+	case 2:
+		syn.ProcessMidiMessage(s.cfg.Channel, ccControlChange, control, curve.End)
+		*nextT = 0
+		*stage = 0
+	}
+}
+
+func pitchBendValue(cents int32) int32 {
+	if cents > 200 {
+		cents = 200
+	}
+	if cents < -200 {
+		cents = -200
+	}
+	return 8192 + cents*8192/200
+}
+
+func pitchBendLSB(cents int32) int32 {
+	return pitchBendValue(cents) & 0x7F
+}
+
+func pitchBendMSB(cents int32) int32 {
+	return (pitchBendValue(cents) >> 7) & 0x7F
 }
 
 // renderInto fills the stereo float64 buffer by alternately rendering audio

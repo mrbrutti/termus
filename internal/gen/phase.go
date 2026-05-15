@@ -145,17 +145,21 @@ func (a *Phase) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 0, Velocity: 78, Notes: append([]int{}, figureSlots...),
 		PeriodSec: basePeriod, Phase01: 0,
-		ResolveNote:    func(slot int, _ int) int { return a.phaseFigureNote(slot) },
-		Gate:           0.68,
-		VelocityJitter: 6,
+		ResolveNote:        func(slot int, _ int) int { return a.phaseFigureNote(slot) },
+		ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(98, 116, 100) },
+		ResolveDetuneCents: slotDetunePattern(-2, 1, -1, 2),
+		Gate:               0.68,
+		VelocityJitter:     6,
 	})
 	// --- Marimba voice B: slightly faster.
 	core.addTrack(SF2Track{
 		Channel: 1, Velocity: 72, Notes: append([]int{}, figureSlots...),
 		PeriodSec: basePeriod * driftRatio, Phase01: 0,
-		ResolveNote:    func(slot int, _ int) int { return a.phaseFigureNote(slot) },
-		Gate:           0.70,
-		VelocityJitter: 6,
+		ResolveNote:        func(slot int, _ int) int { return a.phaseFigureNote(slot) },
+		ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(96, 112, 98) },
+		ResolveDetuneCents: slotDetunePattern(2, -1, 1, -2),
+		Gate:               0.70,
+		VelocityJitter:     6,
 	})
 
 	// --- Choir aahs pad: 2 chord-tone voices (thinned from 3 — the mallet
@@ -165,12 +169,15 @@ func (a *Phase) Seed(seedVal int64) {
 		core.addTrack(SF2Track{
 			Channel: 2, Velocity: 38, Notes: []int{a.padTone(v)},
 			PeriodSec: 19.3 + 9*float64(v), Phase01: a.rng.Float64(),
-			MutationRate:   0.40,
-			MutateOne:      func(_ int, _ int) int { return a.padTone(v) },
-			ResolveNote:    func(_ int, _ int) int { return a.padTone(v) },
-			Gate:           0.98,
-			Legato:         true,
-			VelocityJitter: 4, TimingJitterSec: 0.05,
+			MutationRate:       0.40,
+			MutateOne:          func(_ int, _ int) int { return a.padTone(v) },
+			ResolveNote:        func(_ int, _ int) int { return a.padTone(v) },
+			ResolveModWheel:    func(slot int, key int) SF2ExpressionCurve { return gentleVibratoCurve(0, 14, 8) },
+			ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(64, 74, 66) },
+			ResolveDetuneCents: slotDetunePattern(-3, 2, -1, 4),
+			Gate:               0.98,
+			Legato:             true,
+			VelocityJitter:     4, TimingJitterSec: 0.05,
 		})
 	}
 
@@ -178,12 +185,15 @@ func (a *Phase) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 3, Velocity: 36, Notes: []int{a.padTone(1) + 12},
 		PeriodSec: 27.3, Phase01: a.rng.Float64(),
-		MutationRate:   0.30,
-		MutateOne:      func(_ int, _ int) int { return a.padTone(1) + 12 },
-		ResolveNote:    func(_ int, _ int) int { return a.padTone(1) + 12 },
-		Gate:           0.98,
-		Legato:         true,
-		VelocityJitter: 4, TimingJitterSec: 0.06,
+		MutationRate:       0.30,
+		MutateOne:          func(_ int, _ int) int { return a.padTone(1) + 12 },
+		ResolveNote:        func(_ int, _ int) int { return a.padTone(1) + 12 },
+		ResolveModWheel:    func(slot int, key int) SF2ExpressionCurve { return gentleVibratoCurve(0, 10, 6) },
+		ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(72, 82, 74) },
+		ResolveDetuneCents: slotDetunePattern(2, -2, 3, -1),
+		Gate:               0.98,
+		Legato:             true,
+		VelocityJitter:     4, TimingJitterSec: 0.06,
 	})
 
 	// --- Sub-bass pedal: chord root, very slow retrigger.
@@ -203,8 +213,10 @@ func (a *Phase) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 5, Velocity: 40, Notes: crotalesSlots,
 		PeriodSec: 47.3, Phase01: a.rng.Float64(),
-		ResolveNote:    func(slot int, _ int) int { return a.crotalesNote(slot) },
-		VelocityJitter: 14, TimingJitterSec: 0.10,
+		ResolveNote:        func(slot int, _ int) int { return a.crotalesNote(slot) },
+		ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(118, 127, 120) },
+		ResolveDetuneCents: slotDetunePattern(0, 2, -2, 3),
+		VelocityJitter:     14, TimingJitterSec: 0.10,
 	})
 
 	a.core = core

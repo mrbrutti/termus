@@ -223,7 +223,10 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 		ResolveExpression: func(slot int, key int) SF2ExpressionCurve {
 			return SF2ExpressionCurve{Start: 88, Peak: 108, End: 92, PeakAt01: 0.40}
 		},
-		VelocityJitter: 12, TimingJitterSec: 0.018,
+		ResolveModWheel:    func(slot int, key int) SF2ExpressionCurve { return gentleVibratoCurve(0, 10, 4) },
+		ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(110, 124, 112) },
+		ResolveDetuneCents: slotDetunePattern(-1, 2, -2, 1),
+		VelocityJitter:     12, TimingJitterSec: 0.018,
 	})
 
 	// --- Glockenspiel ornament: high answering figures that only answer the
@@ -236,8 +239,10 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 		ResolveNote: func(slot int, _ int) int {
 			return a.glockNoteAt(slot)
 		},
-		Gate:           0.42,
-		VelocityJitter: 12, TimingJitterSec: 0.030,
+		ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(118, 127, 120) },
+		ResolveDetuneCents: slotDetunePattern(0, 2, -1, 3),
+		Gate:               0.42,
+		VelocityJitter:     12, TimingJitterSec: 0.030,
 		Enabled: a.glockOn,
 	})
 
@@ -247,12 +252,15 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 		core.addTrack(SF2Track{
 			Channel: 4, Velocity: 36, Notes: []int{a.padNote(voice)},
 			PeriodSec: period, Phase01: a.rng.Float64(),
-			MutationRate:   0.20,
-			MutateOne:      func(_ int, _ int) int { return a.padNote(voice) },
-			ResolveNote:    func(_ int, _ int) int { return a.padNote(voice) },
-			Gate:           0.98,
-			Legato:         true,
-			VelocityJitter: 4, TimingJitterSec: 0.040,
+			MutationRate:       0.20,
+			MutateOne:          func(_ int, _ int) int { return a.padNote(voice) },
+			ResolveNote:        func(_ int, _ int) int { return a.padNote(voice) },
+			ResolveModWheel:    func(slot int, key int) SF2ExpressionCurve { return gentleVibratoCurve(0, 16, 8) },
+			ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(64, 72, 66) },
+			ResolveDetuneCents: slotDetunePattern(-2, 1, -1, 2),
+			Gate:               0.98,
+			Legato:             true,
+			VelocityJitter:     4, TimingJitterSec: 0.040,
 		})
 	}
 

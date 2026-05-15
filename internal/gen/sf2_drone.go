@@ -143,12 +143,15 @@ func (a *SF2Drone) Seed(seedVal int64) {
 		core.addTrack(SF2Track{
 			Channel: 0, Velocity: 52, Notes: []int{a.droneTone(voice, 0)},
 			PeriodSec: period, Phase01: a.rng.Float64(),
-			MutationRate:   0.20,
-			MutateOne:      func(_ int, _ int) int { return a.droneTone(voice, 0) },
-			ResolveNote:    func(_ int, _ int) int { return a.droneTone(voice, 0) },
-			Gate:           0.98,
-			Legato:         true,
-			VelocityJitter: 8, TimingJitterSec: 0.15,
+			MutationRate:       0.20,
+			MutateOne:          func(_ int, _ int) int { return a.droneTone(voice, 0) },
+			ResolveNote:        func(_ int, _ int) int { return a.droneTone(voice, 0) },
+			ResolveModWheel:    func(slot int, key int) SF2ExpressionCurve { return gentleVibratoCurve(0, 22, 12) },
+			ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(70, 82, 72) },
+			ResolveDetuneCents: slotDetunePattern(-5, 3, -2, 4),
+			Gate:               0.98,
+			Legato:             true,
+			VelocityJitter:     8, TimingJitterSec: 0.15,
 		})
 	}
 
@@ -158,12 +161,15 @@ func (a *SF2Drone) Seed(seedVal int64) {
 		core.addTrack(SF2Track{
 			Channel: 1, Velocity: 46, Notes: []int{a.droneTone(voice, 12)},
 			PeriodSec: period, Phase01: a.rng.Float64(),
-			MutationRate:   0.20,
-			MutateOne:      func(_ int, _ int) int { return a.droneTone(voice, 12) },
-			ResolveNote:    func(_ int, _ int) int { return a.droneTone(voice, 12) },
-			Gate:           0.98,
-			Legato:         true,
-			VelocityJitter: 6, TimingJitterSec: 0.18,
+			MutationRate:       0.20,
+			MutateOne:          func(_ int, _ int) int { return a.droneTone(voice, 12) },
+			ResolveNote:        func(_ int, _ int) int { return a.droneTone(voice, 12) },
+			ResolveModWheel:    func(slot int, key int) SF2ExpressionCurve { return gentleVibratoCurve(0, 18, 10) },
+			ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(64, 76, 66) },
+			ResolveDetuneCents: slotDetunePattern(3, -4, 2, -1),
+			Gate:               0.98,
+			Legato:             true,
+			VelocityJitter:     6, TimingJitterSec: 0.18,
 		})
 	}
 
@@ -171,12 +177,15 @@ func (a *SF2Drone) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 2, Velocity: 44, Notes: []int{a.choirTone(1)},
 		PeriodSec: 71.7, Phase01: a.rng.Float64(),
-		MutationRate:   0.30,
-		MutateOne:      func(_ int, _ int) int { return a.choirTone(1) },
-		ResolveNote:    func(_ int, _ int) int { return a.choirTone(1) },
-		Gate:           0.98,
-		Legato:         true,
-		VelocityJitter: 8, TimingJitterSec: 0.20,
+		MutationRate:       0.30,
+		MutateOne:          func(_ int, _ int) int { return a.choirTone(1) },
+		ResolveNote:        func(_ int, _ int) int { return a.choirTone(1) },
+		ResolveModWheel:    func(slot int, key int) SF2ExpressionCurve { return gentleVibratoCurve(0, 20, 12) },
+		ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(76, 88, 78) },
+		ResolveDetuneCents: slotDetunePattern(-2, 2, -1, 3),
+		Gate:               0.98,
+		Legato:             true,
+		VelocityJitter:     8, TimingJitterSec: 0.20,
 	})
 
 	// --- FM EP shimmer: a single high voice that catches upper partials of
@@ -185,10 +194,13 @@ func (a *SF2Drone) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 3, Velocity: 38, Notes: shimmerSlots,
 		PeriodSec: 91.1, Phase01: a.rng.Float64(),
-		ResolveNote:    func(slot int, _ int) int { return a.shimmerNote(slot) },
-		Gate:           0.98,
-		Legato:         true,
-		VelocityJitter: 10, TimingJitterSec: 0.25,
+		ResolveNote:        func(slot int, _ int) int { return a.shimmerNote(slot) },
+		ResolveModWheel:    func(slot int, key int) SF2ExpressionCurve { return gentleVibratoCurve(0, 12, 6) },
+		ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(92, 108, 94) },
+		ResolveDetuneCents: slotDetunePattern(4, -3, 5, -2),
+		Gate:               0.98,
+		Legato:             true,
+		VelocityJitter:     10, TimingJitterSec: 0.25,
 	})
 
 	// --- Sub-bass pedal: holds the chord root the entire chord cycle.

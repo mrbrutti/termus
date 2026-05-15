@@ -485,7 +485,20 @@ func (a *Jazz) Seed(seedVal int64) {
 			}
 			return curve
 		},
-		VelocityJitter: 16, TimingJitterSec: 0.040, // sax is the most expressive — loose timing
+		ResolveModWheel: func(slot int, key int) SF2ExpressionCurve {
+			if a.section.Kind == FormCadence {
+				return gentleVibratoCurve(0, 26, 12)
+			}
+			return gentleVibratoCurve(0, 20, 10)
+		},
+		ResolveBrightness: func(slot int, key int) SF2ExpressionCurve {
+			if a.section.Kind == FormCadence {
+				return brightnessBloomCurve(102, 120, 106)
+			}
+			return brightnessBloomCurve(96, 112, 100)
+		},
+		ResolveDetuneCents: slotDetunePattern(-3, 2, -1, 4),
+		VelocityJitter:     16, TimingJitterSec: 0.040, // sax is the most expressive — loose timing
 		Enabled: a.saxOn,
 	})
 	crashNotes := make([]int, numBars)

@@ -192,12 +192,15 @@ func (a *Ambient) Seed(seedVal int64) {
 		core.addTrack(SF2Track{
 			Channel: 0, Velocity: 56, Notes: []int{a.padNote(voice, 0)},
 			PeriodSec: period, Phase01: a.rng.Float64(),
-			MutationRate:   0.30,
-			MutateOne:      func(_ int, _ int) int { return a.padNote(voice, 0) },
-			ResolveNote:    func(_ int, _ int) int { return a.padNote(voice, 0) },
-			Gate:           0.98,
-			Legato:         true,
-			VelocityJitter: 8, TimingJitterSec: 0.05,
+			MutationRate:       0.30,
+			MutateOne:          func(_ int, _ int) int { return a.padNote(voice, 0) },
+			ResolveNote:        func(_ int, _ int) int { return a.padNote(voice, 0) },
+			ResolveModWheel:    func(slot int, key int) SF2ExpressionCurve { return gentleVibratoCurve(0, 16, 8) },
+			ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(70, 80, 72) },
+			ResolveDetuneCents: slotDetunePattern(-4, 3, -2, 5),
+			Gate:               0.98,
+			Legato:             true,
+			VelocityJitter:     8, TimingJitterSec: 0.05,
 		})
 	}
 	// Warm pad layered in parallel — also documented Eno periods.
@@ -206,12 +209,15 @@ func (a *Ambient) Seed(seedVal int64) {
 		core.addTrack(SF2Track{
 			Channel: 1, Velocity: 50, Notes: []int{a.padNote(voice, 0)},
 			PeriodSec: period, Phase01: a.rng.Float64(),
-			MutationRate:   0.30,
-			MutateOne:      func(_ int, _ int) int { return a.padNote(voice, 0) },
-			ResolveNote:    func(_ int, _ int) int { return a.padNote(voice, 0) },
-			Gate:           0.98,
-			Legato:         true,
-			VelocityJitter: 6, TimingJitterSec: 0.05,
+			MutationRate:       0.30,
+			MutateOne:          func(_ int, _ int) int { return a.padNote(voice, 0) },
+			ResolveNote:        func(_ int, _ int) int { return a.padNote(voice, 0) },
+			ResolveModWheel:    func(slot int, key int) SF2ExpressionCurve { return gentleVibratoCurve(0, 14, 7) },
+			ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(62, 74, 64) },
+			ResolveDetuneCents: slotDetunePattern(2, -3, 4, -2),
+			Gate:               0.98,
+			Legato:             true,
+			VelocityJitter:     6, TimingJitterSec: 0.05,
 		})
 	}
 
@@ -220,12 +226,15 @@ func (a *Ambient) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 2, Velocity: 48, Notes: []int{a.choirNote(0)},
 		PeriodSec: 29.2, Phase01: a.rng.Float64(),
-		MutationRate:   0.35,
-		MutateOne:      func(_ int, _ int) int { return a.choirNote(0) },
-		ResolveNote:    func(_ int, _ int) int { return a.choirNote(0) },
-		Gate:           0.98,
-		Legato:         true,
-		VelocityJitter: 8, TimingJitterSec: 0.06,
+		MutationRate:       0.35,
+		MutateOne:          func(_ int, _ int) int { return a.choirNote(0) },
+		ResolveNote:        func(_ int, _ int) int { return a.choirNote(0) },
+		ResolveModWheel:    func(slot int, key int) SF2ExpressionCurve { return gentleVibratoCurve(0, 18, 10) },
+		ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(78, 90, 80) },
+		ResolveDetuneCents: slotDetunePattern(-2, 2, -1, 3),
+		Gate:               0.98,
+		Legato:             true,
+		VelocityJitter:     8, TimingJitterSec: 0.06,
 	})
 
 	// --- Tubular bell motif: three canon-like loop voices sharing one contour
@@ -238,9 +247,11 @@ func (a *Ambient) Seed(seedVal int64) {
 		core.addTrack(SF2Track{
 			Channel: 3, Velocity: 64, Notes: bellSlots,
 			PeriodSec: period, Phase01: a.rng.Float64(),
-			ResolveNote:    func(slot int, _ int) int { return a.bellNoteAt(voice, slot) },
-			Gate:           0.72,
-			VelocityJitter: 14, TimingJitterSec: 0.30, // tape-loop slippage feel
+			ResolveNote:        func(slot int, _ int) int { return a.bellNoteAt(voice, slot) },
+			ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(108, 124, 110) },
+			ResolveDetuneCents: slotDetunePattern(0, 2, -1, 3),
+			Gate:               0.72,
+			VelocityJitter:     14, TimingJitterSec: 0.30, // tape-loop slippage feel
 			Enabled: a.bellsOn,
 		})
 	}
@@ -250,9 +261,11 @@ func (a *Ambient) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 4, Velocity: 44, Notes: celestaSlots,
 		PeriodSec: 53.7, Phase01: a.rng.Float64(),
-		ResolveNote:    func(slot int, _ int) int { return a.celestaNote(slot) },
-		Gate:           0.58,
-		VelocityJitter: 12, TimingJitterSec: 0.10,
+		ResolveNote:        func(slot int, _ int) int { return a.celestaNote(slot) },
+		ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(104, 122, 108) },
+		ResolveDetuneCents: slotDetunePattern(1, -2, 0, 2),
+		Gate:               0.58,
+		VelocityJitter:     12, TimingJitterSec: 0.10,
 		Enabled: a.celestaOn,
 	})
 

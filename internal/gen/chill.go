@@ -532,7 +532,20 @@ func (a *Chill) Seed(seedVal int64) {
 			}
 			return curve
 		},
-		VelocityJitter: 14, TimingJitterSec: 0.035, // sax solo — most expressive, most loose
+		ResolveModWheel: func(slot int, key int) SF2ExpressionCurve {
+			if a.section.Kind == FormCadence {
+				return gentleVibratoCurve(0, 22, 10)
+			}
+			return gentleVibratoCurve(0, 18, 8)
+		},
+		ResolveBrightness: func(slot int, key int) SF2ExpressionCurve {
+			if a.section.Kind == FormCadence {
+				return brightnessBloomCurve(88, 108, 92)
+			}
+			return brightnessBloomCurve(82, 102, 86)
+		},
+		ResolveDetuneCents: slotDetunePattern(-2, 2, -1, 3),
+		VelocityJitter:     14, TimingJitterSec: 0.035, // sax solo — most expressive, most loose
 		Enabled: a.saxOn,
 	})
 
