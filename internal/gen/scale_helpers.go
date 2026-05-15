@@ -120,6 +120,23 @@ func nearestRelativeNote(target, root int, rels []int, low, high int) int {
 	return best
 }
 
+func voiceLeadNearest(prev, root int, rels []int, low, high int) int {
+	if prev == 0 {
+		return nearestRelativeNote(root, root, rels, low, high)
+	}
+	return nearestRelativeNote(prev, root, rels, low, high)
+}
+
+func voiceLeadLine(prev []int, root int, rels []int, low, high int) []int {
+	out := make([]int, len(prev))
+	last := 0
+	for i := range prev {
+		last = voiceLeadNearest(last, root, rels, low, high)
+		out[i] = last
+	}
+	return out
+}
+
 // scalePitchLoc identifies a pitch's location relative to a scale: which
 // degree it is, and how many octaves above/below the reference root. Used by
 // mutation closures that want to walk from "wherever we currently are"

@@ -141,6 +141,8 @@ func (a *SF2Drone) Seed(seedVal int64) {
 			MutationRate:   0.20,
 			MutateOne:      func(_ int, _ int) int { return a.droneTone(voice, 0) },
 			ResolveNote:    func(_ int, _ int) int { return a.droneTone(voice, 0) },
+			Gate:           0.98,
+			Legato:         true,
 			VelocityJitter: 8, TimingJitterSec: 0.15,
 		})
 	}
@@ -154,6 +156,8 @@ func (a *SF2Drone) Seed(seedVal int64) {
 			MutationRate:   0.20,
 			MutateOne:      func(_ int, _ int) int { return a.droneTone(voice, 12) },
 			ResolveNote:    func(_ int, _ int) int { return a.droneTone(voice, 12) },
+			Gate:           0.98,
+			Legato:         true,
 			VelocityJitter: 6, TimingJitterSec: 0.18,
 		})
 	}
@@ -165,6 +169,8 @@ func (a *SF2Drone) Seed(seedVal int64) {
 		MutationRate:   0.30,
 		MutateOne:      func(_ int, _ int) int { return a.droneTone(1, 24) },
 		ResolveNote:    func(_ int, _ int) int { return a.droneTone(1, 24) },
+		Gate:           0.98,
+		Legato:         true,
 		VelocityJitter: 8, TimingJitterSec: 0.20,
 	})
 
@@ -176,6 +182,8 @@ func (a *SF2Drone) Seed(seedVal int64) {
 		MutationRate:   0.40,
 		MutateOne:      func(_ int, _ int) int { return a.droneTone(2, 36) },
 		ResolveNote:    func(_ int, _ int) int { return a.droneTone(2, 36) },
+		Gate:           0.98,
+		Legato:         true,
 		VelocityJitter: 10, TimingJitterSec: 0.25,
 	})
 
@@ -186,6 +194,8 @@ func (a *SF2Drone) Seed(seedVal int64) {
 		MutationRate:   0.60,
 		MutateOne:      func(_ int, _ int) int { return a.bassRoot() },
 		ResolveNote:    func(_ int, _ int) int { return a.bassRoot() },
+		Gate:           0.96,
+		Legato:         true,
 		VelocityJitter: 4, TimingJitterSec: 0.05,
 	})
 

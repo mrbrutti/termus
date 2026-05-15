@@ -140,6 +140,7 @@ func (a *Phase) Seed(seedVal int64) {
 		Channel: 0, Velocity: 78, Notes: append([]int{}, figureSlots...),
 		PeriodSec: basePeriod, Phase01: 0,
 		ResolveNote:    func(slot int, _ int) int { return a.phaseFigureNote(slot) },
+		Gate:           0.68,
 		VelocityJitter: 6,
 	})
 	// --- Marimba voice B: slightly faster.
@@ -147,6 +148,7 @@ func (a *Phase) Seed(seedVal int64) {
 		Channel: 1, Velocity: 72, Notes: append([]int{}, figureSlots...),
 		PeriodSec: basePeriod * driftRatio, Phase01: 0,
 		ResolveNote:    func(slot int, _ int) int { return a.phaseFigureNote(slot) },
+		Gate:           0.70,
 		VelocityJitter: 6,
 	})
 
@@ -160,6 +162,8 @@ func (a *Phase) Seed(seedVal int64) {
 			MutationRate:   0.40,
 			MutateOne:      func(_ int, _ int) int { return a.padTone(v) },
 			ResolveNote:    func(_ int, _ int) int { return a.padTone(v) },
+			Gate:           0.98,
+			Legato:         true,
 			VelocityJitter: 4, TimingJitterSec: 0.05,
 		})
 	}
@@ -171,6 +175,8 @@ func (a *Phase) Seed(seedVal int64) {
 		MutationRate:   0.30,
 		MutateOne:      func(_ int, _ int) int { return a.padTone(1) + 12 },
 		ResolveNote:    func(_ int, _ int) int { return a.padTone(1) + 12 },
+		Gate:           0.98,
+		Legato:         true,
 		VelocityJitter: 4, TimingJitterSec: 0.06,
 	})
 
@@ -181,6 +187,8 @@ func (a *Phase) Seed(seedVal int64) {
 		MutationRate:   0.50,
 		MutateOne:      func(_ int, _ int) int { return a.bassRoot() },
 		ResolveNote:    func(_ int, _ int) int { return a.bassRoot() },
+		Gate:           0.96,
+		Legato:         true,
 		VelocityJitter: 4, TimingJitterSec: 0.03,
 	})
 
@@ -287,11 +295,13 @@ func (a *Phase) scheduleNextDrift() {
 }
 
 func (a *Phase) advance() {
+	chordAdvanced := false
 	if a.samplesElapsed >= a.nextChordAt {
 		a.currentChordIdx = (a.currentChordIdx + 1) % len(a.chordRoots)
 		a.scheduleNextChord()
+		chordAdvanced = true
 	}
-	if a.samplesElapsed >= a.nextDriftAt {
+	if chordAdvanced && a.samplesElapsed >= a.nextDriftAt {
 		drift := []int{-2, -1, 1, 2}[a.rng.Intn(4)]
 		a.keyOffset += drift
 		if a.keyOffset > 5 {

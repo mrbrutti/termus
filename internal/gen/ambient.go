@@ -189,6 +189,8 @@ func (a *Ambient) Seed(seedVal int64) {
 			MutationRate:   0.30,
 			MutateOne:      func(_ int, _ int) int { return a.padNote(voice, 0) },
 			ResolveNote:    func(_ int, _ int) int { return a.padNote(voice, 0) },
+			Gate:           0.98,
+			Legato:         true,
 			VelocityJitter: 8, TimingJitterSec: 0.05,
 		})
 	}
@@ -201,6 +203,8 @@ func (a *Ambient) Seed(seedVal int64) {
 			MutationRate:   0.30,
 			MutateOne:      func(_ int, _ int) int { return a.padNote(voice, 0) },
 			ResolveNote:    func(_ int, _ int) int { return a.padNote(voice, 0) },
+			Gate:           0.98,
+			Legato:         true,
 			VelocityJitter: 6, TimingJitterSec: 0.05,
 		})
 	}
@@ -213,6 +217,8 @@ func (a *Ambient) Seed(seedVal int64) {
 		MutationRate:   0.35,
 		MutateOne:      func(_ int, _ int) int { return a.choirNote(0) },
 		ResolveNote:    func(_ int, _ int) int { return a.choirNote(0) },
+		Gate:           0.98,
+		Legato:         true,
 		VelocityJitter: 8, TimingJitterSec: 0.06,
 	})
 
@@ -227,6 +233,7 @@ func (a *Ambient) Seed(seedVal int64) {
 			Channel: 3, Velocity: 64, Notes: bellSlots,
 			PeriodSec: period, Phase01: a.rng.Float64(),
 			ResolveNote:    func(slot int, _ int) int { return a.bellNoteAt(voice, slot) },
+			Gate:           0.72,
 			VelocityJitter: 14, TimingJitterSec: 0.30, // tape-loop slippage feel
 			Enabled: a.bellsOn,
 		})
@@ -238,6 +245,7 @@ func (a *Ambient) Seed(seedVal int64) {
 		Channel: 4, Velocity: 44, Notes: celestaSlots,
 		PeriodSec: 53.7, Phase01: a.rng.Float64(),
 		ResolveNote:    func(slot int, _ int) int { return a.celestaNote(slot) },
+		Gate:           0.58,
 		VelocityJitter: 12, TimingJitterSec: 0.10,
 		Enabled: a.celestaOn,
 	})
@@ -250,6 +258,8 @@ func (a *Ambient) Seed(seedVal int64) {
 		MutationRate:   0.50,
 		MutateOne:      func(_ int, _ int) int { return a.bassRoot() },
 		ResolveNote:    func(_ int, _ int) int { return a.bassRoot() },
+		Gate:           0.96,
+		Legato:         true,
 		VelocityJitter: 6, TimingJitterSec: 0.03,
 	})
 
@@ -351,11 +361,13 @@ func (a *Ambient) scheduleNextSection() {
 }
 
 func (a *Ambient) advance() {
+	chordAdvanced := false
 	if a.samplesElapsed >= a.nextChordAt {
 		a.currentChordIdx = (a.currentChordIdx + 1) % len(a.chords)
 		a.scheduleNextChord()
+		chordAdvanced = true
 	}
-	if a.samplesElapsed >= a.nextSectionAt {
+	if chordAdvanced && a.samplesElapsed >= a.nextSectionAt {
 		// Toggle one of the ornament layers.
 		if a.rng.Float64() < 0.5 {
 			*a.bellsOn = !*a.bellsOn

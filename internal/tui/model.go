@@ -34,6 +34,9 @@ type Model struct {
 
 	themeIdx  int // index into Themes
 	visualIdx int // index into Visuals
+	themes    []ColorTheme
+	ui        AdaptiveUI
+	bgFrame   int
 
 	// Algorithm switching ([n]/[p]).
 	genres   []gen.AlgoSpec // ordered list of switchable algorithms
@@ -49,13 +52,17 @@ type Model struct {
 
 // New constructs a Model. keyName is e.g. "Cmin".
 func New(ring *scope.Ring, cmd audio.Commander, algo, keyName string, seed int64, initialVol int) Model {
+	ui := DetectAdaptiveUI()
 	return Model{
-		ring:    ring,
-		cmd:     cmd,
-		algo:    algo,
-		keyName: keyName,
-		seed:    seed,
-		volume:  initialVol,
+		ring:     ring,
+		cmd:      cmd,
+		algo:     algo,
+		keyName:  keyName,
+		seed:     seed,
+		volume:   initialVol,
+		ui:       ui,
+		themes:   append([]ColorTheme(nil), ui.Themes...),
+		themeIdx: ui.DefaultThemeIdx,
 	}
 }
 
@@ -174,9 +181,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.statusTTL = time.Now().Add(3 * time.Second)
 			}
 		case actionTheme:
-			m.themeIdx = (m.themeIdx + 1) % len(Themes)
-			m.status = "theme: " + Themes[m.themeIdx].Name
-			m.statusTTL = time.Now().Add(2 * time.Second)
+			if len(m.themes) > 1 {
+				m.themeIdx = (m.themeIdx + 1) % len(m.themes)
+				m.status = "theme: " + m.themes[m.themeIdx].Name
+				m.statusTTL = time.Now().Add(2 * time.Second)
+			}
 		case actionVisual:
 			m.visualIdx = (m.visualIdx + 1) % len(Visuals)
 			m.status = "visual: " + Visuals[m.visualIdx].Name
@@ -192,6 +201,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tickMsg:
+		m.bgFrame++
 		if m.playlist != nil && !m.paused && time.Now().After(m.nextTrackAt) {
 			m.advancePlaylist()
 		}
@@ -210,13 +220,29 @@ func (m Model) View() string {
 	// Snapshot scope and render with the active visual + theme.
 	samples := make([]float64, innerW*2)
 	m.ring.Snapshot(samples)
-	theme := Themes[m.themeIdx]
+	theme := m.activeTheme()
 	visual := Visuals[m.visualIdx]
-	scopeStr := visual.Render(samples, innerW, innerH, theme)
+	scopeStr := visual.Render(samples, innerW, innerH, RenderContext{
+		Theme: theme,
+		Background: AnimeBackground{
+			Enabled: true,
+			Frame:   m.bgFrame,
+		},
+	})
 
 	top := topBar(m, innerW, theme)
 	bottom := bottomBar(m, innerW, theme)
 	return lipgloss.JoinVertical(lipgloss.Left, top, scopeStr, bottom)
+}
+
+func (m Model) activeTheme() ColorTheme {
+	if len(m.themes) == 0 {
+		return DefaultTheme()
+	}
+	if m.themeIdx < 0 || m.themeIdx >= len(m.themes) {
+		return m.themes[0]
+	}
+	return m.themes[m.themeIdx]
 }
 
 func topBar(m Model, w int, theme ColorTheme) string {
@@ -246,8 +272,14 @@ func bottomBar(m Model, w int, theme ColorTheme) string {
 	if m.paused {
 		state = "PAUSED"
 	}
-	hint := fmt.Sprintf("[space] %s   [↑↓] vol %d%%   [r] rec   [c] %s   [C] %s",
-		state, m.volume, theme.Name, Visuals[m.visualIdx].Name)
+	hint := fmt.Sprintf("[space] %s   [↑↓] vol %d%%   [r] rec",
+		state, m.volume)
+	if len(m.themes) > 1 {
+		hint += fmt.Sprintf("   [c] %s", theme.Name)
+	} else {
+		hint += fmt.Sprintf("   [%s]", theme.Name)
+	}
+	hint += fmt.Sprintf("   [C] %s", Visuals[m.visualIdx].Name)
 	if len(m.genres) > 1 {
 		hint += "   [n/p] algo"
 	}

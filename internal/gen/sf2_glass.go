@@ -156,6 +156,7 @@ func (a *SF2Glass) Seed(seedVal int64) {
 		Channel: 0, Velocity: 72, Notes: bellSlots,
 		PeriodSec: 21.7, Phase01: a.rng.Float64(),
 		ResolveNote:    func(slot int, _ int) int { return a.phraseNoteAt(slot, a.bellContour, a.bellStartDegree, 12, 60, 96) },
+		Gate:           0.70,
 		VelocityJitter: 16, TimingJitterSec: 0.10,
 	})
 
@@ -168,6 +169,7 @@ func (a *SF2Glass) Seed(seedVal int64) {
 		ResolveNote: func(slot int, _ int) int {
 			return a.phraseNoteAt(slot, a.celestaContour, a.celestaStartDegree, 24, 72, 96)
 		},
+		Gate:           0.56,
 		VelocityJitter: 14, TimingJitterSec: 0.10,
 	})
 
@@ -179,6 +181,8 @@ func (a *SF2Glass) Seed(seedVal int64) {
 		MutationRate:   0.40,
 		MutateOne:      func(_ int, _ int) int { return a.bellNote(0, 24) },
 		ResolveNote:    func(_ int, _ int) int { return a.bellNote(0, 24) },
+		Gate:           0.92,
+		Legato:         true,
 		VelocityJitter: 12, TimingJitterSec: 0.12,
 	})
 
@@ -195,6 +199,7 @@ func (a *SF2Glass) Seed(seedVal int64) {
 			}
 			return a.phraseNoteAt(slot, a.musicBoxContour, a.musicBoxStartDegree, 12, 72, 92)
 		},
+		Gate:           0.52,
 		VelocityJitter: 12, TimingJitterSec: 0.12,
 		Enabled: a.musicBoxOn,
 	})
@@ -208,6 +213,8 @@ func (a *SF2Glass) Seed(seedVal int64) {
 			MutationRate:   0.30,
 			MutateOne:      func(_ int, _ int) int { return a.padNote(voice) },
 			ResolveNote:    func(_ int, _ int) int { return a.padNote(voice) },
+			Gate:           0.98,
+			Legato:         true,
 			VelocityJitter: 6, TimingJitterSec: 0.08,
 		})
 	}
@@ -219,6 +226,8 @@ func (a *SF2Glass) Seed(seedVal int64) {
 		MutationRate:   0.35,
 		MutateOne:      func(_ int, _ int) int { return a.padNote(1) + 12 },
 		ResolveNote:    func(_ int, _ int) int { return a.padNote(1) + 12 },
+		Gate:           0.98,
+		Legato:         true,
 		VelocityJitter: 6, TimingJitterSec: 0.10,
 	})
 
@@ -229,6 +238,8 @@ func (a *SF2Glass) Seed(seedVal int64) {
 		MutationRate:   0.50,
 		MutateOne:      func(_ int, _ int) int { return a.bassRoot() },
 		ResolveNote:    func(_ int, _ int) int { return a.bassRoot() },
+		Gate:           0.96,
+		Legato:         true,
 		VelocityJitter: 4, TimingJitterSec: 0.05,
 	})
 
@@ -300,11 +311,13 @@ func (a *SF2Glass) scheduleNextSection() {
 }
 
 func (a *SF2Glass) advance() {
+	chordAdvanced := false
 	if a.samplesElapsed >= a.nextChordAt {
 		a.currentChordIdx = (a.currentChordIdx + 1) % len(a.chordOffsets)
 		a.scheduleNextChord()
+		chordAdvanced = true
 	}
-	if a.samplesElapsed >= a.nextSectionAt {
+	if chordAdvanced && a.samplesElapsed >= a.nextSectionAt {
 		*a.musicBoxOn = !*a.musicBoxOn
 		a.scheduleNextSection()
 	}

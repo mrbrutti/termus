@@ -42,18 +42,21 @@ type Jazz struct {
 
 	progression []jazzChord
 
+	barSamples int64
+	form       FormPlan
+	section    FormSection
+
 	samplesElapsed int64
 	nextDriftAt    int64
 
-	saxOn         *bool
-	nextSectionAt int64
+	saxOn *bool
 
-	bassPlan     []int
-	compVoicings []int
-	accentAnd2   []bool
-	accentBeat4  []bool
-	accentAnd4   []bool
-	saxPlan      []int
+	bassPlan    []int
+	compLines   map[int][]int
+	accentAnd2  []bool
+	accentBeat4 []bool
+	accentAnd4  []bool
+	saxPlan     []int
 }
 
 // jazzChord is one bar of harmony. tones are MIDI semitone offsets from
@@ -114,6 +117,9 @@ const (
 	jazzPlanNinth
 	jazzPlanApproachAbove
 	jazzPlanApproachBelow
+	jazzPlanSuspendFourth
+	jazzPlanResolveThird
+	jazzPlanAnticipateNextRoot
 )
 
 const (
@@ -136,13 +142,11 @@ func (a *Jazz) Seed(seedVal int64) {
 	a.rootMidi = hornKeys[a.rng.Intn(len(hornKeys))]
 	a.keyOffset = 0
 	a.samplesElapsed = 0
-	a.scheduleNextDrift()
 
-	// Section flag — sax solo drops in/out every 30–60 seconds for verse/solo
-	// feel. Start with sax on so the listener hears it within the first chorus.
-	saxStart := true
+	// Form starts with the lead muted so the intro feels like a band count-in
+	// rather than a soloist appearing on beat one.
+	saxStart := false
 	a.saxOn = &saxStart
-	a.scheduleNextSection()
 
 	// Master gain reduced (2.6 → 1.9) — jazz drum transients were pinning
 	// the soft-clipper at peak. 1.9 gives ~3 dB headroom so the compressor
@@ -196,12 +200,22 @@ func (a *Jazz) Seed(seedVal int64) {
 	bpm := 120.0 + 28.0*a.rng.Float64()
 	beatSec := 60.0 / bpm
 	barSec := beatSec * 4
+	a.barSamples = secondsToSamples(barSec)
+	a.form = NewFormPlan(a.rng, a.barSamples, "jazz")
+	a.section = a.form.SectionAt(0)
+	a.scheduleNextDrift()
 	numBars := len(a.progression)
 	cycleSec := barSec * float64(numBars)
 	a.bassPlan = a.makeBassPlan(4 * numBars)
-	a.compVoicings = a.makeCompVoicingPlan(numBars)
+	a.compLines = map[int][]int{
+		3: a.buildCompLine(3, numBars),
+		5: a.buildCompLine(5, numBars),
+		7: a.buildCompLine(7, numBars),
+		9: a.buildCompLine(9, numBars),
+	}
 	a.accentAnd2, a.accentBeat4, a.accentAnd4 = a.makeCompAccentPlans(numBars)
 	a.saxPlan = a.makeSaxPlan(2 * numBars)
+	a.applyArrangement()
 
 	// --- Walking bass: 4 quarter notes per bar, hits every beat.
 	bassNotes := make([]int, 4*numBars)
@@ -211,7 +225,15 @@ func (a *Jazz) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 1, Velocity: 92, Notes: bassNotes,
 		PeriodSec: cycleSec, Phase01: 0,
-		ResolveNote:    func(slot int, _ int) int { return a.walkingBassAt(slot) },
+		ResolveNote: func(slot int, _ int) int { return a.walkingBassAt(slot) },
+		Gate:        0.84,
+		Legato:      true,
+		ResolveVelocity: func(slot int, key int, base int32) int32 {
+			if slot%4 == 0 {
+				return base + 4
+			}
+			return base - 3
+		},
 		VelocityJitter: 8, TimingJitterSec: 0.006, // upright bassists are tight
 	})
 
@@ -229,7 +251,14 @@ func (a *Jazz) Seed(seedVal int64) {
 		core.addTrack(SF2Track{
 			Channel: 0, Velocity: 74, Notes: notes,
 			PeriodSec: cycleSec, Phase01: 0,
-			ResolveNote:    func(slot int, _ int) int { return a.compRootless(slot, intv) },
+			ResolveNote: func(slot int, _ int) int { return a.compRootless(slot, intv) },
+			Gate:        0.48,
+			ResolveVelocity: func(slot int, key int, base int32) int32 {
+				if a.section.TextureLevel > 1 {
+					return base + 5
+				}
+				return base - 2
+			},
 			VelocityJitter: 10, TimingJitterSec: 0.014,
 		})
 	}
@@ -250,6 +279,7 @@ func (a *Jazz) Seed(seedVal int64) {
 		PeriodSec:      cycleSec,
 		Phase01:        0.417 / float64(numBars),
 		ResolveNote:    func(slot int, _ int) int { return a.compAccentNoteAt(slot, a.accentAnd2, 9) },
+		Gate:           0.34,
 		VelocityJitter: 12, TimingJitterSec: 0.020,
 	})
 	core.addTrack(SF2Track{
@@ -257,6 +287,7 @@ func (a *Jazz) Seed(seedVal int64) {
 		PeriodSec:      cycleSec,
 		Phase01:        0.75 / float64(numBars),
 		ResolveNote:    func(slot int, _ int) int { return a.compAccentNoteAt(slot, a.accentBeat4, 7) },
+		Gate:           0.32,
 		VelocityJitter: 10, TimingJitterSec: 0.018,
 	})
 	core.addTrack(SF2Track{
@@ -264,6 +295,7 @@ func (a *Jazz) Seed(seedVal int64) {
 		PeriodSec:      cycleSec,
 		Phase01:        0.917 / float64(numBars),
 		ResolveNote:    func(slot int, _ int) int { return a.compAccentNoteAt(slot, a.accentAnd4, 5) },
+		Gate:           0.34,
 		VelocityJitter: 12, TimingJitterSec: 0.020,
 	})
 
@@ -280,6 +312,7 @@ func (a *Jazz) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: drumChannel, Velocity: 78, Notes: rideQuarterNotes,
 		PeriodSec: cycleSec, Phase01: 0,
+		Gate:           0.08,
 		VelocityJitter: 10, TimingJitterSec: 0.004,
 	})
 	// --- Ride: swung "& of 2" and "& of 4" — completes the jazz ride pattern.
@@ -292,6 +325,7 @@ func (a *Jazz) Seed(seedVal int64) {
 		Channel: drumChannel, Velocity: 62, Notes: rideSwungNotes,
 		PeriodSec:      cycleSec,
 		Phase01:        0.417 / float64(numBars), // start at "& of 2" of bar 0
+		Gate:           0.08,
 		VelocityJitter: 10, TimingJitterSec: 0.006,
 		FireProbability: 0.92,
 	})
@@ -307,6 +341,7 @@ func (a *Jazz) Seed(seedVal int64) {
 		Channel: drumChannel, Velocity: 66, Notes: hatNotes,
 		PeriodSec:      cycleSec,
 		Phase01:        0.25 / float64(numBars), // beats 2 & 4
+		Gate:           0.08,
 		VelocityJitter: 8, TimingJitterSec: 0.004,
 	})
 
@@ -320,6 +355,7 @@ func (a *Jazz) Seed(seedVal int64) {
 		Channel: drumChannel, Velocity: 52, Notes: snareNotes,
 		PeriodSec:      cycleSec,
 		Phase01:        0.75 / float64(numBars), // beat 4
+		Gate:           0.08,
 		VelocityJitter: 12, TimingJitterSec: 0.010,
 		FireProbability: 0.40, // sparse fills only
 	})
@@ -333,6 +369,7 @@ func (a *Jazz) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: drumChannel, Velocity: 38, Notes: kickNotes,
 		PeriodSec: cycleSec, Phase01: 0,
+		Gate:           0.08,
 		VelocityJitter: 6, TimingJitterSec: 0.004,
 		FireProbability: 0.60, // sometimes drops out, like a real bassist
 	})
@@ -345,11 +382,54 @@ func (a *Jazz) Seed(seedVal int64) {
 	}
 	core.addTrack(SF2Track{
 		Channel: 2, Velocity: 70, Notes: saxNotes,
-		PeriodSec:      cycleSec,
-		Phase01:        0,
-		ResolveNote:    func(slot int, _ int) int { return a.saxNoteAt(slot) },
+		PeriodSec:   cycleSec,
+		Phase01:     0,
+		ResolveNote: func(slot int, _ int) int { return a.saxNoteAt(slot) },
+		Gate:        0.96,
+		Legato:      true,
+		ResolveVelocity: func(slot int, key int, base int32) int32 {
+			switch a.section.Kind {
+			case FormB, FormCadence:
+				return base + 8
+			case FormIntro, FormOutro:
+				return base - 8
+			default:
+				return base + 2
+			}
+		},
+		ResolveExpression: func(slot int, key int) SF2ExpressionCurve {
+			curve := SF2ExpressionCurve{Start: 84, Peak: 108, End: 92, PeakAt01: 0.34}
+			if a.section.Kind == FormCadence {
+				curve = SF2ExpressionCurve{Start: 90, Peak: 116, End: 96, PeakAt01: 0.42}
+			}
+			return curve
+		},
 		VelocityJitter: 16, TimingJitterSec: 0.040, // sax is the most expressive — loose timing
 		Enabled: a.saxOn,
+	})
+	crashNotes := make([]int, numBars)
+	for i := range crashNotes {
+		crashNotes[i] = a.crashNoteAt(i)
+	}
+	core.addTrack(SF2Track{
+		Channel: drumChannel, Velocity: 74, Notes: crashNotes,
+		PeriodSec:      cycleSec,
+		Phase01:        0,
+		ResolveNote:    func(slot int, _ int) int { return a.crashNoteAt(slot) },
+		Gate:           0.12,
+		VelocityJitter: 10, TimingJitterSec: 0.004,
+	})
+	ghostNotes := make([]int, numBars)
+	for i := range ghostNotes {
+		ghostNotes[i] = a.ghostSnareNoteAt(i)
+	}
+	core.addTrack(SF2Track{
+		Channel: drumChannel, Velocity: 30, Notes: ghostNotes,
+		PeriodSec:      cycleSec,
+		Phase01:        0.875 / float64(numBars),
+		ResolveNote:    func(slot int, _ int) int { return a.ghostSnareNoteAt(slot) },
+		Gate:           0.08,
+		VelocityJitter: 8, TimingJitterSec: 0.006,
 	})
 
 	a.core = core
@@ -391,6 +471,9 @@ func (a *Jazz) walkingBassAt(slot int) int {
 // between A and B voicings so the comp breathes instead of repeating one
 // piano grip forever.
 func (a *Jazz) compRootless(slot, interval int) int {
+	if line, ok := a.compLines[interval]; ok && len(line) > 0 {
+		return line[((slot%len(line))+len(line))%len(line)]
+	}
 	if len(a.progression) == 0 {
 		return 60
 	}
@@ -414,14 +497,6 @@ func (a *Jazz) compRootless(slot, interval int) int {
 		rel = chord.tones[1]
 	}
 	key := a.currentRoot() + rel
-	if a.compVoicings[bar%len(a.compVoicings)] == jazzVoicingB {
-		switch interval {
-		case 3, 5:
-			key += 12
-		case 7, 9:
-			key -= 12
-		}
-	}
 	return clampMidiToRange(key, 58, 76)
 }
 
@@ -441,6 +516,7 @@ func (a *Jazz) saxNoteAt(slot int) int {
 	}
 	chordIdx := (slot / 2) % len(a.progression)
 	chord := a.progression[chordIdx]
+	next := a.progression[(chordIdx+1)%len(a.progression)]
 	switch a.saxPlan[slot%len(a.saxPlan)] {
 	case jazzPlanRest:
 		return -1
@@ -454,6 +530,16 @@ func (a *Jazz) saxNoteAt(slot int) int {
 		return clampMidiToRange(a.currentRoot()+chord.tones[3]+12, 64, 86)
 	case jazzPlanNinth:
 		return clampMidiToRange(a.currentRoot()+chord.tones[0]+14, 64, 86)
+	case jazzPlanApproachAbove:
+		return clampMidiToRange(a.currentRoot()+next.tones[0]+13, 64, 86)
+	case jazzPlanApproachBelow:
+		return clampMidiToRange(a.currentRoot()+next.tones[0]+11, 64, 86)
+	case jazzPlanSuspendFourth:
+		return clampMidiToRange(a.currentRoot()+chord.tones[0]+17, 64, 86)
+	case jazzPlanResolveThird:
+		return clampMidiToRange(a.currentRoot()+chord.tones[1]+12, 64, 86)
+	case jazzPlanAnticipateNextRoot:
+		return clampMidiToRange(a.currentRoot()+next.tones[0]+12, 64, 86)
 	default:
 		return clampMidiToRange(a.currentRoot()+chord.tones[1]+12, 64, 86)
 	}
@@ -479,9 +565,10 @@ func (a *Jazz) makeBassPlan(totalBeats int) []int {
 	return out
 }
 
-func (a *Jazz) makeCompVoicingPlan(numBars int) []int {
+func (a *Jazz) buildCompLine(interval, numBars int) []int {
 	out := make([]int, numBars)
 	voicing := jazzVoicingA
+	prev := 0
 	for i := 0; i < numBars; i++ {
 		if i > 0 && a.progression[i].rootSemi != a.progression[i-1].rootSemi && a.rng.Float64() < 0.75 {
 			if voicing == jazzVoicingA {
@@ -490,7 +577,33 @@ func (a *Jazz) makeCompVoicingPlan(numBars int) []int {
 				voicing = jazzVoicingA
 			}
 		}
-		out[i] = voicing
+		chord := a.progression[i%len(a.progression)]
+		var rel int
+		switch interval {
+		case 3:
+			rel = chord.tones[1]
+		case 5:
+			rel = chord.tones[2]
+		case 7:
+			rel = chord.tones[3]
+		default:
+			rel = chord.tones[0] + 14
+		}
+		target := a.currentRoot() + rel
+		if voicing == jazzVoicingB {
+			switch interval {
+			case 3, 5:
+				target += 12
+			default:
+				target -= 12
+			}
+		}
+		if prev == 0 {
+			out[i] = clampMidiToRange(target, 58, 76)
+		} else {
+			out[i] = voiceLeadNearest(prev, target, []int{0}, 58, 76)
+		}
+		prev = out[i]
 	}
 	return out
 }
@@ -520,12 +633,12 @@ func (a *Jazz) makeCompAccentPlans(numBars int) ([]bool, []bool, []bool) {
 
 func (a *Jazz) makeSaxPlan(numSlots int) []int {
 	callTemplates := [][]int{
-		{jazzPlanRest, jazzPlanNinth, jazzPlanThird, jazzPlanRest},
-		{jazzPlanThird, jazzPlanRest, jazzPlanFifth, jazzPlanNinth},
-		{jazzPlanRest, jazzPlanSeventh, jazzPlanNinth, jazzPlanRest},
+		{jazzPlanRest, jazzPlanNinth, jazzPlanApproachBelow, jazzPlanResolveThird},
+		{jazzPlanThird, jazzPlanRest, jazzPlanSuspendFourth, jazzPlanResolveThird},
+		{jazzPlanRest, jazzPlanSeventh, jazzPlanApproachAbove, jazzPlanAnticipateNextRoot},
 	}
 	call := callTemplates[a.rng.Intn(len(callTemplates))]
-	answer := []int{jazzPlanThird, jazzPlanNinth, jazzPlanSeventh, jazzPlanRest}
+	answer := []int{jazzPlanThird, jazzPlanNinth, jazzPlanApproachBelow, jazzPlanResolveThird}
 	out := make([]int, numSlots)
 	for i := 0; i < numSlots; i++ {
 		switch {
@@ -551,24 +664,17 @@ func (a *Jazz) makeSaxPlan(numSlots int) []int {
 // 4–8 minutes between drifts, deterministic from rng.
 func (a *Jazz) scheduleNextDrift() {
 	mins := 4.0 + 4.0*a.rng.Float64()
-	a.nextDriftAt = a.samplesElapsed + int64(mins*60*44100)
-}
-
-// scheduleNextSection picks when the sax flips on/off next.
-// 25–55 seconds — solos in small-group jazz are short, choruses get
-// passed between players.
-func (a *Jazz) scheduleNextSection() {
-	secs := 25.0 + 30.0*a.rng.Float64()
-	a.nextSectionAt = a.samplesElapsed + int64(secs*44100)
+	step := a.barSamples * 4
+	if step <= 0 {
+		step = 4 * 44100
+	}
+	a.nextDriftAt = scheduleQuantizedAfter(a.samplesElapsed, mins*60.0, step)
 }
 
 // applyMacroMutations is called once per render block. Currently handles
 // section toggles and key drift.
-func (a *Jazz) applyMacroMutations() {
-	if a.samplesElapsed >= a.nextSectionAt {
-		*a.saxOn = !*a.saxOn
-		a.scheduleNextSection()
-	}
+func (a *Jazz) applyMacroMutations(prev int64) {
+	a.applyArrangement()
 	if a.samplesElapsed >= a.nextDriftAt {
 		// ±1 or ±2 semitones to the key, occasionally.
 		drift := []int{-2, -1, 1, 2}[a.rng.Intn(4)]
@@ -581,6 +687,9 @@ func (a *Jazz) applyMacroMutations() {
 			a.keyOffset += 12
 		}
 		a.scheduleNextDrift()
+	}
+	if a.form.SectionBoundaryCrossed(prev, a.samplesElapsed) {
+		a.applyArrangement()
 	}
 }
 
@@ -600,7 +709,56 @@ func (a *Jazz) Next(left, right []float64) {
 		}
 		return
 	}
-	a.applyMacroMutations()
+	prev := a.samplesElapsed
 	a.core.renderInto(left, right)
 	a.samplesElapsed += int64(len(left))
+	a.applyMacroMutations(prev)
+}
+
+func (a *Jazz) applyArrangement() {
+	a.section = a.form.SectionAt(a.samplesElapsed)
+	if a.saxOn != nil {
+		*a.saxOn = a.section.LeadLevel > 0 && a.section.Kind != FormOutro
+	}
+	if a.core == nil {
+		return
+	}
+	switch a.section.Kind {
+	case FormIntro:
+		a.core.setReverbSend(2, 74)
+		a.core.setChannelCutoff(0, 90)
+		a.core.setChannelExpression(0, 96)
+	case FormB:
+		a.core.setReverbSend(2, 94)
+		a.core.setChannelCutoff(0, 102)
+		a.core.setChannelExpression(0, 114)
+	case FormCadence:
+		a.core.setReverbSend(2, 98)
+		a.core.setChannelCutoff(0, 108)
+		a.core.setChannelExpression(0, 120)
+	default:
+		a.core.setReverbSend(2, 86)
+		a.core.setChannelCutoff(0, 96)
+		a.core.setChannelExpression(0, 108)
+	}
+}
+
+func (a *Jazz) crashNoteAt(slot int) int {
+	bar := slot % len(a.progression)
+	if bar == 0 || (bar+1)%4 == 0 {
+		return drumCrash
+	}
+	return -1
+}
+
+func (a *Jazz) ghostSnareNoteAt(slot int) int {
+	bar := slot % len(a.progression)
+	if (bar+1)%4 == 0 {
+		return jazzSnareBrushed
+	}
+	return -1
+}
+
+func (a *Jazz) ListeningMarkers() []ListeningMarker {
+	return a.form.ListeningMarkers(2)
 }

@@ -1,24 +1,22 @@
 package tui
 
 import (
+	"github.com/madelynnblue/go-dsp/fft"
 	"math"
 	"strings"
-
-	"github.com/charmbracelet/lipgloss"
-	"github.com/madelynnblue/go-dsp/fft"
 )
 
 // VisualStyle is one renderable visualization mode. Render produces a w×h
 // string of styled cells given a mono buffer in [-1, 1] and a color theme.
 type VisualStyle struct {
 	Name   string
-	Render func(samples []float64, w, h int, theme ColorTheme) string
+	Render func(samples []float64, w, h int, ctx RenderContext) string
 }
 
 // Visuals is the ordered list of selectable visualization styles. [C] in the
 // TUI cycles through them.
 var Visuals = []VisualStyle{
-	{Name: "scope", Render: RenderBrailleThemed},
+	{Name: "scope", Render: RenderBrailleWithContext},
 	{Name: "spectrum", Render: RenderSpectrum},
 	{Name: "bars", Render: RenderBars},
 	{Name: "mirror", Render: RenderMirror},
@@ -28,7 +26,7 @@ var Visuals = []VisualStyle{
 // vertical bars. Computes a real FFT over the most-recent power-of-two prefix
 // of `samples`, log-binned into w bars; each bar's height is rendered with
 // block-element characters (▁▂▃…█).
-func RenderSpectrum(samples []float64, w, h int, theme ColorTheme) string {
+func RenderSpectrum(samples []float64, w, h int, ctx RenderContext) string {
 	if w < 4 || h < 1 {
 		return "(too small)\n"
 	}
@@ -96,14 +94,14 @@ func RenderSpectrum(samples []float64, w, h int, theme ColorTheme) string {
 		bars[i] = nrm
 	}
 
-	return renderBarColumns(bars, h, theme)
+	return renderBarColumns(bars, h, ctx)
 }
 
 // RenderBars draws a stylized waveform: each column is a vertical bar whose
 // height is the peak |sample| in that column's slice of the buffer. Quieter
 // passages → shorter bars. Cheaper than the spectrum view and a nice
 // rest-state when you want less visual stimulation.
-func RenderBars(samples []float64, w, h int, theme ColorTheme) string {
+func RenderBars(samples []float64, w, h int, ctx RenderContext) string {
 	if w < 4 || h < 1 || len(samples) == 0 {
 		return blankCells(w, h)
 	}
@@ -130,13 +128,13 @@ func RenderBars(samples []float64, w, h int, theme ColorTheme) string {
 		}
 		bars[bx] = peak
 	}
-	return renderBarColumns(bars, h, theme)
+	return renderBarColumns(bars, h, ctx)
 }
 
 // RenderMirror draws the waveform symmetrically around the middle row, so the
 // top half plots the positive envelope of the signal and the bottom half
 // mirrors it downward. Visually emphasizes amplitude dynamics.
-func RenderMirror(samples []float64, w, h int, theme ColorTheme) string {
+func RenderMirror(samples []float64, w, h int, ctx RenderContext) string {
 	if w < 4 || h < 1 || len(samples) == 0 {
 		return blankCells(w, h)
 	}
@@ -158,12 +156,12 @@ func RenderMirror(samples []float64, w, h int, theme ColorTheme) string {
 		}
 		bars[bx] = math.Sqrt(sumSq / float64(count))
 	}
-	return renderMirrorColumns(bars, h, theme)
+	return renderMirrorColumns(bars, h, ctx)
 }
 
 // renderBarColumns turns a w-long slice of [0,1] bar heights into a grid of
 // bottom-anchored bars using the 8-step block-element characters.
-func renderBarColumns(bars []float64, h int, theme ColorTheme) string {
+func renderBarColumns(bars []float64, h int, ctx RenderContext) string {
 	w := len(bars)
 	const eighths = " ▁▂▃▄▅▆▇█"
 	runes := []rune(eighths)
@@ -193,8 +191,7 @@ func renderBarColumns(bars []float64, h int, theme ColorTheme) string {
 			if level > 8 {
 				level = 8
 			}
-			color := theme.ColorAt(cx, cy, w, h)
-			b.WriteString(lipgloss.NewStyle().Foreground(color).Render(string(runes[level])))
+			b.WriteString(renderCell(runes[level], cx, cy, w, h, ctx))
 		}
 		b.WriteByte('\n')
 	}
@@ -205,7 +202,7 @@ func renderBarColumns(bars []float64, h int, theme ColorTheme) string {
 // midline AND down from it — a symmetric envelope shape. Bottom half uses
 // graduated 8th-block characters (smooth); top half uses full/empty cells
 // (block elements don't have a clean top-anchored 8-step variant).
-func renderMirrorColumns(bars []float64, h int, theme ColorTheme) string {
+func renderMirrorColumns(bars []float64, h int, ctx RenderContext) string {
 	w := len(bars)
 	const eighths = " ▁▂▃▄▅▆▇█"
 	runesBot := []rune(eighths)
@@ -228,7 +225,6 @@ func renderMirrorColumns(bars []float64, h int, theme ColorTheme) string {
 	var b strings.Builder
 	for cy := 0; cy < h; cy++ {
 		for cx := 0; cx < w; cx++ {
-			color := theme.ColorAt(cx, cy, w, h)
 			var ch rune
 			switch {
 			case cy < half:
@@ -252,7 +248,7 @@ func renderMirrorColumns(bars []float64, h int, theme ColorTheme) string {
 				}
 				ch = runesBot[level]
 			}
-			b.WriteString(lipgloss.NewStyle().Foreground(color).Render(string(ch)))
+			b.WriteString(renderCell(ch, cx, cy, w, h, ctx))
 		}
 		b.WriteByte('\n')
 	}

@@ -4,6 +4,8 @@ import (
 	"math"
 	"strings"
 	"testing"
+
+	"github.com/muesli/termenv"
 )
 
 func testSamples(n int) []float64 {
@@ -17,9 +19,15 @@ func testSamples(n int) []float64 {
 func TestEachVisualRendersWithoutPanic(t *testing.T) {
 	const w, h = 60, 10
 	samples := testSamples(2048)
-	theme := DefaultTheme()
+	ctx := RenderContext{
+		Theme: DefaultTheme(),
+		Background: AnimeBackground{
+			Enabled: true,
+			Frame:   12,
+		},
+	}
 	for _, v := range Visuals {
-		out := v.Render(samples, w, h, theme)
+		out := v.Render(samples, w, h, ctx)
 		lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 		if len(lines) != h {
 			t.Errorf("%s: got %d lines, want %d", v.Name, len(lines), h)
@@ -30,9 +38,33 @@ func TestEachVisualRendersWithoutPanic(t *testing.T) {
 func TestSpectrumQuietSignalIsMostlyEmpty(t *testing.T) {
 	const w, h = 40, 8
 	samples := make([]float64, 2048) // all zeros
-	out := RenderSpectrum(samples, w, h, DefaultTheme())
-	// All-zero signal should leave the bar area blank (no block chars).
-	if strings.ContainsRune(out, '█') {
-		t.Errorf("expected no full blocks for zero input, got:\n%s", out)
+	out := RenderSpectrum(samples, w, h, RenderContext{Theme: DefaultTheme()})
+	// All-zero signal should leave the bar area without any active columns.
+	for _, glyph := range []rune{'█', '▇', '▆', '▅', '▄', '▃', '▂', '▁'} {
+		if strings.ContainsRune(out, glyph) {
+			t.Errorf("expected no active bars for zero input, got:\n%s", out)
+			break
+		}
+	}
+}
+
+func TestDetectAdaptiveUIForAscii(t *testing.T) {
+	ui := detectAdaptiveUIWith(termenv.Ascii, true)
+	if len(ui.Themes) != 1 || ui.Themes[0].Name != "mono" {
+		t.Fatalf("ascii profile should force mono theme, got %+v", ui.Themes)
+	}
+}
+
+func TestAnimeBackgroundAddsAsciiWhenForegroundBlank(t *testing.T) {
+	ctx := RenderContext{
+		Theme: DefaultTheme(),
+		Background: AnimeBackground{
+			Enabled: true,
+			Frame:   8,
+		},
+	}
+	out := RenderBars(make([]float64, 128), 32, 8, ctx)
+	if !strings.ContainsAny(out, ".+*#/|~()_\\") {
+		t.Fatalf("expected animated ASCII background glyphs, got:\n%s", out)
 	}
 }

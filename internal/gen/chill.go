@@ -49,15 +49,18 @@ type Chill struct {
 	// Active progression — referenced by all mutator closures.
 	progression []chillChord
 
+	barSamples int64
+	form       FormPlan
+	section    FormSection
+
 	samplesElapsed int64
 	nextDriftAt    int64
-	nextSwapAt     int64
 
 	// Section state: sax solo and nylon guitar comp drop in/out every 90–180s
 	// to give the track verse/chorus/bridge dynamics over a long listen.
-	saxOn         *bool
-	guitarOn      *bool
-	nextSectionAt int64
+	saxOn    *bool
+	guitarOn *bool
+	vibeOn   *bool
 
 	vibePlan   []int
 	guitarPlan []int
@@ -202,6 +205,8 @@ const (
 	drumKick        = 36 // C2  — Bass Drum 1
 	drumSnare       = 38 // D2  — Acoustic Snare
 	drumHiHatC      = 42 // F#2 — Closed Hi-Hat
+	drumHiHatOpen   = 46 // A#2 — Open Hi-Hat
+	drumCrash       = 49 // C#3 — Crash Cymbal 1
 	drumChannel     = 9
 	drumBankMSB     = 128 // bank 128 = drum kit in standard MIDI
 	ccBankSelect    = 0xB0
@@ -218,6 +223,10 @@ const (
 	chillPlanNinth
 	chillPlanEleventh
 	chillPlanThirteenth
+	chillPlanPickupAbove
+	chillPlanPickupBelow
+	chillPlanSuspendFourth
+	chillPlanResolveThird
 )
 
 // NewChill constructs the algorithm. Caller must call Seed before Next.
@@ -232,15 +241,14 @@ func (a *Chill) Seed(seedVal int64) {
 	a.rootMidi = 48 + a.rng.Intn(7)           // C3..F#3
 	a.keyOffset = 0
 	a.samplesElapsed = 0
-	a.scheduleNextDrift()
-	a.scheduleNextSwap()
 	// Section state. Start in "intro" — sax off, guitar on (just chords +
 	// rhythm section). First section flip usually brings the sax in.
 	saxStart := false
 	guitarStart := true
+	vibeStart := true
 	a.saxOn = &saxStart
 	a.guitarOn = &guitarStart
-	a.scheduleNextSection()
+	a.vibeOn = &vibeStart
 
 	core, err := newSF2Core(a.sf, 2.8, seedVal)
 	if err != nil {
@@ -357,7 +365,12 @@ func (a *Chill) Seed(seedVal int64) {
 	bpm := 61.0 + 8.0*a.rng.Float64()
 	beatSec := 60.0 / bpm
 	barSec := beatSec * 4
+	a.barSamples = secondsToSamples(barSec)
+	a.form = NewFormPlan(a.rng, a.barSamples, "lofi")
+	a.section = a.form.SectionAt(0)
+	a.scheduleNextDrift()
 	cycleSec := barSec * float64(len(a.progression))
+	a.applyArrangement()
 
 	// --- EP chord stabs: two stabs per bar (beats 1 and 3), same chord both
 	// times. Four tracks (one per chord tone), all on channel 0, each with
@@ -374,6 +387,13 @@ func (a *Chill) Seed(seedVal int64) {
 			Channel: 0, Velocity: 72, Notes: notes,
 			PeriodSec: cycleSec, Phase01: 0,
 			MutationRate: 1.0, MutateOne: mutate,
+			Gate: 0.52,
+			ResolveVelocity: func(slot int, key int, base int32) int32 {
+				if slot%2 == 0 {
+					return base + 8
+				}
+				return base - 6
+			},
 			VelocityJitter: 8, TimingJitterSec: 0.008, // EP stab — lazy but not sloppy
 		})
 	}
@@ -389,8 +409,16 @@ func (a *Chill) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 1, Velocity: 88, Notes: bassNotes,
 		PeriodSec: cycleSec, Phase01: 0,
-		MutationRate:   0.4,
-		MutateOne:      func(slot int, _ int) int { return a.bassNoteAt(slot) },
+		MutationRate: 0.4,
+		MutateOne:    func(slot int, _ int) int { return a.bassNoteAt(slot) },
+		Gate:         0.82,
+		Legato:       true,
+		ResolveVelocity: func(slot int, key int, base int32) int32 {
+			if slot%4 == 0 {
+				return base + 5
+			}
+			return base - 4
+		},
 		VelocityJitter: 6, TimingJitterSec: 0.005, // bass — tight
 	})
 
@@ -402,8 +430,16 @@ func (a *Chill) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 2, Velocity: 68, Notes: vibeNotes,
 		PeriodSec: cycleSec, Phase01: 0,
-		ResolveNote:    func(slot int, _ int) int { return a.vibeNoteAt(slot) },
+		ResolveNote: func(slot int, _ int) int { return a.vibeNoteAt(slot) },
+		Gate:        0.68,
+		ResolveVelocity: func(slot int, key int, base int32) int32 {
+			if a.section.TextureLevel > 1 {
+				return base + 6
+			}
+			return base - 2
+		},
 		VelocityJitter: 12, TimingJitterSec: 0.020, // vibe — laid back
+		Enabled: a.vibeOn,
 	})
 
 	// --- Nylon Guitar: comping with extended chord notes on beat 2-and (the
@@ -414,9 +450,16 @@ func (a *Chill) Seed(seedVal int64) {
 	}
 	core.addTrack(SF2Track{
 		Channel: 4, Velocity: 50, Notes: guitarNotes,
-		PeriodSec:      cycleSec,
-		Phase01:        1.5 / float64(4*numBars), // 1.5 beats into the first bar
-		ResolveNote:    func(slot int, _ int) int { return a.guitarNoteAt(slot) },
+		PeriodSec:   cycleSec,
+		Phase01:     1.5 / float64(4*numBars), // 1.5 beats into the first bar
+		ResolveNote: func(slot int, _ int) int { return a.guitarNoteAt(slot) },
+		Gate:        0.44,
+		ResolveVelocity: func(slot int, key int, base int32) int32 {
+			if a.section.Kind == FormCadence {
+				return base + 8
+			}
+			return base - 3
+		},
 		VelocityJitter: 10, TimingJitterSec: 0.025, // nylon comping — humans don't quantize
 		Enabled: a.guitarOn,
 	})
@@ -428,9 +471,28 @@ func (a *Chill) Seed(seedVal int64) {
 	}
 	core.addTrack(SF2Track{
 		Channel: 3, Velocity: 64, Notes: saxNotes,
-		PeriodSec:      cycleSec,
-		Phase01:        0.5 / float64(numBars), // enter on beat 3 of bar 1
-		ResolveNote:    func(slot int, _ int) int { return a.saxNoteAt(slot) },
+		PeriodSec:   cycleSec,
+		Phase01:     0.5 / float64(numBars), // enter on beat 3 of bar 1
+		ResolveNote: func(slot int, _ int) int { return a.saxNoteAt(slot) },
+		Gate:        0.94,
+		Legato:      true,
+		ResolveVelocity: func(slot int, key int, base int32) int32 {
+			switch a.section.Kind {
+			case FormB, FormCadence:
+				return base + 10
+			case FormIntro, FormBreakdown:
+				return base - 6
+			default:
+				return base + 2
+			}
+		},
+		ResolveExpression: func(slot int, key int) SF2ExpressionCurve {
+			curve := SF2ExpressionCurve{Start: 82, Peak: 106, End: 90, PeakAt01: 0.32}
+			if a.section.Kind == FormCadence {
+				curve = SF2ExpressionCurve{Start: 88, Peak: 114, End: 96, PeakAt01: 0.42}
+			}
+			return curve
+		},
 		VelocityJitter: 14, TimingJitterSec: 0.035, // sax solo — most expressive, most loose
 		Enabled: a.saxOn,
 	})
@@ -446,6 +508,7 @@ func (a *Chill) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: drumChannel, Velocity: 92, Notes: kickNotes,
 		PeriodSec: cycleSec, Phase01: 0,
+		Gate:           0.08,
 		VelocityJitter: 8, TimingJitterSec: 0.003, // kick — anchors the groove, must be tight
 		FireProbability: 0.90, // occasional skip so the groove varies subtly
 		OnFire:          core.triggerDuck,
@@ -463,6 +526,7 @@ func (a *Chill) Seed(seedVal int64) {
 		Channel: drumChannel, Velocity: 82, Notes: snareNotes,
 		PeriodSec:      cycleSec,
 		Phase01:        0.5/float64(2*numBars) + dillaSnareLagSec/cycleSec,
+		Gate:           0.10,
 		VelocityJitter: 6, TimingJitterSec: 0.004,
 		FireProbability: 0.88, // snare almost always lands, with rare skips
 	})
@@ -477,10 +541,47 @@ func (a *Chill) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: drumChannel, Velocity: 38, Notes: hihatNotes,
 		PeriodSec: cycleSec, Phase01: 0,
+		Gate:            0.06,
 		VelocityJitter:  10,
 		TimingJitterSec: 0.006,
 		SwingAmount:     0.05,
 		FireProbability: 0.78,
+	})
+	ghostNotes := make([]int, numBars)
+	for i := range ghostNotes {
+		ghostNotes[i] = a.ghostSnareNoteAt(i)
+	}
+	core.addTrack(SF2Track{
+		Channel: drumChannel, Velocity: 34, Notes: ghostNotes,
+		PeriodSec:      cycleSec,
+		Phase01:        0.875 / float64(numBars),
+		ResolveNote:    func(slot int, _ int) int { return a.ghostSnareNoteAt(slot) },
+		Gate:           0.08,
+		VelocityJitter: 8, TimingJitterSec: 0.005,
+	})
+	crashNotes := make([]int, numBars)
+	for i := range crashNotes {
+		crashNotes[i] = a.crashNoteAt(i)
+	}
+	core.addTrack(SF2Track{
+		Channel: drumChannel, Velocity: 68, Notes: crashNotes,
+		PeriodSec:      cycleSec,
+		Phase01:        0,
+		ResolveNote:    func(slot int, _ int) int { return a.crashNoteAt(slot) },
+		Gate:           0.12,
+		VelocityJitter: 10, TimingJitterSec: 0.004,
+	})
+	openHatNotes := make([]int, numBars)
+	for i := range openHatNotes {
+		openHatNotes[i] = a.openHatNoteAt(i)
+	}
+	core.addTrack(SF2Track{
+		Channel: drumChannel, Velocity: 42, Notes: openHatNotes,
+		PeriodSec:      cycleSec,
+		Phase01:        0.875 / float64(numBars),
+		ResolveNote:    func(slot int, _ int) int { return a.openHatNoteAt(slot) },
+		Gate:           0.10,
+		VelocityJitter: 8, TimingJitterSec: 0.005,
 	})
 
 	// Tape hiss — subtle white-noise floor at ~-50 dBFS.
@@ -536,7 +637,7 @@ func (a *Chill) bassNoteAt(slot int) int {
 // of beat 2 — classic jazz/bossa comping placement.
 func (a *Chill) guitarNoteAt(slot int) int {
 	chordIdx := slot % len(a.progression)
-	return a.resolvePlanNote(a.progression[chordIdx], a.guitarPlan[slot%len(a.guitarPlan)], 12, 52, 76)
+	return a.resolvePlanNote(slot, a.progression[chordIdx], a.guitarPlan[slot%len(a.guitarPlan)], 12+a.section.RegisterLift, 52, 80)
 }
 
 // saxNoteAt resolves one slot of the precomputed phrase. Negative slots are
@@ -544,13 +645,13 @@ func (a *Chill) guitarNoteAt(slot int) int {
 // bar.
 func (a *Chill) saxNoteAt(slot int) int {
 	chordIdx := slot % len(a.progression)
-	return a.resolvePlanNote(a.progression[chordIdx], a.saxPlan[slot%len(a.saxPlan)], 24, 67, 90)
+	return a.resolvePlanNote(slot, a.progression[chordIdx], a.saxPlan[slot%len(a.saxPlan)], 24+a.section.RegisterLift, 67, 92)
 }
 
 // vibeNoteAt resolves the upper-voice motif that answers the Rhodes stabs.
 func (a *Chill) vibeNoteAt(slot int) int {
 	chordIdx := slot % len(a.progression)
-	return a.resolvePlanNote(a.progression[chordIdx], a.vibePlan[slot%len(a.vibePlan)], 24, 72, 92)
+	return a.resolvePlanNote(slot, a.progression[chordIdx], a.vibePlan[slot%len(a.vibePlan)], 24+a.section.RegisterLift/2, 72, 94)
 }
 
 func (a *Chill) makeVibePlan(numBars int) []int {
@@ -571,9 +672,9 @@ func (a *Chill) makeVibePlan(numBars int) []int {
 
 func (a *Chill) makeGuitarPlan(numBars int) []int {
 	plans := [][]int{
-		{chillPlanNinth, chillPlanRest},
-		{chillPlanFifth, chillPlanNinth},
-		{chillPlanRoot, chillPlanFifth},
+		{chillPlanNinth, chillPlanSuspendFourth},
+		{chillPlanFifth, chillPlanPickupAbove},
+		{chillPlanRoot, chillPlanResolveThird},
 	}
 	out := make([]int, numBars)
 	for i := 0; i < numBars; i += 2 {
@@ -587,12 +688,12 @@ func (a *Chill) makeGuitarPlan(numBars int) []int {
 
 func (a *Chill) makeSaxPlan(numBars int) []int {
 	callTemplates := [][]int{
-		{chillPlanNinth, chillPlanRest, chillPlanThird, chillPlanSeventh},
-		{chillPlanRest, chillPlanThirteenth, chillPlanNinth, chillPlanRest},
-		{chillPlanThird, chillPlanNinth, chillPlanRest, chillPlanSeventh},
+		{chillPlanNinth, chillPlanRest, chillPlanPickupBelow, chillPlanResolveThird},
+		{chillPlanRest, chillPlanThirteenth, chillPlanSuspendFourth, chillPlanResolveThird},
+		{chillPlanThird, chillPlanPickupAbove, chillPlanRest, chillPlanSeventh},
 	}
 	call := callTemplates[a.rng.Intn(len(callTemplates))]
-	answer := []int{call[0], chillPlanEleventh, chillPlanThird, chillPlanRest}
+	answer := []int{call[0], chillPlanEleventh, chillPlanPickupBelow, chillPlanResolveThird}
 	out := make([]int, numBars)
 	for i := 0; i < numBars; i++ {
 		if i < len(call) {
@@ -611,8 +712,10 @@ func (a *Chill) makeSaxPlan(numBars int) []int {
 	return out
 }
 
-func (a *Chill) resolvePlanNote(chord chillChord, code, octaveBump, low, high int) int {
+func (a *Chill) resolvePlanNote(slot int, chord chillChord, code, octaveBump, low, high int) int {
 	chordRoot := a.currentRoot() + chord.tones[0]
+	next := a.progression[(slot+1)%len(a.progression)]
+	nextRoot := a.currentRoot() + next.tones[0]
 	if code == chillPlanRest {
 		return -1
 	}
@@ -632,6 +735,16 @@ func (a *Chill) resolvePlanNote(chord chillChord, code, octaveBump, low, high in
 		key = chordRoot + 17
 	case chillPlanThirteenth:
 		key = chordRoot + 21
+	case chillPlanPickupAbove:
+		key = nearestRelativeNote(chordRoot+2, nextRoot, next.tones, low, high)
+		return key
+	case chillPlanPickupBelow:
+		key = nearestRelativeNote(chordRoot-2, nextRoot, next.tones, low, high)
+		return key
+	case chillPlanSuspendFourth:
+		key = chordRoot + 5
+	case chillPlanResolveThird:
+		key = a.currentRoot() + chord.tones[1]
 	default:
 		key = chordRoot
 	}
@@ -640,7 +753,11 @@ func (a *Chill) resolvePlanNote(chord chillChord, code, octaveBump, low, high in
 
 func (a *Chill) scheduleNextDrift() {
 	secs := 240.0 + 180.0*a.rng.Float64()
-	a.nextDriftAt = a.samplesElapsed + int64(secs*float64(synth.SampleRate))
+	step := a.barSamples * 4
+	if step <= 0 {
+		step = int64(4 * synth.SampleRate)
+	}
+	a.nextDriftAt = scheduleQuantizedAfter(a.samplesElapsed, secs, step)
 }
 
 func (a *Chill) shiftKey() {
@@ -673,35 +790,86 @@ func (a *Chill) Next(left, right []float64) {
 		}
 		return
 	}
+	a.applyArrangement()
 	a.core.renderInto(left, right)
+	prev := a.samplesElapsed
 	a.samplesElapsed += int64(len(left))
 	if a.samplesElapsed >= a.nextDriftAt {
 		a.shiftKey()
 		a.scheduleNextDrift()
 	}
-	if a.samplesElapsed >= a.nextSwapAt {
-		a.swapOneInstrument()
-		a.scheduleNextSwap()
-	}
-	if a.samplesElapsed >= a.nextSectionAt {
-		a.advanceSection()
-		a.scheduleNextSection()
+	if a.form.SectionBoundaryCrossed(prev, a.samplesElapsed) {
+		a.applyArrangement()
 	}
 }
 
-// advanceSection cycles chill through verse/chorus-like states by flipping
-// one of the optional layer enables. 50/50 between sax and guitar.
-func (a *Chill) advanceSection() {
-	if a.rng.Float64() < 0.5 {
-		*a.saxOn = !*a.saxOn
-	} else {
-		*a.guitarOn = !*a.guitarOn
+func (a *Chill) currentBar() int {
+	if a.barSamples <= 0 || len(a.progression) == 0 {
+		return 0
+	}
+	return sampleBarIndex(a.samplesElapsed, a.barSamples) % len(a.progression)
+}
+
+func (a *Chill) applyArrangement() {
+	a.section = a.form.SectionAt(a.samplesElapsed)
+	if a.saxOn != nil {
+		*a.saxOn = a.section.LeadLevel > 0 && a.section.Kind != FormOutro
+	}
+	if a.guitarOn != nil {
+		*a.guitarOn = a.section.TextureLevel > 0 && a.section.Kind != FormBreakdown
+	}
+	if a.vibeOn != nil {
+		*a.vibeOn = a.section.TextureLevel > 0
+	}
+	if a.core == nil {
+		return
+	}
+	core := a.core
+	switch a.section.Kind {
+	case FormIntro:
+		core.setReverbSend(3, 88)
+		core.setChannelCutoff(0, 28)
+		core.setChannelExpression(0, 92)
+	case FormB:
+		core.setReverbSend(3, 104)
+		core.setChannelCutoff(0, 40)
+		core.setChannelExpression(0, 112)
+	case FormCadence:
+		core.setReverbSend(3, 110)
+		core.setChannelCutoff(0, 44)
+		core.setChannelExpression(0, 118)
+	default:
+		core.setReverbSend(3, 96)
+		core.setChannelCutoff(0, 32)
+		core.setChannelExpression(0, 104)
 	}
 }
 
-func (a *Chill) scheduleNextSection() {
-	secs := 90.0 + 90.0*a.rng.Float64() // 1.5–3 min
-	a.nextSectionAt = a.samplesElapsed + int64(secs*44100)
+func (a *Chill) ghostSnareNoteAt(slot int) int {
+	bar := slot % maxInt(1, len(a.progression))
+	if (bar+1)%4 == 0 || bar == len(a.progression)-1 {
+		return drumSnare
+	}
+	return -1
+}
+
+func (a *Chill) crashNoteAt(slot int) int {
+	bar := slot % maxInt(1, len(a.progression))
+	if bar == 0 || a.section.Kind == FormCadence {
+		return drumCrash
+	}
+	if (bar+1)%8 == 0 {
+		return drumCrash
+	}
+	return -1
+}
+
+func (a *Chill) openHatNoteAt(slot int) int {
+	bar := slot % maxInt(1, len(a.progression))
+	if (bar+1)%4 == 0 {
+		return drumHiHatOpen
+	}
+	return -1
 }
 
 // chillChannelAlternatives — staying inside the lofi soundscape. Now
@@ -720,15 +888,13 @@ var chillChannelAlternatives = map[int32][]int32{
 	9: {32, 40, 0, 8},   // Jazz Kit (default), Brush Kit, Standard Kit, Room Kit
 }
 
-func (a *Chill) scheduleNextSwap() {
-	secs := 180.0 + 120.0*a.rng.Float64() // 3–5 min — chill wants gentle variety
-	a.nextSwapAt = a.samplesElapsed + int64(secs*44100)
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
-func (a *Chill) swapOneInstrument() {
-	// Drum kit rotation included now — different feel each time, real
-	// "different drummer" texture change vs the prior "same kit every bar."
-	channels := []int32{0, 1, 2, 3, 4, 9}
-	ch := channels[a.rng.Intn(len(channels))]
-	a.core.programSwap(ch, chillChannelAlternatives[ch], a.rng)
+func (a *Chill) ListeningMarkers() []ListeningMarker {
+	return a.form.ListeningMarkers(2)
 }

@@ -9,6 +9,8 @@ import (
 	"github.com/mrbrutti/termus/internal/synth"
 )
 
+const ccControlChange = 0xB0
+
 // SF2Reverberator is the optional interface implemented by SF2-mode
 // algorithms that can have a convolution reverb installed on their master
 // bus. Used by the --ir flag to inject a real impulse response.
@@ -47,6 +49,27 @@ type SF2Track struct {
 	// a rest for this fire.
 	ResolveNote func(slot int, prev int) int
 
+	// Gate is the portion of the slot for which the note should be held.
+	// 1.0 means "hold until the next slot boundary", 0.5 means "release
+	// halfway through", and values >1.0 let the note ring into a following
+	// rest or until the next note-on.
+	Gate float64
+	// ResolveGate overrides Gate for a particular slot.
+	ResolveGate func(slot int, key int) float64
+	// Legato keeps a note alive until the next slot transition if no earlier
+	// release occurred, giving monophonic tracks connected phrasing.
+	Legato bool
+	// ReleaseSec adds a small fixed tail after the gate-calculated duration.
+	ReleaseSec float64
+
+	// ResolveVelocity can reshape a track's base velocity per slot before
+	// random jitter is applied.
+	ResolveVelocity func(slot int, key int, base int32) int32
+	// ResolveExpression optionally supplies a per-note expression contour for
+	// the channel (MIDI CC 11). It is best used on channels with one musical
+	// voice, such as solo leads or single pads.
+	ResolveExpression func(slot int, key int) SF2ExpressionCurve
+
 	VelocityJitter  int32   // ±range added to Velocity per NoteOn
 	TimingJitterSec float64 // ±range added to fire time per NoteOn (seconds)
 
@@ -78,6 +101,15 @@ type SF2Track struct {
 	OnFire func()
 }
 
+// SF2ExpressionCurve describes a simple channel-expression gesture across one
+// note. Start is sent at NoteOn, Peak later in the note, and End near release.
+type SF2ExpressionCurve struct {
+	Start    int32
+	Peak     int32
+	End      int32
+	PeakAt01 float64 // 0..1 fraction of the note duration; defaults to 0.35
+}
+
 // sf2TrackState is the runtime state for one track. The scheduler uses
 // absolute fire times (samples since Seed) rather than per-cycle phase math
 // so timing jitter can be applied naturally — the next-fire sample is just
@@ -91,6 +123,10 @@ type sf2TrackState struct {
 	curSlot       int   // last slot we fired (-1 before first fire)
 	curKey        int   // currently sounding key, or -1
 	nextFireT     int64 // absolute sample at which we should fire the next NoteOn
+	releaseT      int64
+	exprNextT     int64
+	exprStage     int
+	exprCurve     SF2ExpressionCurve
 }
 
 // sf2Core is a shared SoundFont rendering engine. Each SF2-mode algorithm
@@ -376,6 +412,18 @@ func (e *sf2Core) setPan(channel int32, pan int32) {
 	e.syn.ProcessMidiMessage(channel, ccControlChange, ccPan, pan)
 }
 
+func (e *sf2Core) setChannelExpression(channel, value int32) {
+	const ccControlChange = 0xB0
+	const ccExpression = 11
+	if value < 0 {
+		value = 0
+	}
+	if value > 127 {
+		value = 127
+	}
+	e.syn.ProcessMidiMessage(channel, ccControlChange, ccExpression, value)
+}
+
 // setMasterEQ overrides the default master-bus shelf EQ. The engine builds
 // in a +2.5 dB low shelf at 180 Hz and a +3 dB high shelf at 7.5 kHz as
 // sensible defaults — algorithms can pass different parameters to dial in
@@ -538,11 +586,28 @@ func (e *sf2Core) addTrack(t SF2Track) {
 
 // samplesUntilNextSlot returns how many samples until this track's next
 // NoteOn should fire. Returns 0 if the next fire is overdue.
-func (s *sf2TrackState) samplesUntilNextSlot(t int64) int64 {
+func (s *sf2TrackState) samplesUntilNextEvent(t int64) int64 {
 	if t >= s.nextFireT {
 		return 0
 	}
-	return s.nextFireT - t
+	ahead := s.nextFireT - t
+	if s.releaseT > 0 {
+		if t >= s.releaseT {
+			return 0
+		}
+		if d := s.releaseT - t; d < ahead {
+			ahead = d
+		}
+	}
+	if s.exprNextT > 0 {
+		if t >= s.exprNextT {
+			return 0
+		}
+		if d := s.exprNextT - t; d < ahead {
+			ahead = d
+		}
+	}
+	return ahead
 }
 
 // fireTransition fires the NoteOn for the slot the track is currently in
@@ -564,13 +629,15 @@ func (s *sf2TrackState) fireTransition(t int64, syn *meltysynth.Synthesizer, rng
 		newSlot = int(s.notesLen) - 1
 	}
 
-	// If the track is currently disabled (section-muted), turn off any held
-	// note but skip the NoteOn — the track silently advances its slot
-	// pointer so it picks up where the music expects when it re-enables.
+	// Monophonic articulation: if a note is still held from the previous slot,
+	// release it exactly at the new transition before deciding what to fire.
 	if s.curKey >= 0 {
 		syn.NoteOff(s.cfg.Channel, int32(s.curKey))
 		s.curKey = -1
 	}
+	s.releaseT = 0
+	s.exprNextT = 0
+	s.exprStage = 0
 	// Skip firing this slot for either of:
 	//   • track is section-disabled
 	//   • FireProbability set and we rolled a skip (drum ghost-note variety)
@@ -597,6 +664,9 @@ func (s *sf2TrackState) fireTransition(t int64, syn *meltysynth.Synthesizer, rng
 		// Fall through to schedule next fire normally; mutations still happen.
 	} else {
 		vel := s.cfg.Velocity
+		if s.cfg.ResolveVelocity != nil {
+			vel = s.cfg.ResolveVelocity(newSlot, key, vel)
+		}
 		if s.cfg.VelocityJitter > 0 && rng != nil {
 			offset := int32(rng.Intn(int(2*s.cfg.VelocityJitter)+1)) - s.cfg.VelocityJitter
 			vel += offset
@@ -610,6 +680,54 @@ func (s *sf2TrackState) fireTransition(t int64, syn *meltysynth.Synthesizer, rng
 		syn.NoteOn(s.cfg.Channel, int32(key), vel)
 		s.curSlot = newSlot
 		s.curKey = key
+		slotLen := s.periodSamples / s.notesLen
+		if slotLen < 1 {
+			slotLen = 1
+		}
+		gate := s.cfg.Gate
+		if gate <= 0 {
+			gate = 1.0
+		}
+		if s.cfg.ResolveGate != nil {
+			if g := s.cfg.ResolveGate(newSlot, key); g > 0 {
+				gate = g
+			}
+		}
+		hold := int64(gate * float64(slotLen))
+		hold += secondsToSamples(s.cfg.ReleaseSec)
+		if hold < 1 {
+			hold = 1
+		}
+		if s.cfg.Legato && hold < slotLen {
+			hold = slotLen
+		}
+		s.releaseT = t + hold
+		if s.cfg.ResolveExpression != nil {
+			s.exprCurve = s.cfg.ResolveExpression(newSlot, key)
+			if s.exprCurve.Start <= 0 {
+				s.exprCurve.Start = 96
+			}
+			if s.exprCurve.Peak <= 0 {
+				s.exprCurve.Peak = s.exprCurve.Start
+			}
+			if s.exprCurve.End <= 0 {
+				s.exprCurve.End = s.exprCurve.Peak
+			}
+			if s.exprCurve.PeakAt01 <= 0 || s.exprCurve.PeakAt01 >= 1 {
+				s.exprCurve.PeakAt01 = 0.35
+			}
+			syn.ProcessMidiMessage(s.cfg.Channel, ccControlChange, 11, s.exprCurve.Start)
+			if s.exprCurve.Peak != s.exprCurve.Start {
+				s.exprStage = 1
+				s.exprNextT = t + int64(float64(hold)*s.exprCurve.PeakAt01)
+				if s.exprNextT <= t {
+					s.exprNextT = t + 1
+				}
+			} else if s.exprCurve.End != s.exprCurve.Peak && s.releaseT > t+1 {
+				s.exprStage = 2
+				s.exprNextT = s.releaseT - 1
+			}
+		}
 		if s.cfg.OnFire != nil {
 			s.cfg.OnFire()
 		}
@@ -665,6 +783,38 @@ func (s *sf2TrackState) fireTransition(t int64, syn *meltysynth.Synthesizer, rng
 	}
 }
 
+func (s *sf2TrackState) handleDueEvents(t int64, syn *meltysynth.Synthesizer, rng *rand.Rand) {
+	if s.releaseT > 0 && t >= s.releaseT {
+		if s.curKey >= 0 {
+			syn.NoteOff(s.cfg.Channel, int32(s.curKey))
+			s.curKey = -1
+		}
+		s.releaseT = 0
+		s.exprNextT = 0
+		s.exprStage = 0
+	}
+	if s.exprNextT > 0 && t >= s.exprNextT {
+		switch s.exprStage {
+		case 1:
+			syn.ProcessMidiMessage(s.cfg.Channel, ccControlChange, 11, s.exprCurve.Peak)
+			if s.exprCurve.End != s.exprCurve.Peak && s.releaseT > t+1 {
+				s.exprStage = 2
+				s.exprNextT = s.releaseT - 1
+			} else {
+				s.exprNextT = 0
+				s.exprStage = 0
+			}
+		case 2:
+			syn.ProcessMidiMessage(s.cfg.Channel, ccControlChange, 11, s.exprCurve.End)
+			s.exprNextT = 0
+			s.exprStage = 0
+		}
+	}
+	if s.nextFireT <= t {
+		s.fireTransition(t, syn, rng)
+	}
+}
+
 // renderInto fills the stereo float64 buffer by alternately rendering audio
 // chunks and firing track events at slot boundaries, then applying the
 // master bus.
@@ -683,7 +833,7 @@ func (e *sf2Core) renderInto(left, right []float64) {
 		// all tracks. Render that many samples, fire events, repeat.
 		ahead := int64(n - pos)
 		for _, s := range e.tracks {
-			d := s.samplesUntilNextSlot(e.t)
+			d := s.samplesUntilNextEvent(e.t)
 			if d < ahead {
 				ahead = d
 			}
@@ -698,8 +848,8 @@ func (e *sf2Core) renderInto(left, right []float64) {
 		}
 		if pos < n {
 			for _, s := range e.tracks {
-				if s.samplesUntilNextSlot(e.t) == 0 {
-					s.fireTransition(e.t, e.syn, e.rng)
+				if s.samplesUntilNextEvent(e.t) == 0 {
+					s.handleDueEvents(e.t, e.syn, e.rng)
 				}
 			}
 		}

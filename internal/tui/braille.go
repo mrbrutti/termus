@@ -4,8 +4,6 @@ package tui
 
 import (
 	"strings"
-
-	"github.com/charmbracelet/lipgloss"
 )
 
 // RenderBraille returns a w×h block of Braille glyphs visualizing the given
@@ -19,6 +17,12 @@ func RenderBraille(samples []float64, w, h int) string {
 // RenderBrailleThemed is like RenderBraille but lets the caller pick a
 // ColorTheme. See themes.go for the available presets.
 func RenderBrailleThemed(samples []float64, w, h int, theme ColorTheme) string {
+	return RenderBrailleWithContext(samples, w, h, RenderContext{Theme: theme})
+}
+
+// RenderBrailleWithContext is the background-aware braille renderer used by
+// the TUI's visual system.
+func RenderBrailleWithContext(samples []float64, w, h int, ctx RenderContext) string {
 	if w < 4 || h < 1 {
 		return "(too small)\n"
 	}
@@ -53,8 +57,7 @@ func RenderBrailleThemed(samples []float64, w, h int, theme ColorTheme) string {
 	for cy := 0; cy < h; cy++ {
 		for cx := 0; cx < w; cx++ {
 			r := brailleCell(plot, cx, cy)
-			color := theme.ColorAt(cx, cy, w, h)
-			b.WriteString(lipgloss.NewStyle().Foreground(color).Render(string(r)))
+			b.WriteString(renderCell(r, cx, cy, w, h, ctx))
 		}
 		b.WriteByte('\n')
 	}
@@ -94,4 +97,3 @@ func brailleCell(plot [][]bool, cx, cy int) rune {
 	}
 	return base + bits
 }
-

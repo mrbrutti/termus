@@ -178,6 +178,8 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 		PeriodSec: cycleSec, Phase01: 0,
 		MutationRate:   0.10,
 		MutateOne:      func(slot int, _ int) int { return a.bassRoot(slot) },
+		Gate:           0.82,
+		Legato:         true,
 		VelocityJitter: 8, TimingJitterSec: 0.012,
 	})
 
@@ -199,6 +201,7 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 			Phase01:        float64(beat) / (3 * float64(numBars)),
 			MutationRate:   0.15,
 			MutateOne:      func(slot int, _ int) int { return a.compTone(slot, voice+1) },
+			Gate:           0.46,
 			VelocityJitter: 10, TimingJitterSec: 0.020,
 		})
 	}
@@ -211,6 +214,11 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 1, Velocity: 76, Notes: a.melodyPhrase,
 		PeriodSec: cycleSec, Phase01: 0,
+		Gate:   0.88,
+		Legato: true,
+		ResolveExpression: func(slot int, key int) SF2ExpressionCurve {
+			return SF2ExpressionCurve{Start: 88, Peak: 108, End: 92, PeakAt01: 0.40}
+		},
 		VelocityJitter: 12, TimingJitterSec: 0.018,
 	})
 
@@ -231,6 +239,7 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 		MutateOne: func(slot int, _ int) int {
 			return a.compTone(slot*4, 1) + 24
 		},
+		Gate:           0.42,
 		VelocityJitter: 12, TimingJitterSec: 0.030,
 		Enabled: a.glockOn,
 	})
@@ -244,6 +253,8 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 			MutationRate:   0.20,
 			MutateOne:      func(_ int, _ int) int { return a.padNote(voice) },
 			ResolveNote:    func(_ int, _ int) int { return a.padNote(voice) },
+			Gate:           0.98,
+			Legato:         true,
 			VelocityJitter: 4, TimingJitterSec: 0.040,
 		})
 	}
@@ -387,7 +398,11 @@ func (a *SF2Pentatonic) padNote(voice int) int {
 
 func (a *SF2Pentatonic) scheduleNextSection() {
 	secs := 60.0 + 60.0*a.rng.Float64()
-	a.nextSectionAt = a.samplesElapsed + int64(secs*44100)
+	step := a.barSamples * 4
+	if step <= 0 {
+		step = int64(4 * synth.SampleRate)
+	}
+	a.nextSectionAt = scheduleQuantizedAfter(a.samplesElapsed, secs, step)
 }
 
 func (a *SF2Pentatonic) advance() {

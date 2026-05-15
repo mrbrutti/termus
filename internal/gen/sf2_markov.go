@@ -41,9 +41,11 @@ type SF2Markov struct {
 	keyOffset int
 
 	progression []classicalChord
+	barSamples  int64
+	form        FormPlan
+	section     FormSection
 
 	samplesElapsed int64
-	nextSectionAt  int64
 	oboeOn         *bool
 
 	violinPhrase []int
@@ -112,9 +114,8 @@ func (a *SF2Markov) Seed(seedVal int64) {
 	a.progression = classicalProgressions[a.rng.Intn(len(classicalProgressions))]
 	a.samplesElapsed = 0
 
-	oboeStart := true
+	oboeStart := false
 	a.oboeOn = &oboeStart
-	a.scheduleNextSection()
 
 	core, err := newSF2Core(a.sf, 2.4, seedVal)
 	if err != nil {
@@ -158,6 +159,9 @@ func (a *SF2Markov) Seed(seedVal int64) {
 	bpm := 96.0 + 36.0*a.rng.Float64()
 	beatSec := 60.0 / bpm
 	barSec := beatSec * 4
+	a.barSamples = secondsToSamples(barSec)
+	a.form = NewFormPlan(a.rng, a.barSamples, "classical")
+	a.section = a.form.SectionAt(0)
 	numBars := len(a.progression)
 	cycleSec := barSec * float64(numBars)
 
@@ -173,6 +177,8 @@ func (a *SF2Markov) Seed(seedVal int64) {
 		PeriodSec: cycleSec, Phase01: 0,
 		MutationRate:   0.05, // very low — bass lines stay stable in Classical
 		MutateOne:      func(slot int, _ int) int { return a.celloLine(slot) },
+		Gate:           0.86,
+		Legato:         true,
 		VelocityJitter: 6, TimingJitterSec: 0.008,
 	})
 
@@ -189,6 +195,7 @@ func (a *SF2Markov) Seed(seedVal int64) {
 		PeriodSec: cycleSec, Phase01: 0,
 		MutationRate:   0.02, // Alberti is fixed pattern — almost no mutation
 		MutateOne:      func(slot int, _ int) int { return a.albertiNoteAt(slot) },
+		Gate:           0.52,
 		VelocityJitter: 4, TimingJitterSec: 0.006,
 	})
 
@@ -206,6 +213,11 @@ func (a *SF2Markov) Seed(seedVal int64) {
 		MutateOne: func(slot int, _ int) int {
 			return a.violinPhrase[slot%len(a.violinPhrase)]
 		},
+		Gate:   0.94,
+		Legato: true,
+		ResolveExpression: func(slot int, key int) SF2ExpressionCurve {
+			return SF2ExpressionCurve{Start: 84, Peak: 108, End: 92, PeakAt01: 0.38}
+		},
 		VelocityJitter: 10, TimingJitterSec: 0.014,
 	})
 
@@ -218,6 +230,8 @@ func (a *SF2Markov) Seed(seedVal int64) {
 		MutateOne: func(slot int, _ int) int {
 			return a.violinPhrase[slot%len(a.violinPhrase)]
 		},
+		Gate:           0.92,
+		Legato:         true,
 		VelocityJitter: 8, TimingJitterSec: 0.018,
 		Enabled: a.oboeOn,
 	})
@@ -233,11 +247,14 @@ func (a *SF2Markov) Seed(seedVal int64) {
 			PeriodSec: cycleSec, Phase01: float64(voice) * 0.04,
 			MutationRate:   0.06,
 			MutateOne:      func(slot int, _ int) int { return a.padTone(slot, voice) },
+			Gate:           0.98,
+			Legato:         true,
 			VelocityJitter: 4, TimingJitterSec: 0.015,
 		})
 	}
 
 	a.core = core
+	a.applyArrangement()
 }
 
 // celloLine returns the cello bass note for the i-th half-bar slot.
@@ -354,21 +371,8 @@ func (a *SF2Markov) buildPadLine(voice, numBars int) []int {
 	prev := 0
 	for i := 0; i < numBars; i++ {
 		chord := a.progression[i%len(a.progression)]
-		target := a.currentRoot() + chord.rootSemi + chord.tones[voice]
-		best := clampMidiToRange(target, 55, 76)
-		if i > 0 {
-			bestDist := absInt(best - prev)
-			for oct := -3; oct <= 3; oct++ {
-				cand := target + 12*oct
-				if cand < 55 || cand > 76 {
-					continue
-				}
-				if d := absInt(cand - prev); d < bestDist {
-					best = cand
-					bestDist = d
-				}
-			}
-		}
+		target := a.currentRoot() + chord.rootSemi
+		best := voiceLeadNearest(prev, target, []int{chord.tones[voice]}, 55, 76)
 		notes[i] = best
 		prev = best
 	}
@@ -393,18 +397,6 @@ func (a *SF2Markov) padTone(slot, voice int) int {
 	return key
 }
 
-func (a *SF2Markov) scheduleNextSection() {
-	secs := 40.0 + 50.0*a.rng.Float64()
-	a.nextSectionAt = a.samplesElapsed + int64(secs*44100)
-}
-
-func (a *SF2Markov) advance() {
-	if a.samplesElapsed >= a.nextSectionAt {
-		*a.oboeOn = !*a.oboeOn
-		a.scheduleNextSection()
-	}
-}
-
 func (a *SF2Markov) SetReverbIR(ir []float64, wet float64) {
 	if a.core != nil {
 		a.core.setConvolutionIR(ir, wet)
@@ -419,7 +411,35 @@ func (a *SF2Markov) Next(left, right []float64) {
 		}
 		return
 	}
-	a.advance()
+	prev := a.samplesElapsed
 	a.core.renderInto(left, right)
 	a.samplesElapsed += int64(len(left))
+	if a.form.SectionBoundaryCrossed(prev, a.samplesElapsed) {
+		a.applyArrangement()
+	}
+}
+
+func (a *SF2Markov) applyArrangement() {
+	a.section = a.form.SectionAt(a.samplesElapsed)
+	if a.oboeOn != nil {
+		*a.oboeOn = a.section.TextureLevel > 1 || a.section.Kind == FormCadence
+	}
+	if a.core == nil {
+		return
+	}
+	switch a.section.Kind {
+	case FormB:
+		a.core.setReverbSend(4, 96)
+		a.core.setChannelExpression(3, 112)
+	case FormCadence:
+		a.core.setReverbSend(4, 104)
+		a.core.setChannelExpression(3, 118)
+	default:
+		a.core.setReverbSend(4, 88)
+		a.core.setChannelExpression(3, 102)
+	}
+}
+
+func (a *SF2Markov) ListeningMarkers() []ListeningMarker {
+	return a.form.ListeningMarkers(2)
 }
