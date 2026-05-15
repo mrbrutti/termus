@@ -2,19 +2,96 @@ package audio
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/mrbrutti/termus/internal/gen"
 	"github.com/mrbrutti/termus/internal/scope"
 	"github.com/mrbrutti/termus/internal/synth"
 )
 
+const (
+	renderOutroSeconds         = 2.75
+	renderPreferredOutroWindow = 6.0
+	renderCadenceSnapWindow    = 12.0
+)
+
+// RenderPlan describes how an offline export should land: the requested
+// duration, any cadence/outro snap point, and the fade-out tail added after
+// the musical boundary.
+type RenderPlan struct {
+	RequestedFrames int
+	FadeStartFrame  int
+	FadeFrames      int
+	TotalFrames     int
+	SnapLabel       string
+}
+
+func (p RenderPlan) DurationSeconds() float64 {
+	if p.TotalFrames <= 0 {
+		return 0
+	}
+	return float64(p.TotalFrames) / float64(synth.SampleRate)
+}
+
+// PlanRender extends abrupt exports with a short musical outro. When the
+// algorithm exposes listening markers, the render snaps to the next nearby
+// cadence or outro before the fade begins.
+func PlanRender(algo gen.Algorithm, seconds float64) RenderPlan {
+	requested := int(seconds * float64(synth.SampleRate))
+	if requested < 1 {
+		return RenderPlan{}
+	}
+	fadeFrames := int(renderOutroSeconds * float64(synth.SampleRate))
+	fadeStart := requested
+	snapLabel := ""
+	if inspectable, ok := algo.(gen.ListeningInspectable); ok {
+		markers := inspectable.ListeningMarkers()
+		if snapped, label, ok := findMarkerSnap(markers, requested, renderPreferredOutroWindow,
+			func(label string) bool {
+				return label == "section:outro" || label == "cadence:outro"
+			},
+		); ok {
+			fadeStart = snapped
+			snapLabel = label
+		} else if snapped, label, ok := findMarkerSnap(markers, requested, renderCadenceSnapWindow,
+			func(label string) bool {
+				return strings.HasPrefix(label, "cadence:") || label == "section:cadence"
+			},
+		); ok {
+			fadeStart = snapped
+			snapLabel = label
+		}
+	}
+	if fadeStart < requested {
+		fadeStart = requested
+	}
+	total := fadeStart + fadeFrames
+	return RenderPlan{
+		RequestedFrames: requested,
+		FadeStartFrame:  fadeStart,
+		FadeFrames:      fadeFrames,
+		TotalFrames:     total,
+		SnapLabel:       snapLabel,
+	}
+}
+
 // RenderToWAV renders an algorithm offline to a WAV file without touching the
 // live speaker backend. Volume uses the same 0..100 scaling as the TUI.
 func RenderToWAV(path string, algo gen.Algorithm, seconds float64, volume int) (written int, err error) {
-	if seconds <= 0 {
-		return 0, fmt.Errorf("seconds must be > 0, got %.3f", seconds)
+	return RenderToWAVWithPlan(path, algo, PlanRender(algo, seconds), volume)
+}
+
+// RenderToWAVWithPlan renders an algorithm offline using a caller-specified
+// plan so sibling exports (WAV/MIDI/stems/manifest) can share the same outro.
+func RenderToWAVWithPlan(path string, algo gen.Algorithm, plan RenderPlan, volume int) (written int, err error) {
+	if plan.TotalFrames <= 0 {
+		return 0, fmt.Errorf("render plan has no frames")
+	}
+	if plan.RequestedFrames <= 0 {
+		return 0, fmt.Errorf("render plan must include requested frames")
 	}
 	dir := filepath.Dir(path)
 	if dir != "" && dir != "." {
@@ -36,21 +113,65 @@ func RenderToWAV(path string, algo gen.Algorithm, seconds float64, volume int) (
 	root := NewRoot(algo, scope.NewRing(64))
 	root.SetVolume(volume)
 
-	totalFrames := int(seconds * float64(synth.SampleRate))
 	chunk := 4410
 	frames := make([][2]float64, chunk)
-	for written < totalFrames {
+	for written < plan.TotalFrames {
 		n := chunk
-		if remain := totalFrames - written; remain < n {
+		if remain := plan.TotalFrames - written; remain < n {
 			n = remain
 		}
 		if _, ok := root.Stream(frames[:n]); !ok {
 			return written, fmt.Errorf("audio stream ended after %d frames", written)
 		}
+		applyOutroFade(frames[:n], written, plan)
 		if err := w.Write(frames[:n]); err != nil {
 			return written, err
 		}
 		written += n
 	}
 	return written, nil
+}
+
+func findMarkerSnap(markers []gen.ListeningMarker, requested int, windowSeconds float64, match func(string) bool) (int, string, bool) {
+	if len(markers) == 0 {
+		return 0, "", false
+	}
+	maxFrame := requested + int(windowSeconds*float64(synth.SampleRate))
+	for _, marker := range markers {
+		frame := int(marker.Sample)
+		if frame < requested || frame > maxFrame {
+			continue
+		}
+		if match(marker.Label) {
+			return frame, marker.Label, true
+		}
+	}
+	return 0, "", false
+}
+
+func applyOutroFade(frames [][2]float64, frameOffset int, plan RenderPlan) {
+	if plan.FadeFrames <= 0 || plan.TotalFrames <= plan.FadeStartFrame {
+		return
+	}
+	denom := maxInt(1, plan.FadeFrames-1)
+	for i := range frames {
+		frame := frameOffset + i
+		if frame < plan.FadeStartFrame {
+			continue
+		}
+		progress := float64(frame-plan.FadeStartFrame) / float64(denom)
+		if progress > 1 {
+			progress = 1
+		}
+		gain := math.Cos(progress * math.Pi * 0.5)
+		frames[i][0] *= gain
+		frames[i][1] *= gain
+	}
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }

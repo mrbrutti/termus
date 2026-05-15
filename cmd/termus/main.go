@@ -158,20 +158,28 @@ func main() {
 		return gen.ApplyControlProfile(buildRenderedAlgo(s, algoSeed), controlProfile)
 	}
 	if *outPath != "" {
-		frames, err := audio.RenderToWAV(*outPath, algo, *renderSeconds, *initialVol)
+		renderAlgo := buildRenderedAlgo(spec, *seed)
+		plan := audio.PlanRender(renderAlgo, *renderSeconds)
+		frames, err := audio.RenderToWAVWithPlan(*outPath, renderAlgo, plan, *initialVol)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "render failed:", err)
 			os.Exit(1)
 		}
-		fmt.Fprintf(os.Stderr, "rendered %s: %.1fs (%d frames) -> %s\n",
-			algo.Name(), *renderSeconds, frames, *outPath)
+		actualSeconds := float64(frames) / 44100.0
+		if plan.SnapLabel != "" {
+			fmt.Fprintf(os.Stderr, "rendered %s: requested %.1fs, landed on %s, wrote %.1fs (%d frames) -> %s\n",
+				renderAlgo.Name(), *renderSeconds, plan.SnapLabel, actualSeconds, frames, *outPath)
+		} else {
+			fmt.Fprintf(os.Stderr, "rendered %s: requested %.1fs, wrote %.1fs (%d frames) -> %s\n",
+				renderAlgo.Name(), *renderSeconds, actualSeconds, frames, *outPath)
+		}
 		exportBase := strings.TrimSuffix(*outPath, filepath.Ext(*outPath))
 		if *exportMIDI || *exportStems {
 			exportAlgo := buildRenderedAlgo(spec, *seed)
 			if exporter, ok := exportAlgo.(gen.TuningExporter); ok {
 				if *exportMIDI {
 					midiPath := exportBase + ".mid"
-					if err := exporter.ExportMIDI(midiPath, *renderSeconds); err != nil {
+					if err := exporter.ExportMIDI(midiPath, plan.DurationSeconds()); err != nil {
 						fmt.Fprintln(os.Stderr, "midi export failed:", err)
 						os.Exit(1)
 					}
@@ -179,7 +187,7 @@ func main() {
 				}
 				if *exportStems {
 					stemDir := exportBase + "-stems"
-					files, err := exporter.ExportStems(stemDir, *renderSeconds, *initialVol)
+					files, err := exporter.ExportStems(stemDir, plan.DurationSeconds(), *initialVol)
 					if err != nil {
 						fmt.Fprintln(os.Stderr, "stem export failed:", err)
 						os.Exit(1)

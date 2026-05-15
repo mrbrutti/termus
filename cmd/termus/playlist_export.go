@@ -13,7 +13,7 @@ import (
 )
 
 type playlistAlgoBuilder func(spec gen.AlgoSpec, seed int64) gen.Algorithm
-type playlistRenderer func(path string, algo gen.Algorithm, seconds float64, volume int) (int, error)
+type playlistRenderer func(path string, algo gen.Algorithm, plan audio.RenderPlan, volume int) (int, error)
 
 type playlistManifest struct {
 	Name           string                  `json:"name"`
@@ -38,7 +38,7 @@ type playlistManifestTrack struct {
 }
 
 func renderPlaylistOut(outDir string, pl *gen.Playlist, volume int, build playlistAlgoBuilder, exportMIDI, exportStems bool) (*playlistManifest, error) {
-	return renderPlaylistOutWith(outDir, pl, volume, build, audio.RenderToWAV, exportMIDI, exportStems)
+	return renderPlaylistOutWith(outDir, pl, volume, build, audio.RenderToWAVWithPlan, exportMIDI, exportStems)
 }
 
 func renderPlaylistOutWith(outDir string, pl *gen.Playlist, volume int, build playlistAlgoBuilder, render playlistRenderer, exportMIDI, exportStems bool) (*playlistManifest, error) {
@@ -68,10 +68,10 @@ func renderPlaylistOutWith(outDir string, pl *gen.Playlist, volume int, build pl
 
 	for i, track := range pl.Tracks {
 		algo := build(track.Spec, track.Seed)
-		seconds := track.Duration.Seconds()
+		plan := audio.PlanRender(algo, track.Duration.Seconds())
 		base := fmt.Sprintf("%0*d-%s-%d.wav", digits, i+1, safeFileStem(track.Spec.Name), track.Seed)
 		absPath := filepath.Join(outDir, base)
-		frames, err := render(absPath, algo, seconds, volume)
+		frames, err := render(absPath, algo, plan, volume)
 		if err != nil {
 			return nil, fmt.Errorf("render track %d (%s): %w", i+1, track.Spec.Name, err)
 		}
@@ -83,7 +83,7 @@ func renderPlaylistOutWith(outDir string, pl *gen.Playlist, volume int, build pl
 			Seed:      track.Seed,
 			Path:      base,
 			Frames:    frames,
-			DurationS: seconds,
+			DurationS: float64(frames) / 44100.0,
 		}
 		if inspectable, ok := algo.(gen.ListeningInspectable); ok {
 			item.Markers = trimMarkersToFrames(inspectable.ListeningMarkers(), frames)
@@ -94,13 +94,13 @@ func renderPlaylistOutWith(outDir string, pl *gen.Playlist, volume int, build pl
 				stemBase := strings.TrimSuffix(base, ".wav")
 				if exportMIDI {
 					item.MIDIPath = stemBase + ".mid"
-					if err := exporter.ExportMIDI(filepath.Join(outDir, item.MIDIPath), seconds); err != nil {
+					if err := exporter.ExportMIDI(filepath.Join(outDir, item.MIDIPath), plan.DurationSeconds()); err != nil {
 						return nil, fmt.Errorf("export midi track %d (%s): %w", i+1, track.Spec.Name, err)
 					}
 				}
 				if exportStems {
 					item.StemDir = stemBase + "-stems"
-					files, err := exporter.ExportStems(filepath.Join(outDir, item.StemDir), seconds, volume)
+					files, err := exporter.ExportStems(filepath.Join(outDir, item.StemDir), plan.DurationSeconds(), volume)
 					if err != nil {
 						return nil, fmt.Errorf("export stems track %d (%s): %w", i+1, track.Spec.Name, err)
 					}
@@ -115,7 +115,7 @@ func renderPlaylistOutWith(outDir string, pl *gen.Playlist, volume int, build pl
 				}
 			}
 		}
-		manifest.TotalDurationS += seconds
+		manifest.TotalDurationS += item.DurationS
 		manifest.Tracks = append(manifest.Tracks, item)
 	}
 

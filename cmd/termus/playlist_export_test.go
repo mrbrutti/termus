@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mrbrutti/termus/internal/audio"
 	"github.com/mrbrutti/termus/internal/gen"
 )
 
@@ -67,14 +68,14 @@ func TestRenderPlaylistOutWithWritesManifest(t *testing.T) {
 			},
 		}
 	}
-	render := func(path string, algo gen.Algorithm, seconds float64, volume int) (int, error) {
+	render := func(path string, algo gen.Algorithm, plan audio.RenderPlan, volume int) (int, error) {
 		if volume != 70 {
 			t.Fatalf("volume = %d, want 70", volume)
 		}
 		if err := os.WriteFile(path, []byte(algo.Name()), 0o644); err != nil {
 			return 0, err
 		}
-		return int(seconds * 44100), nil
+		return plan.TotalFrames, nil
 	}
 
 	manifest, err := renderPlaylistOutWith(dir, pl, 70, build, render, true, true)
@@ -101,6 +102,9 @@ func TestRenderPlaylistOutWithWritesManifest(t *testing.T) {
 	}
 	if len(manifest.Tracks[0].Markers) != 1 || manifest.Tracks[0].Markers[0].Label != "keep" {
 		t.Fatalf("trimmed markers = %+v", manifest.Tracks[0].Markers)
+	}
+	if manifest.Tracks[0].DurationS <= pl.Tracks[0].Duration.Seconds() {
+		t.Fatalf("track 0 duration = %.3f, want graceful outro beyond %.3f", manifest.Tracks[0].DurationS, pl.Tracks[0].Duration.Seconds())
 	}
 
 	data, err := os.ReadFile(filepath.Join(dir, "manifest.json"))
