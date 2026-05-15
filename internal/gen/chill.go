@@ -413,6 +413,8 @@ func (a *Chill) Seed(seedVal int64) {
 		MutateOne:    func(slot int, _ int) int { return a.bassNoteAt(slot) },
 		Gate:         0.82,
 		Legato:       true,
+		TieRepeats:   true,
+		OverlapSec:   0.012,
 		ResolveVelocity: func(slot int, key int, base int32) int32 {
 			if slot%4 == 0 {
 				return base + 5
@@ -476,6 +478,8 @@ func (a *Chill) Seed(seedVal int64) {
 		ResolveNote: func(slot int, _ int) int { return a.saxNoteAt(slot) },
 		Gate:        0.94,
 		Legato:      true,
+		TieRepeats:  true,
+		OverlapSec:  0.026,
 		ResolveVelocity: func(slot int, key int, base int32) int32 {
 			switch a.section.Kind {
 			case FormB, FormCadence:

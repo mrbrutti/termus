@@ -59,6 +59,12 @@ type SF2Track struct {
 	// Legato keeps a note alive until the next slot transition if no earlier
 	// release occurred, giving monophonic tracks connected phrasing.
 	Legato bool
+	// TieRepeats keeps an already-sounding note alive when the next slot
+	// resolves to the same MIDI key, instead of re-articulating it.
+	TieRepeats bool
+	// OverlapSec lets a previous note ring briefly after the next note-on,
+	// producing a small slur instead of an immediate cutover.
+	OverlapSec float64
 	// ReleaseSec adds a small fixed tail after the gate-calculated duration.
 	ReleaseSec float64
 
@@ -110,6 +116,12 @@ type SF2ExpressionCurve struct {
 	PeakAt01 float64 // 0..1 fraction of the note duration; defaults to 0.35
 }
 
+type sf2EventSink interface {
+	NoteOn(channel int32, key int32, velocity int32)
+	NoteOff(channel int32, key int32)
+	ProcessMidiMessage(channel int32, command int32, data1 int32, data2 int32)
+}
+
 // sf2TrackState is the runtime state for one track. The scheduler uses
 // absolute fire times (samples since Seed) rather than per-cycle phase math
 // so timing jitter can be applied naturally — the next-fire sample is just
@@ -124,6 +136,8 @@ type sf2TrackState struct {
 	curKey        int   // currently sounding key, or -1
 	nextFireT     int64 // absolute sample at which we should fire the next NoteOn
 	releaseT      int64
+	overlapKey    int
+	overlapOffT   int64
 	exprNextT     int64
 	exprStage     int
 	exprCurve     SF2ExpressionCurve
@@ -579,6 +593,7 @@ func (e *sf2Core) addTrack(t SF2Track) {
 		notesLen:      int64(len(t.Notes)),
 		curSlot:       -1,
 		curKey:        -1,
+		overlapKey:    -1,
 		nextFireT:     0,
 	}
 	e.tracks = append(e.tracks, state)
@@ -599,6 +614,14 @@ func (s *sf2TrackState) samplesUntilNextEvent(t int64) int64 {
 			ahead = d
 		}
 	}
+	if s.overlapOffT > 0 {
+		if t >= s.overlapOffT {
+			return 0
+		}
+		if d := s.overlapOffT - t; d < ahead {
+			ahead = d
+		}
+	}
 	if s.exprNextT > 0 {
 		if t >= s.exprNextT {
 			return 0
@@ -616,7 +639,7 @@ func (s *sf2TrackState) samplesUntilNextEvent(t int64) int64 {
 //
 // Velocity is jittered if VelocityJitter > 0. Also optionally re-rolls notes
 // so the cycled material gradually evolves.
-func (s *sf2TrackState) fireTransition(t int64, syn *meltysynth.Synthesizer, rng *rand.Rand) {
+func (s *sf2TrackState) fireTransition(t int64, syn sf2EventSink, rng *rand.Rand) {
 	// Compute the slot we're firing — based on t, not the previous slot.
 	// With timing jitter the fire time may be just past the natural slot
 	// boundary, so the new slot index is what's at time t.
@@ -629,15 +652,6 @@ func (s *sf2TrackState) fireTransition(t int64, syn *meltysynth.Synthesizer, rng
 		newSlot = int(s.notesLen) - 1
 	}
 
-	// Monophonic articulation: if a note is still held from the previous slot,
-	// release it exactly at the new transition before deciding what to fire.
-	if s.curKey >= 0 {
-		syn.NoteOff(s.cfg.Channel, int32(s.curKey))
-		s.curKey = -1
-	}
-	s.releaseT = 0
-	s.exprNextT = 0
-	s.exprStage = 0
 	// Skip firing this slot for either of:
 	//   • track is section-disabled
 	//   • FireProbability set and we rolled a skip (drum ghost-note variety)
@@ -659,77 +673,56 @@ func (s *sf2TrackState) fireTransition(t int64, syn *meltysynth.Synthesizer, rng
 		skip = true
 	}
 
+	slotLen := s.periodSamples / s.notesLen
+	if slotLen < 1 {
+		slotLen = 1
+	}
+	hold := s.holdSamples(newSlot, key, slotLen)
+
 	if skip {
 		s.curSlot = newSlot
-		// Fall through to schedule next fire normally; mutations still happen.
+		// Let any currently ringing note release naturally; skips no longer
+		// force a hard note-off at the slot boundary.
 	} else {
-		vel := s.cfg.Velocity
-		if s.cfg.ResolveVelocity != nil {
-			vel = s.cfg.ResolveVelocity(newSlot, key, vel)
-		}
-		if s.cfg.VelocityJitter > 0 && rng != nil {
-			offset := int32(rng.Intn(int(2*s.cfg.VelocityJitter)+1)) - s.cfg.VelocityJitter
-			vel += offset
-			if vel < 1 {
-				vel = 1
+		tie := s.cfg.Legato && s.cfg.TieRepeats && s.curKey >= 0 && s.curKey == key
+		if tie {
+			s.curSlot = newSlot
+			if nextRelease := t + hold; nextRelease > s.releaseT {
+				s.releaseT = nextRelease
 			}
-			if vel > 127 {
-				vel = 127
+			if s.cfg.ResolveExpression != nil {
+				s.updateTiedExpression(newSlot, key, t)
 			}
-		}
-		syn.NoteOn(s.cfg.Channel, int32(key), vel)
-		s.curSlot = newSlot
-		s.curKey = key
-		slotLen := s.periodSamples / s.notesLen
-		if slotLen < 1 {
-			slotLen = 1
-		}
-		gate := s.cfg.Gate
-		if gate <= 0 {
-			gate = 1.0
-		}
-		if s.cfg.ResolveGate != nil {
-			if g := s.cfg.ResolveGate(newSlot, key); g > 0 {
-				gate = g
+		} else {
+			if s.curKey >= 0 {
+				s.releaseCurrentForNext(t, syn, slotLen)
 			}
-		}
-		hold := int64(gate * float64(slotLen))
-		hold += secondsToSamples(s.cfg.ReleaseSec)
-		if hold < 1 {
-			hold = 1
-		}
-		if s.cfg.Legato && hold < slotLen {
-			hold = slotLen
-		}
-		s.releaseT = t + hold
-		if s.cfg.ResolveExpression != nil {
-			s.exprCurve = s.cfg.ResolveExpression(newSlot, key)
-			if s.exprCurve.Start <= 0 {
-				s.exprCurve.Start = 96
+			vel := s.cfg.Velocity
+			if s.cfg.ResolveVelocity != nil {
+				vel = s.cfg.ResolveVelocity(newSlot, key, vel)
 			}
-			if s.exprCurve.Peak <= 0 {
-				s.exprCurve.Peak = s.exprCurve.Start
-			}
-			if s.exprCurve.End <= 0 {
-				s.exprCurve.End = s.exprCurve.Peak
-			}
-			if s.exprCurve.PeakAt01 <= 0 || s.exprCurve.PeakAt01 >= 1 {
-				s.exprCurve.PeakAt01 = 0.35
-			}
-			syn.ProcessMidiMessage(s.cfg.Channel, ccControlChange, 11, s.exprCurve.Start)
-			if s.exprCurve.Peak != s.exprCurve.Start {
-				s.exprStage = 1
-				s.exprNextT = t + int64(float64(hold)*s.exprCurve.PeakAt01)
-				if s.exprNextT <= t {
-					s.exprNextT = t + 1
+			if s.cfg.VelocityJitter > 0 && rng != nil {
+				offset := int32(rng.Intn(int(2*s.cfg.VelocityJitter)+1)) - s.cfg.VelocityJitter
+				vel += offset
+				if vel < 1 {
+					vel = 1
 				}
-			} else if s.exprCurve.End != s.exprCurve.Peak && s.releaseT > t+1 {
-				s.exprStage = 2
-				s.exprNextT = s.releaseT - 1
+				if vel > 127 {
+					vel = 127
+				}
 			}
-		}
-		if s.cfg.OnFire != nil {
-			s.cfg.OnFire()
+			syn.NoteOn(s.cfg.Channel, int32(key), vel)
+			s.curSlot = newSlot
+			s.curKey = key
+			s.releaseT = t + hold
+			s.exprNextT = 0
+			s.exprStage = 0
+			if s.cfg.ResolveExpression != nil {
+				s.startExpression(newSlot, key, hold, t, syn)
+			}
+			if s.cfg.OnFire != nil {
+				s.cfg.OnFire()
+			}
 		}
 	}
 
@@ -739,7 +732,7 @@ func (s *sf2TrackState) fireTransition(t int64, syn *meltysynth.Synthesizer, rng
 	// ceil((newSlot+1) * periodSamples / notesLen).
 	nextSlotStart := (int64(newSlot+1)*s.periodSamples + s.notesLen - 1) / s.notesLen
 	naturalBoundary := t + (nextSlotStart - phase)
-	slotLen := s.periodSamples / s.notesLen
+	slotLen = s.periodSamples / s.notesLen
 
 	// Swing: odd-indexed slots fire later. This is the systematic shuffle
 	// that turns "straight 8ths" into the lofi/hip-hop groove.
@@ -783,7 +776,14 @@ func (s *sf2TrackState) fireTransition(t int64, syn *meltysynth.Synthesizer, rng
 	}
 }
 
-func (s *sf2TrackState) handleDueEvents(t int64, syn *meltysynth.Synthesizer, rng *rand.Rand) {
+func (s *sf2TrackState) handleDueEvents(t int64, syn sf2EventSink, rng *rand.Rand) {
+	if s.overlapOffT > 0 && t >= s.overlapOffT {
+		if s.overlapKey >= 0 {
+			syn.NoteOff(s.cfg.Channel, int32(s.overlapKey))
+			s.overlapKey = -1
+		}
+		s.overlapOffT = 0
+	}
 	if s.releaseT > 0 && t >= s.releaseT {
 		if s.curKey >= 0 {
 			syn.NoteOff(s.cfg.Channel, int32(s.curKey))
@@ -812,6 +812,102 @@ func (s *sf2TrackState) handleDueEvents(t int64, syn *meltysynth.Synthesizer, rn
 	}
 	if s.nextFireT <= t {
 		s.fireTransition(t, syn, rng)
+	}
+}
+
+func (s *sf2TrackState) holdSamples(slot, key int, slotLen int64) int64 {
+	gate := s.cfg.Gate
+	if gate <= 0 {
+		gate = 1.0
+	}
+	if s.cfg.ResolveGate != nil {
+		if g := s.cfg.ResolveGate(slot, key); g > 0 {
+			gate = g
+		}
+	}
+	hold := int64(gate * float64(slotLen))
+	hold += secondsToSamples(s.cfg.ReleaseSec)
+	if hold < 1 {
+		hold = 1
+	}
+	if s.cfg.Legato && hold < slotLen {
+		hold = slotLen
+	}
+	return hold
+}
+
+func (s *sf2TrackState) releaseCurrentForNext(t int64, syn sf2EventSink, slotLen int64) {
+	if s.curKey < 0 {
+		return
+	}
+	if s.overlapKey >= 0 {
+		syn.NoteOff(s.cfg.Channel, int32(s.overlapKey))
+		s.overlapKey = -1
+		s.overlapOffT = 0
+	}
+	overlap := secondsToSamples(s.cfg.OverlapSec)
+	if overlap > slotLen/2 {
+		overlap = slotLen / 2
+	}
+	if overlap > 0 {
+		s.overlapKey = s.curKey
+		s.overlapOffT = t + overlap
+	} else {
+		syn.NoteOff(s.cfg.Channel, int32(s.curKey))
+	}
+	s.curKey = -1
+	s.releaseT = 0
+	s.exprNextT = 0
+	s.exprStage = 0
+}
+
+func (s *sf2TrackState) startExpression(slot, key int, hold, t int64, syn sf2EventSink) {
+	s.exprCurve = s.cfg.ResolveExpression(slot, key)
+	if s.exprCurve.Start <= 0 {
+		s.exprCurve.Start = 96
+	}
+	if s.exprCurve.Peak <= 0 {
+		s.exprCurve.Peak = s.exprCurve.Start
+	}
+	if s.exprCurve.End <= 0 {
+		s.exprCurve.End = s.exprCurve.Peak
+	}
+	if s.exprCurve.PeakAt01 <= 0 || s.exprCurve.PeakAt01 >= 1 {
+		s.exprCurve.PeakAt01 = 0.35
+	}
+	syn.ProcessMidiMessage(s.cfg.Channel, ccControlChange, 11, s.exprCurve.Start)
+	if s.exprCurve.Peak != s.exprCurve.Start {
+		s.exprStage = 1
+		s.exprNextT = t + int64(float64(hold)*s.exprCurve.PeakAt01)
+		if s.exprNextT <= t {
+			s.exprNextT = t + 1
+		}
+	} else if s.exprCurve.End != s.exprCurve.Peak && s.releaseT > t+1 {
+		s.exprStage = 2
+		s.exprNextT = s.releaseT - 1
+	}
+}
+
+func (s *sf2TrackState) updateTiedExpression(slot, key int, t int64) {
+	curve := s.cfg.ResolveExpression(slot, key)
+	if curve.End <= 0 {
+		curve.End = s.exprCurve.End
+	}
+	s.exprCurve.End = curve.End
+	if curve.Peak > s.exprCurve.Peak {
+		s.exprCurve.Peak = curve.Peak
+		if s.releaseT > t+1 {
+			s.exprStage = 1
+			s.exprNextT = t + int64(float64(s.releaseT-t)*curve.PeakAt01)
+			if s.exprNextT <= t {
+				s.exprNextT = t + 1
+			}
+		}
+		return
+	}
+	if s.releaseT > t+1 {
+		s.exprStage = 2
+		s.exprNextT = s.releaseT - 1
 	}
 }
 

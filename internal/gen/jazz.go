@@ -228,6 +228,8 @@ func (a *Jazz) Seed(seedVal int64) {
 		ResolveNote: func(slot int, _ int) int { return a.walkingBassAt(slot) },
 		Gate:        0.84,
 		Legato:      true,
+		TieRepeats:  true,
+		OverlapSec:  0.010,
 		ResolveVelocity: func(slot int, key int, base int32) int32 {
 			if slot%4 == 0 {
 				return base + 4
@@ -387,6 +389,8 @@ func (a *Jazz) Seed(seedVal int64) {
 		ResolveNote: func(slot int, _ int) int { return a.saxNoteAt(slot) },
 		Gate:        0.96,
 		Legato:      true,
+		TieRepeats:  true,
+		OverlapSec:  0.022,
 		ResolveVelocity: func(slot int, key int, base int32) int32 {
 			switch a.section.Kind {
 			case FormB, FormCadence:
