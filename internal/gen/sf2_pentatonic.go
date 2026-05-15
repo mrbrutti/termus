@@ -108,9 +108,11 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 	a.glockOn = &glockStart
 	a.scheduleNextSection()
 
-	// Master gain raised (2.4 → 3.0) — lullaby was significantly quieter
-	// than the others, made it disappear in a mixed playlist.
-	core, err := newSF2Core(a.sf, 3.0, seedVal)
+	// Master gain raised aggressively (2.4 → 3.8) — like bells, lullaby's
+	// sparse 3/4-waltz content has long pauses between hits, so the
+	// effective RMS is much lower than a denser genre even with comparable
+	// peak levels.
+	core, err := newSF2Core(a.sf, 3.8, seedVal)
 	if err != nil {
 		a.core = nil
 		return

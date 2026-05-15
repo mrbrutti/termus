@@ -121,7 +121,10 @@ func (a *Jazz) Seed(seedVal int64) {
 	a.saxOn = &saxStart
 	a.scheduleNextSection()
 
-	core, err := newSF2Core(a.sf, 2.6, seedVal)
+	// Master gain reduced (2.6 → 1.9) — jazz drum transients were pinning
+	// the soft-clipper at peak. 1.9 gives ~3 dB headroom so the compressor
+	// can handle dynamics without the limiter doing work.
+	core, err := newSF2Core(a.sf, 1.9, seedVal)
 	if err != nil {
 		a.core = nil
 		return

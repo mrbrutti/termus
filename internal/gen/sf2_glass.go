@@ -82,9 +82,10 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	a.musicBoxOn = &musicBoxStart
 	a.scheduleNextSection()
 
-	// Master gain raised (3.0 → 3.6) — previous output was ~7 dB below the
-	// other genres; bells should sit comfortably in the mix.
-	core, err := newSF2Core(a.sf, 3.6, seedVal)
+	// Master gain raised aggressively (3.0 → 4.2) — bell content is sparse
+	// by nature so the long silences pull the RMS down even with reasonable
+	// peaks. Need significantly more gain than a denser genre would.
+	core, err := newSF2Core(a.sf, 4.2, seedVal)
 	if err != nil {
 		a.core = nil
 		return
