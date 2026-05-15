@@ -54,6 +54,7 @@ func TestModelAudioStateLifecycle(t *testing.T) {
 
 func TestBottomBarLeavesRoomForStatus(t *testing.T) {
 	m := Model{
+		algo:         "Ambient",
 		volume:       70,
 		stickyStatus: "audio: starting...",
 		themes:       []ColorTheme{DefaultTheme()},
@@ -62,20 +63,14 @@ func TestBottomBarLeavesRoomForStatus(t *testing.T) {
 	if !strings.Contains(bar, "audio: starting...") {
 		t.Fatalf("bottom bar missing status: %q", bar)
 	}
-	if !strings.Contains(bar, "[?]") {
+	if !strings.Contains(bar, "Ambient") {
+		t.Fatalf("bottom bar should show current music type: %q", bar)
+	}
+	if !strings.Contains(bar, "?  m") {
 		t.Fatalf("bottom bar should expose help entry point: %q", bar)
 	}
-	if !strings.Contains(bar, "[l] library") {
-		t.Fatalf("bottom bar should expose saved-seed library: %q", bar)
-	}
-	if !strings.Contains(bar, "[i] inspect") {
-		t.Fatalf("bottom bar should expose inspector: %q", bar)
-	}
-	if !strings.Contains(bar, "[m] controls") {
-		t.Fatalf("bottom bar should expose control center: %q", bar)
-	}
-	if strings.Contains(bar, "[[/]] seed") {
-		t.Fatalf("bottom bar should stay compact, got: %q", bar)
+	if strings.Contains(bar, "[l] library") || strings.Contains(bar, "[i] inspect") || strings.Contains(bar, "[space]") {
+		t.Fatalf("bottom bar should stay minimal, got: %q", bar)
 	}
 }
 
@@ -136,7 +131,7 @@ func TestHelpPanelShowsCoreControls(t *testing.T) {
 		themes:      []ColorTheme{DefaultTheme()},
 	}
 	panel := helpPanel(m, 90, 18, DefaultTheme())
-	for _, want := range []string{"TERMUS HELP", "Playback", "Controls", "[m] open control center", "Seeds", "[l] library", "Tracks", "[?] close this overlay"} {
+	for _, want := range []string{"TERMUS HELP", "Global", "[m] control center", "Inside Control Center", "Sections", "Now   Look   Music", "[?] close help"} {
 		if !strings.Contains(panel, want) {
 			t.Fatalf("help panel missing %q:\n%s", want, panel)
 		}
@@ -183,7 +178,7 @@ func TestSplashPanelShowsOnboarding(t *testing.T) {
 		themes:        []ColorTheme{DefaultTheme()},
 	}
 	panel := splashPanel(m, 90, 18, DefaultTheme())
-	for _, want := range []string{"TERMUS", "Play", "Browse", "Inspect", "Press any key"} {
+	for _, want := range []string{"TERMUS", "Play", "Open", "[m] control center", "Press any key"} {
 		if !strings.Contains(panel, want) {
 			t.Fatalf("splash panel missing %q:\n%s", want, panel)
 		}
@@ -321,14 +316,15 @@ func TestMeterSummaryDetectsClip(t *testing.T) {
 
 func TestCompactBottomBarUsesMinimalHints(t *testing.T) {
 	m := Model{
+		algo:   "Ambient",
 		volume: 70,
 		themes: []ColorTheme{DefaultTheme()},
 	}
 	bar := bottomBar(m, 64, DefaultTheme(), true)
-	if !strings.Contains(bar, "[?]") || !strings.Contains(bar, "[q]") {
+	if !strings.Contains(bar, "?  m") || !strings.Contains(bar, "Ambient") {
 		t.Fatalf("compact bottom bar missing minimal hints: %q", bar)
 	}
-	if strings.Contains(bar, "[l] library") || strings.Contains(bar, "[i] inspect") {
+	if strings.Contains(bar, "[l] library") || strings.Contains(bar, "[i] inspect") || strings.Contains(bar, "[q]") {
 		t.Fatalf("compact bottom bar should omit extended chrome: %q", bar)
 	}
 }

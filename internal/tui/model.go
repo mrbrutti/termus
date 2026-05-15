@@ -1131,92 +1131,42 @@ func bottomBar(m Model, w int, theme ColorTheme, compact bool) string {
 		}
 		return left + spaces(pad) + right
 	}
-	state := "play"
-	if m.paused {
-		state = "PAUSED"
-	}
-	hintParts := []string{}
-	if compact {
-		hintParts = []string{
-			fmt.Sprintf("[space] %s", state),
-			fmt.Sprintf("%d%%", m.volume),
-			"[?]",
-			"[q]",
-		}
-	} else {
-		hintParts = []string{
-			fmt.Sprintf("[space] %s", state),
-			fmt.Sprintf("[↑↓] %d%%", m.volume),
-			fmt.Sprintf("[C] %s", Visuals[m.visualIdx].Name),
-			"[l] library",
-			"[i] inspect",
-			"[e] export",
-			"[m] controls",
-			"[?] help",
-			"[z] zen",
-		}
-	}
-	if m.recording {
-		hintParts = append(hintParts, "[r] stop rec")
-	} else {
-		hintParts = append(hintParts, "[r] rec")
-	}
-	if len(m.themes) > 1 {
-		hintParts = append(hintParts, fmt.Sprintf("[c] %s", theme.Name))
-	}
-	if len(m.genres) > 1 {
-		hintParts = append(hintParts, "[n/p] algo")
-	}
-	if m.debugVisible {
-		hintParts = append(hintParts, "[d] debug on")
-	}
-	if m.playlist != nil {
-		hintParts = append(hintParts, "[s] skip")
-	}
-	hintParts = append(hintParts, "[q] quit")
-	if m.helpVisible {
-		hintParts = []string{"[?] close help", "[q] quit"}
-	} else if m.libraryVisible {
-		hintParts = []string{"[↑↓] browse", "[enter] load", "[delete] remove", "[l] close", "[q] quit"}
-	} else if m.inspectorVisible {
-		hintParts = []string{"[i] close", "[e] export", "[r] record", "[q] quit"}
-	} else if m.exportVisible {
-		hintParts = []string{"[w] wav", "[m] midi", "[t] stems", "[r] record", "[e] close", "[q] quit"}
-	} else if m.controlsVisible {
-		hintParts = []string{"[↑↓] browse", "[←→] adjust", "[enter] apply", "[tab] next tab", "[m] close", "[q] quit"}
-	}
-	hint := strings.Join(hintParts, "   ")
-
+	leftText := lipgloss.NewStyle().Foreground(theme.BarFg).Render(m.algo)
+	rightText := lipgloss.NewStyle().Faint(true).Render("?  m")
 	status := m.currentStatus(time.Now())
-	if status != "" {
-		status = trimToWidth(status, maxInt(0, w/3))
-		hint = trimToWidth(hint, maxInt(0, w-lipgloss.Width(status)-1))
+	if status == "" && compact {
+		status = " "
 	}
-	left := lipgloss.NewStyle().Faint(true).Render(hint)
-	right := ""
-	if status != "" {
-		right = lipgloss.NewStyle().Foreground(theme.BarHi).Render(status)
+	statusStyle := lipgloss.NewStyle().Foreground(theme.BarHi)
+	if status == "" {
+		statusStyle = lipgloss.NewStyle().Faint(true)
+		status = " "
 	}
-	pad := w - lipgloss.Width(left) - lipgloss.Width(right)
-	if pad < 1 {
-		pad = 1
+	centerText := statusStyle.Render(trimToWidth(status, maxInt(0, w/3)))
+	available := w - lipgloss.Width(leftText) - lipgloss.Width(rightText) - 2
+	if available < 1 {
+		available = 1
 	}
-	return left + spaces(pad) + right
+	centerWidth := lipgloss.Width(centerText)
+	if centerWidth > available {
+		centerText = statusStyle.Render(trimToWidth(status, available))
+		centerWidth = lipgloss.Width(centerText)
+	}
+	leftPad := (available - centerWidth) / 2
+	rightPad := available - centerWidth - leftPad
+	return leftText + spaces(leftPad+1) + centerText + spaces(rightPad+1) + rightText
 }
 
 func helpPanel(m Model, w, h int, theme ColorTheme) string {
 	bodyW := maxInt(24, minInt(w-6, 76))
 	bodyH := maxInt(10, minInt(h-2, 18))
 	lines := []string{
-		styleHelpLine(theme, false, "Playback", "[space] pause/resume   [↑↓] volume   [r] record"),
-		styleHelpLine(theme, false, "Look", "[C] visual   [c] theme   [d] debug   [i] inspect   [z] zen"),
-		styleHelpLine(theme, false, "Controls", "[m] open control center   [tab] switch tabs   [←→] adjust"),
-		styleHelpLine(theme, false, "Seeds", "[[/]] browse   [a/b] store   [tab] compare   [k/x] keep/reject   [l] library"),
-		styleHelpLine(theme, false, "Export", "[e] drawer   [w] wav   [m] midi   [t] stems"),
-		styleHelpLine(theme, false, "Tracks", "[n/p] algorithm   [s] skip playlist track"),
-		styleHelpLine(theme, false, "Close", "[?] close this overlay   [q] quit"),
+		styleHelpLine(theme, false, "Global", "[space] play / pause   [↑↓] volume   [m] control center"),
+		styleHelpLine(theme, false, "View", "The main screen stays minimal. Use the control center for everything deeper."),
+		styleHelpLine(theme, false, "Inside Control Center", "[↑↓] browse   [←→] adjust   [enter] apply / open   [tab] next section"),
+		styleHelpLine(theme, false, "Sections", "Now   Look   Music   Seeds   Library   Export   Audio   Debug"),
+		styleHelpLine(theme, false, "Close", "[?] close help   [q] quit"),
 	}
-	lines = filterHelpLines(lines, m)
 	content := strings.Join(lines, "\n")
 	panel := lipgloss.NewStyle().
 		Width(bodyW).
@@ -1245,22 +1195,7 @@ func styleHelpLine(theme ColorTheme, dim bool, title, text string) string {
 }
 
 func filterHelpLines(lines []string, m Model) []string {
-	out := make([]string, 0, len(lines))
-	for idx, line := range lines {
-		switch idx {
-		case 4:
-			if len(m.genres) <= 1 && m.playlist == nil {
-				continue
-			}
-			if m.playlist == nil {
-				line = styleHelpLine(m.activeTheme(), false, "Tracks", "[n/p] algorithm")
-			} else if len(m.genres) <= 1 {
-				line = styleHelpLine(m.activeTheme(), false, "Tracks", "[s] skip playlist track")
-			}
-		}
-		out = append(out, line)
-	}
-	return out
+	return append([]string(nil), lines...)
 }
 
 func splashPanel(m Model, w, h int, theme ColorTheme) string {
@@ -1269,10 +1204,9 @@ func splashPanel(m Model, w, h int, theme ColorTheme) string {
 	lines := []string{
 		lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render("TERMUS"),
 		"",
-		styleHelpLine(theme, false, "Play", "[space] pause/resume   [↑↓] volume   [C] visual"),
-		styleHelpLine(theme, false, "Browse", "[[/]] seed   [a/b] store   [tab] compare"),
-		styleHelpLine(theme, false, "Inspect", "[d] debug   [i] inspector   [l] library   [m] controls"),
-		styleHelpLine(theme, false, "Export", "[e] export drawer   [r] record   [z] zen"),
+		styleHelpLine(theme, false, "Play", "[space] pause / resume   [↑↓] volume"),
+		styleHelpLine(theme, false, "Open", "[m] control center   [?] help"),
+		styleHelpLine(theme, false, "Global", "[q] quit   [z] zen"),
 		"",
 		lipgloss.NewStyle().Faint(true).Render("Press any key to start exploring."),
 	}
