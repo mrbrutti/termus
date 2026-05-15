@@ -65,14 +65,14 @@ body.landing .tagline {
   letter-spacing: 0.02em;
 }
 
-body.landing .screenshot {
+body.landing .wave {
   width: 100%;
   max-width: 720px;
+  height: auto;
   display: block;
-  border-radius: 8px;
-  border: 1px solid var(--rule);
-  background: #000;
-  margin-bottom: 3rem;
+  margin: 1rem auto 3rem;
+  background: transparent;
+  /* The wave is the visual identity — let it breathe; no box, no border. */
 }
 
 body.landing .install {
@@ -297,7 +297,7 @@ body.docs footer a:hover {
   body.landing main { padding: 5vh 1.2rem 3vh; }
   body.landing .logo { font-size: 3rem; }
   body.landing .tagline { margin-bottom: 2.5rem; }
-  body.landing .screenshot { margin-bottom: 2rem; }
+  body.landing .wave { margin-bottom: 2rem; }
   body.landing .install { font-size: 0.82rem; }
 
   .docs-header { padding: 1.2rem 1.2rem; }
