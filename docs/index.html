@@ -145,7 +145,7 @@
 
       function tick() {
         frame();
-        t += 1;
+        t += 2; // faster phase drift than 1 — closer to the actual TUI rate
         requestAnimationFrame(tick);
       }
 
