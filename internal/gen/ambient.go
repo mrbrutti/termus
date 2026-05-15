@@ -171,10 +171,10 @@ func (a *Ambient) Seed(seedVal int64) {
 	core.setChorusSend(1, 48)
 	core.setChorusSend(2, 32)
 
-	// --- String pad: 2-voice spread of the current chord — fewer voices than
-	// the previous 3 per layer to reduce mud. Periods are incommensurate so
-	// the loop never quite repeats.
-	for ti, period := range []float64{23.7, 31.1} {
+	// --- String pad: 2-voice spread. Periods chosen from Eno's documented
+	// Music for Airports loop lengths (19.8s, 25.7s) — coprime in seconds
+	// so they never realign within the listener's attention window.
+	for ti, period := range []float64{19.8, 25.7} {
 		voice := ti
 		core.addTrack(SF2Track{
 			Channel: 0, Velocity: 56, Notes: []int{a.padNote(voice, 0)},
@@ -184,8 +184,8 @@ func (a *Ambient) Seed(seedVal int64) {
 			VelocityJitter: 8, TimingJitterSec: 0.05,
 		})
 	}
-	// Warm pad layered in parallel — same notes, different timbre.
-	for ti, period := range []float64{27.3, 39.1} {
+	// Warm pad layered in parallel — also documented Eno periods.
+	for ti, period := range []float64{23.6, 31.0} {
 		voice := ti
 		core.addTrack(SF2Track{
 			Channel: 1, Velocity: 50, Notes: []int{a.padNote(voice, 0)},
@@ -196,31 +196,37 @@ func (a *Ambient) Seed(seedVal int64) {
 		})
 	}
 
-	// --- Choir aahs: single upper-register voice. One voice not two — the
-	// "vocal in the pad" effect is most striking when it's lonely.
+	// --- Choir aahs: single upper-register voice on a 29.2s period (an
+	// Eno-documented loop length).
 	core.addTrack(SF2Track{
 		Channel: 2, Velocity: 48, Notes: []int{a.choirNote(0)},
-		PeriodSec: 41.3, Phase01: a.rng.Float64(),
+		PeriodSec: 29.2, Phase01: a.rng.Float64(),
 		MutationRate: 0.35,
 		MutateOne:    func(_ int, _ int) int { return a.choirNote(0) },
 		VelocityJitter: 8, TimingJitterSec: 0.06,
 	})
 
-	// --- Tubular bell motif: a single coherent melodic phrase from the
-	// chord-tone palette, looped on a long period. Replaces the previous 3
-	// random-pick bell tracks — what listeners recognize as "bell motif" is
-	// a tune, not an unpredictable string of strikes.
+	// --- Tubular bell motif: literal Eno "2/1" recipe. Three voices, each
+	// holding ONE pitch of the current chord, on incommensurate loop
+	// periods (25.7s, 31.0s, 36.1s) so they never realign. This is the
+	// canonical Music for Airports voices-on-tape-loops technique that the
+	// listener recognizes as ambient — not a melodic phrase, but three
+	// pitches that overlap unpredictably with long fadeouts.
 	a.bellPhrase = a.makeBellPhrase()
-	core.addTrack(SF2Track{
-		Channel: 3, Velocity: 64, Notes: a.bellPhrase,
-		PeriodSec: 47.3, Phase01: a.rng.Float64(),
-		MutationRate: 0.15,
-		MutateOne: func(slot int, _ int) int {
-			return a.bellPhrase[slot%len(a.bellPhrase)]
-		},
-		VelocityJitter: 14, TimingJitterSec: 0.08,
-		Enabled: a.bellsOn,
-	})
+	bellPeriods := []float64{25.7, 31.0, 36.1}
+	for ti, period := range bellPeriods {
+		voice := ti
+		core.addTrack(SF2Track{
+			Channel: 3, Velocity: 64, Notes: []int{a.bellPhrase[voice%len(a.bellPhrase)]},
+			PeriodSec: period, Phase01: a.rng.Float64(),
+			MutationRate: 0.20,
+			MutateOne: func(_ int, _ int) int {
+				return a.bellPhrase[voice%len(a.bellPhrase)]
+			},
+			VelocityJitter: 14, TimingJitterSec: 0.30, // tape-loop slippage feel
+			Enabled: a.bellsOn,
+		})
+	}
 
 	// --- Celesta sparkle: very high register, very sparse — single voice on
 	// a long period.

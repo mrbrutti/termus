@@ -194,47 +194,41 @@ func (a *Jazz) Seed(seedVal int64) {
 		VelocityJitter: 8, TimingJitterSec: 0.006, // upright bassists are tight
 	})
 
-	// --- Piano comp on beat 1 — shell voicing, one hit per bar.
-	pianoDownNotes := make([]int, numBars)
-	for i := range pianoDownNotes {
-		pianoDownNotes[i] = a.compShell(i, 3) // 3rd in upper voice for the down-beat
+	// --- Piano comp on beat 1 — rootless A voicing (3rd + 5th + 7th + 9th).
+	// The 4-note rootless voicing is the Bill-Evans / Red-Garland / Wynton-
+	// Kelly foundation. Each interval gets its own track so all four sound
+	// simultaneously on the down-beat, producing a proper jazz chord stab
+	// rather than a triadic block.
+	for _, interval := range []int{3, 5, 7, 9} {
+		intv := interval
+		notes := make([]int, numBars)
+		for i := range notes {
+			notes[i] = a.compRootless(i, intv)
+		}
+		core.addTrack(SF2Track{
+			Channel: 0, Velocity: 74, Notes: notes,
+			PeriodSec: cycleSec, Phase01: 0,
+			MutationRate: 0.20,
+			MutateOne:    func(slot int, _ int) int { return a.compRootless(slot, intv) },
+			VelocityJitter: 10, TimingJitterSec: 0.014,
+		})
 	}
-	core.addTrack(SF2Track{
-		Channel: 0, Velocity: 78, Notes: pianoDownNotes,
-		PeriodSec: cycleSec, Phase01: 0,
-		MutationRate: 0.20,
-		MutateOne:    func(slot int, _ int) int { return a.compShell(slot, 3) },
-		VelocityJitter: 10, TimingJitterSec: 0.014,
-	})
-	// The 7th of the shell voicing on a separate track so the chord rings
-	// as a 2-note dyad — small group jazz comping rarely uses full triads.
-	pianoDown7Notes := make([]int, numBars)
-	for i := range pianoDown7Notes {
-		pianoDown7Notes[i] = a.compShell(i, 7) // 7th in lower voice
-	}
-	core.addTrack(SF2Track{
-		Channel: 0, Velocity: 76, Notes: pianoDown7Notes,
-		PeriodSec: cycleSec, Phase01: 0,
-		MutationRate: 0.20,
-		MutateOne:    func(slot int, _ int) int { return a.compShell(slot, 7) },
-		VelocityJitter: 10, TimingJitterSec: 0.014,
-	})
 
-	// --- Piano comp on "& of 2" — Charleston accent. Slightly softer hit;
-	// gives the rhythm forward motion.
-	// Position fraction within bar = 1.667/4 = 0.417 (swung 8th of beat 2).
+	// --- Charleston accent on "& of 2" — re-hits just the 9th of the
+	// rootless voicing for forward motion. Sparse: only fires 70% of bars
+	// so the comp breathes (real pianists don't comp every "and-of-2").
 	pianoAccentNotes := make([]int, numBars)
 	for i := range pianoAccentNotes {
-		pianoAccentNotes[i] = a.compShell(i, 5) // 5th voicing
+		pianoAccentNotes[i] = a.compRootless(i, 9)
 	}
 	core.addTrack(SF2Track{
-		Channel: 0, Velocity: 64, Notes: pianoAccentNotes,
+		Channel: 0, Velocity: 60, Notes: pianoAccentNotes,
 		PeriodSec: cycleSec,
 		Phase01:   0.417 / float64(numBars),
-		MutationRate: 0.20,
-		MutateOne:    func(slot int, _ int) int { return a.compShell(slot, 5) },
+		MutationRate: 0.15,
+		MutateOne:    func(slot int, _ int) int { return a.compRootless(slot, 9) },
 		VelocityJitter: 12, TimingJitterSec: 0.020,
-		FireProbability: 0.85, // not every bar — comp leaves space
+		FireProbability: 0.70,
 	})
 
 	// --- Ride cymbal: quarter notes (4 hits per bar). Bell on beat 1, plain
@@ -367,37 +361,40 @@ func (a *Jazz) walkingBassAt(slot int) int {
 	return root
 }
 
-// compShell returns the MIDI key for one voice of the piano shell voicing on
-// the current bar. interval is 3 (third), 5 (fifth), or 7 (seventh) — chosen
-// by the caller to differentiate per-voice tracks. Voicings are placed in the
-// piano "middle voice" register (around middle C / C4 = 60).
-func (a *Jazz) compShell(slot, interval int) int {
+// compRootless returns one voice of the rootless 4-note jazz voicing
+// (3-5-7-9) on the current bar. interval = 3, 5, 7, or 9 picks which chord
+// tone. The 9th is computed as the chord's root + 14 semitones. All voices
+// sit in the C4–B4 register (around middle C) for the canonical "Bill Evans
+// rootless" close voicing.
+func (a *Jazz) compRootless(slot, interval int) int {
 	if len(a.progression) == 0 {
 		return 60
 	}
 	bar := ((slot % len(a.progression)) + len(a.progression)) % len(a.progression)
 	chord := a.progression[bar]
-	// Pick the chord tone by interval-number; chord.tones is [root,3rd,5th,7th].
-	var idx int
+	if len(chord.tones) < 4 {
+		return 60
+	}
+	var rel int
 	switch interval {
 	case 3:
-		idx = 1
+		rel = chord.tones[1]
 	case 5:
-		idx = 2
+		rel = chord.tones[2]
 	case 7:
-		idx = 3
+		rel = chord.tones[3]
+	case 9:
+		// 9th = chord root + 14 semitones (= one octave + one whole step).
+		rel = chord.tones[0] + 14
 	default:
-		idx = 1
+		rel = chord.tones[1]
 	}
-	if idx >= len(chord.tones) {
-		idx = len(chord.tones) - 1
-	}
-	// Comping voicings sit ~around C4–E4. Add octave bump if too low.
-	key := a.currentRoot() + chord.tones[idx]
+	key := a.currentRoot() + rel
+	// Rootless voicings sit in the C4–B4 register (60..71).
 	for key < 60 {
 		key += 12
 	}
-	for key > 76 {
+	for key > 71 {
 		key -= 12
 	}
 	return key

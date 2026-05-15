@@ -154,9 +154,11 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 	core.setChorusSend(1, 24)
 	core.setChorusSend(2, 24)
 
-	// Tempo: 48–62 BPM. True cradle-rocking tempo — slower than the previous
-	// 56-72 range, which was sitting closer to "slow song" than "lullaby".
-	bpm := 48.0 + 14.0*a.rng.Float64()
+	// Tempo: 72–84 BPM. Research surfaced that Brahms Wiegenlied is
+	// performed at 72-84 — slower feels like "slow song", not lullaby. The
+	// rocking feel comes from the dotted-quarter + eighth + quarter rhythm,
+	// not from absolute tempo.
+	bpm := 72.0 + 12.0*a.rng.Float64()
 	beatSec := 60.0 / bpm
 	barSec := beatSec * 3 // 3/4 time
 	numBars := len(a.progression)
@@ -277,24 +279,37 @@ func (a *SF2Pentatonic) compTone(slot, idx int) int {
 	return key
 }
 
-// makeMelodyPhrase builds the music-box's coherent melodic contour for the
-// entire 8-bar form. Pentatonic major guarantees consonance with every chord
-// in the progression. Picks one of the stylized contours so the listener
-// hears an antecedent → consequent → resolution shape rather than random
-// notes.
+// makeMelodyPhrase builds the music-box's melody. Specifically uses the
+// Brahms Wiegenlied Op. 49 No. 4 contour: scale degrees
+//   3 3 | 5 5 | 3 3 | 5 5 | 4 5 | 6 5 | 4 3 | 2 2
+// (2 notes per bar across the 8-bar period). The iconic shape is
+// repetition on 3rd-and-5th, peak on 6th, stepwise descent 5-4-3-2.
+// Uses the major scale (NOT pentatonic) since Brahms is fully diatonic.
 func (a *SF2Pentatonic) makeMelodyPhrase(numBars int) []int {
-	contour := pickMelodicPhrase(a.rng)
-	// Resize to match the bar count by repeating or trimming the contour.
-	if len(contour) != numBars {
-		extended := make([]int, numBars)
+	// Brahms scale-degree contour, converted to 0-based index into the major
+	// scale. Degrees 3,5,4,6,2 → indices 2,4,3,5,1.
+	contour := []int{
+		2, 2, // bar 1: degree 3
+		4, 4, // bar 2: degree 5 (the "rising 3rd" jump from previous A)
+		2, 2, // bar 3: degree 3
+		4, 4, // bar 4: degree 5
+		3, 4, // bar 5: degree 4 → 5 (consequent begins)
+		5, 4, // bar 6: degree 6 (peak) → 5
+		3, 2, // bar 7: stepwise descent
+		1, 1, // bar 8: degree 2 (held — close)
+	}
+	if len(contour) != 2*numBars {
+		// Fall back if progression isn't 8 bars: extend by cycling.
+		extended := make([]int, 2*numBars)
 		for i := range extended {
 			extended[i] = contour[i%len(contour)]
 		}
 		contour = extended
 	}
-	// Music box sweet spot is C5–C6 (60..72). Start in mid register.
+	majorScale := []int{0, 2, 4, 5, 7, 9, 11}
+	// Music box sweet spot is C5–C6 (72..84).
 	root := a.currentRoot() + 24
-	notes := applyPhraseToScale(contour, majorPentatonic, root, 2, 0)
+	notes := applyPhraseToScale(contour, majorScale, root, 0, 0)
 	for i, k := range notes {
 		for k < 72 {
 			k += 12

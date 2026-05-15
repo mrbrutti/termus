@@ -439,12 +439,15 @@ func (a *Chill) Seed(seedVal int64) {
 	for i := range snareNotes {
 		snareNotes[i] = drumSnare
 	}
-	// Snare offset by 1 beat = beat 2 of each bar (since the 2-per-bar slot
-	// pattern lands on beats 1 & 3 by default; shifting by half a slot lands
-	// it on beats 2 & 4).
+	// Snare on beats 2 & 4, with the canonical "Dilla swing" 30 ms late
+	// offset — research-documented signature of J Dilla's Donuts drumming
+	// (snare pushed 25-35 ms behind the grid creates the "drunk" lofi feel).
+	// 0.030s as a fraction of cycleSec adds to the beat-2&4 phase offset.
+	const dillaSnareLagSec = 0.030
 	core.addTrack(SF2Track{
 		Channel: drumChannel, Velocity: 82, Notes: snareNotes,
-		PeriodSec: cycleSec, Phase01: 0.5 / float64(2*numBars),
+		PeriodSec: cycleSec,
+		Phase01:   0.5/float64(2*numBars) + dillaSnareLagSec/cycleSec,
 		VelocityJitter: 6, TimingJitterSec: 0.004,
 		FireProbability: 0.88, // snare almost always lands, with rare skips
 	})
@@ -452,15 +455,16 @@ func (a *Chill) Seed(seedVal int64) {
 	for i := range hihatNotes {
 		hihatNotes[i] = drumHiHatC
 	}
+	// Dilla-style hi-hat: 55:45 long-short ratio (SwingAmount 0.05 — barely
+	// swung) instead of the previous 0.13 medium-shuffle. Research found
+	// Dilla's 16ths sit at ~55:45, much closer to straight than to triplet
+	// swing.
 	core.addTrack(SF2Track{
 		Channel: drumChannel, Velocity: 38, Notes: hihatNotes,
 		PeriodSec: cycleSec, Phase01: 0,
 		VelocityJitter:  10,
 		TimingJitterSec: 0.006,
-		SwingAmount:     0.13,
-		// Hi-hat fires only 78% of the time — gives the most rhythmic
-		// variety since the hi-hat plays so often (8 per bar). Missing
-		// hits read as "drummer holding back" rather than as glitches.
+		SwingAmount:     0.05,
 		FireProbability: 0.78,
 	})
 
