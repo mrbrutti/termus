@@ -70,3 +70,29 @@
 - [x] Expand the control center from the current tabbed overlay into a left-nav general menu with sections for now, look, music, seeds, library, export, audio, and debug.
 - [x] Move current overlay-first actions such as visual/theme switching, library browsing, export actions, debug toggles, and seed curation under the control center so the main interface stays minimal.
 - [x] Reduce the visible global interaction model to the essential keys (`space`, `↑↓`, `m`, `?`, `q`) while keeping deeper actions discoverable inside the control center.
+
+## Long-Form Listening
+
+### Episode Structure
+- [ ] Replace fixed looping forms with a streaming episode planner so `jazz`, `lofi`, and `classical` stop wrapping on one short bar cycle.
+
+### Long Horizon State
+- [ ] Add a long-horizon conductor state that carries harmony family, motif family, texture scene, density bias, and movement identity across episodes.
+
+### Episode Regeneration
+- [ ] Regenerate progressions, motifs, comp/drum plans, and orchestration choices at episode boundaries instead of replaying one frozen cycle forever.
+
+### Anti-Repetition Memory
+- [ ] Add recent-history memory and penalties for reused progressions, motif shapes, fills, and cadence types so long playback avoids obvious returns.
+
+### Time Layers
+- [ ] Split scheduling into explicit note, bar, section, and episode layers so local phrasing and long-form reinvention stop fighting each other.
+
+### Ambient Evolution
+- [ ] Give the ambient-family generators slow contour, register, loop-length, and foreground/background regeneration so they evolve over hours instead of circling one constellation.
+
+### Movement Mode
+- [ ] Add a higher-level movement sequence for long listening so one piece can drift through establish, deepen, subtract, brighten/darken, and near-return phases.
+
+### Motif Transformation
+- [ ] Revisit motifs by transforming them over time (transpose, invert, stretch, reharmonize, re-orchestrate) instead of only repeating or replacing them outright.
