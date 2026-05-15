@@ -13,7 +13,6 @@ import (
 	"github.com/mrbrutti/termus/internal/audio"
 	"github.com/mrbrutti/termus/internal/gen"
 	"github.com/mrbrutti/termus/internal/sf2"
-	"github.com/mrbrutti/termus/internal/synth"
 )
 
 type corpusCase struct {
@@ -137,34 +136,7 @@ func loadSoundFont(path, preset string) (*meltysynth.SoundFont, error) {
 }
 
 func renderToWAV(path string, algo gen.Algorithm, seconds float64) (int, error) {
-	w, err := audio.NewWAVWriter(path, synth.SampleRate, 2)
-	if err != nil {
-		return 0, err
-	}
-	defer w.Close()
-
-	totalFrames := int(seconds * float64(synth.SampleRate))
-	chunk := 4410
-	left := make([]float64, chunk)
-	right := make([]float64, chunk)
-	frames := make([][2]float64, chunk)
-	written := 0
-	for written < totalFrames {
-		n := chunk
-		if totalFrames-written < n {
-			n = totalFrames - written
-		}
-		algo.Next(left[:n], right[:n])
-		for i := 0; i < n; i++ {
-			frames[i][0] = left[i]
-			frames[i][1] = right[i]
-		}
-		if err := w.Write(frames[:n]); err != nil {
-			return written, err
-		}
-		written += n
-	}
-	return written, nil
+	return audio.RenderToWAV(path, algo, seconds, 100)
 }
 
 func trimMarkers(markers []gen.ListeningMarker, totalFrames int) []gen.ListeningMarker {

@@ -13,3 +13,11 @@
 - [x] Replace random program swaps with arrangement-first changes such as muting, doubling, register shifts, wet/dry changes, and density changes that preserve ensemble identity.
 - [x] Upgrade chord voicing and inner parts to choose nearest inversions and true voice-leading paths instead of alternating between a small fixed set of valid shapes.
 - [x] Build a listening harness that renders a seed corpus to short WAVs and checks bar alignment, cadence landings, section boundaries, and regression snapshots.
+
+## Next Up
+
+- [ ] Add a proper audio backend state layer so startup can report `starting`, `ready`, `no default device`, `backend hung`, and `render-only` instead of failing opaquely on bad CoreAudio state.
+- [x] Add single-track WAV export to `./termus` via `--out` and `--seconds` so music generation works without live playback.
+- [ ] Extend export workflow with `--playlist-out` and batch rendering from the main binary.
+- [ ] Tighten cross-algorithm intros, outros, cadence handling, and loudness normalization so switching genres feels cohesive.
+- [ ] Surface chord, section, bar, and SF2 preset state in the TUI for debugging and tuning.

@@ -40,10 +40,20 @@ func main() {
 	playlistTracks := flag.Int("playlist-tracks", 6, "number of tracks in the playlist")
 	playlistDur := flag.Duration("playlist-duration", 5*time.Minute,
 		"how long each playlist track plays before the crossfade")
+	outPath := flag.String("out", "", "render directly to a WAV file instead of launching live playback")
+	renderSeconds := flag.Float64("seconds", 180, "render duration in seconds when --out is provided")
 	flag.Parse()
 
 	if *initialVol < 0 || *initialVol > 100 {
 		fmt.Fprintf(os.Stderr, "volume must be 0..100, got %d\n", *initialVol)
+		os.Exit(2)
+	}
+	if *outPath != "" && *renderSeconds <= 0 {
+		fmt.Fprintf(os.Stderr, "--seconds must be > 0 when --out is used, got %.3f\n", *renderSeconds)
+		os.Exit(2)
+	}
+	if *outPath != "" && *playlistMode != "" {
+		fmt.Fprintln(os.Stderr, "--out does not yet support --playlist; render one track at a time")
 		os.Exit(2)
 	}
 
@@ -106,6 +116,16 @@ func main() {
 			fmt.Fprintf(os.Stderr, "IR %s: %d samples (%.1f ms) at wet=%.2f\n",
 				label, len(ir), float64(len(ir))*1000.0/44100.0, *irWet)
 		}
+	}
+	if *outPath != "" {
+		frames, err := audio.RenderToWAV(*outPath, algo, *renderSeconds, *initialVol)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "render failed:", err)
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stderr, "rendered %s: %.1fs (%d frames) -> %s\n",
+			algo.Name(), *renderSeconds, frames, *outPath)
+		return
 	}
 	ring := scope.NewRing(4096)
 	root := audio.NewRoot(algo, ring)
