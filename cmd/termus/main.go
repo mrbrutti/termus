@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -42,6 +43,8 @@ func main() {
 		"how long each playlist track plays before the crossfade")
 	outPath := flag.String("out", "", "render directly to a WAV file instead of launching live playback")
 	playlistOut := flag.String("playlist-out", "", "render a playlist to a directory of WAVs plus manifest.json")
+	exportStems := flag.Bool("stems", false, "with --out/--playlist-out, also export per-stem WAVs when supported")
+	exportMIDI := flag.Bool("midi", false, "with --out/--playlist-out, also export captured MIDI files when supported")
 	debugView := flag.Bool("debug", false, "show the musical debug inspector in the TUI")
 	renderSeconds := flag.Float64("seconds", 180, "render duration in seconds when --out is provided")
 	flag.Parse()
@@ -64,6 +67,10 @@ func main() {
 	}
 	if *playlistOut != "" && *playlistMode == "" {
 		fmt.Fprintln(os.Stderr, "--playlist-out requires --playlist same|mixed")
+		os.Exit(2)
+	}
+	if (*exportStems || *exportMIDI) && *outPath == "" && *playlistOut == "" {
+		fmt.Fprintln(os.Stderr, "--stems/--midi require --out or --playlist-out")
 		os.Exit(2)
 	}
 	if *playlistMode != "" && *playlistDur <= 0 {
@@ -135,6 +142,17 @@ func main() {
 				irLabel, len(ir), float64(len(ir))*1000.0/44100.0, *irWet)
 		}
 	}
+	buildRenderedAlgo := func(s gen.AlgoSpec, algoSeed int64) gen.Algorithm {
+		chosen := pickSF(sfByPreset, s, *sf2Preset)
+		a := s.Build(chosen)
+		a.Seed(algoSeed)
+		if len(ir) > 0 {
+			if rev, ok := a.(gen.SF2Reverberator); ok {
+				rev.SetReverbIR(ir, *irWet)
+			}
+		}
+		return a
+	}
 	if *outPath != "" {
 		frames, err := audio.RenderToWAV(*outPath, algo, *renderSeconds, *initialVol)
 		if err != nil {
@@ -143,6 +161,31 @@ func main() {
 		}
 		fmt.Fprintf(os.Stderr, "rendered %s: %.1fs (%d frames) -> %s\n",
 			algo.Name(), *renderSeconds, frames, *outPath)
+		exportBase := strings.TrimSuffix(*outPath, filepath.Ext(*outPath))
+		if *exportMIDI || *exportStems {
+			exportAlgo := buildRenderedAlgo(spec, *seed)
+			if exporter, ok := exportAlgo.(gen.TuningExporter); ok {
+				if *exportMIDI {
+					midiPath := exportBase + ".mid"
+					if err := exporter.ExportMIDI(midiPath, *renderSeconds); err != nil {
+						fmt.Fprintln(os.Stderr, "midi export failed:", err)
+						os.Exit(1)
+					}
+					fmt.Fprintf(os.Stderr, "wrote MIDI -> %s\n", midiPath)
+				}
+				if *exportStems {
+					stemDir := exportBase + "-stems"
+					files, err := exporter.ExportStems(stemDir, *renderSeconds, *initialVol)
+					if err != nil {
+						fmt.Fprintln(os.Stderr, "stem export failed:", err)
+						os.Exit(1)
+					}
+					fmt.Fprintf(os.Stderr, "wrote %d stems -> %s\n", len(files), stemDir)
+				}
+			} else {
+				fmt.Fprintln(os.Stderr, "artifacts skipped: algorithm does not support MIDI/stem export")
+			}
+		}
 		return
 	}
 
@@ -154,19 +197,7 @@ func main() {
 	// Closure used by the TUI to build a fresh algorithm on swap. We
 	// re-seed with the original --seed so the same key stays deterministic
 	// across switches.
-	buildAlgo := func(s gen.AlgoSpec, algoSeed int64) gen.Algorithm {
-		chosen := pickSF(sfByPreset, s, *sf2Preset)
-		a := s.Build(chosen)
-		a.Seed(algoSeed)
-		// If we had an IR loaded, propagate it onto the new algorithm so
-		// the room/hall/etc. carries across the switch.
-		if len(ir) > 0 {
-			if rev, ok := a.(gen.SF2Reverberator); ok {
-				rev.SetReverbIR(ir, *irWet)
-			}
-		}
-		return a
-	}
+	buildAlgo := buildRenderedAlgo
 	presetLabel := func(s gen.AlgoSpec) string {
 		if !s.RequiresSF2 {
 			return "synth"
@@ -182,7 +213,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, "playlist:", err)
 			os.Exit(2)
 		}
-		manifest, err := renderPlaylistOut(*playlistOut, pl, *initialVol, buildAlgo)
+		manifest, err := renderPlaylistOut(*playlistOut, pl, *initialVol, buildAlgo, *exportMIDI, *exportStems)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "playlist render failed:", err)
 			os.Exit(1)
@@ -190,6 +221,12 @@ func main() {
 		for _, track := range manifest.Tracks {
 			fmt.Fprintf(os.Stderr, "rendered %02d/%02d %s -> %s\n",
 				track.Index, manifest.TrackCount, track.Algo, track.Path)
+			if track.MIDIPath != "" {
+				fmt.Fprintf(os.Stderr, "  midi  -> %s\n", track.MIDIPath)
+			}
+			if track.StemDir != "" {
+				fmt.Fprintf(os.Stderr, "  stems -> %s\n", track.StemDir)
+			}
 		}
 		fmt.Fprintf(os.Stderr, "wrote %s (%d tracks, %.1fs total)\n",
 			filepath.Join(*playlistOut, "manifest.json"), manifest.TrackCount, manifest.TotalDurationS)

@@ -29,16 +29,19 @@ type playlistManifestTrack struct {
 	Display   string                `json:"display"`
 	Seed      int64                 `json:"seed"`
 	Path      string                `json:"path"`
+	MIDIPath  string                `json:"midi_path,omitempty"`
+	StemDir   string                `json:"stem_dir,omitempty"`
+	StemFiles []string              `json:"stem_files,omitempty"`
 	Frames    int                   `json:"frames"`
 	DurationS float64               `json:"duration_s"`
 	Markers   []gen.ListeningMarker `json:"markers,omitempty"`
 }
 
-func renderPlaylistOut(outDir string, pl *gen.Playlist, volume int, build playlistAlgoBuilder) (*playlistManifest, error) {
-	return renderPlaylistOutWith(outDir, pl, volume, build, audio.RenderToWAV)
+func renderPlaylistOut(outDir string, pl *gen.Playlist, volume int, build playlistAlgoBuilder, exportMIDI, exportStems bool) (*playlistManifest, error) {
+	return renderPlaylistOutWith(outDir, pl, volume, build, audio.RenderToWAV, exportMIDI, exportStems)
 }
 
-func renderPlaylistOutWith(outDir string, pl *gen.Playlist, volume int, build playlistAlgoBuilder, render playlistRenderer) (*playlistManifest, error) {
+func renderPlaylistOutWith(outDir string, pl *gen.Playlist, volume int, build playlistAlgoBuilder, render playlistRenderer, exportMIDI, exportStems bool) (*playlistManifest, error) {
 	if pl == nil {
 		return nil, fmt.Errorf("playlist is nil")
 	}
@@ -84,6 +87,33 @@ func renderPlaylistOutWith(outDir string, pl *gen.Playlist, volume int, build pl
 		}
 		if inspectable, ok := algo.(gen.ListeningInspectable); ok {
 			item.Markers = trimMarkersToFrames(inspectable.ListeningMarkers(), frames)
+		}
+		if exportMIDI || exportStems {
+			exportAlgo := build(track.Spec, track.Seed)
+			if exporter, ok := exportAlgo.(gen.TuningExporter); ok {
+				stemBase := strings.TrimSuffix(base, ".wav")
+				if exportMIDI {
+					item.MIDIPath = stemBase + ".mid"
+					if err := exporter.ExportMIDI(filepath.Join(outDir, item.MIDIPath), seconds); err != nil {
+						return nil, fmt.Errorf("export midi track %d (%s): %w", i+1, track.Spec.Name, err)
+					}
+				}
+				if exportStems {
+					item.StemDir = stemBase + "-stems"
+					files, err := exporter.ExportStems(filepath.Join(outDir, item.StemDir), seconds, volume)
+					if err != nil {
+						return nil, fmt.Errorf("export stems track %d (%s): %w", i+1, track.Spec.Name, err)
+					}
+					item.StemFiles = make([]string, 0, len(files))
+					for _, path := range files {
+						rel, err := filepath.Rel(outDir, path)
+						if err != nil {
+							rel = path
+						}
+						item.StemFiles = append(item.StemFiles, rel)
+					}
+				}
+			}
 		}
 		manifest.TotalDurationS += seconds
 		manifest.Tracks = append(manifest.Tracks, item)
