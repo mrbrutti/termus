@@ -121,3 +121,14 @@ func TestRootPauseSilences(t *testing.T) {
 		}
 	}
 }
+
+func TestToggleRecordFailsBeforeAudioStarts(t *testing.T) {
+	ring := scope.NewRing(64)
+	algo := gen.NewEno()
+	algo.Seed(7)
+	root := NewRoot(algo, ring)
+
+	if _, err := root.ToggleRecord(); err == nil {
+		t.Fatal("expected ToggleRecord to fail before Stream starts")
+	}
+}

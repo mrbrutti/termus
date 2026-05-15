@@ -16,7 +16,7 @@
 
 ## Next Up
 
-- [ ] Add a proper audio backend state layer so startup can report `starting`, `ready`, `no default device`, `backend hung`, and `render-only` instead of failing opaquely on bad CoreAudio state.
+- [x] Add a proper audio backend state layer so startup can report `starting`, `ready`, `no default device`, `backend hung`, and `render-only` instead of failing opaquely on bad CoreAudio state.
 - [x] Add single-track WAV export to `./termus` via `--out` and `--seconds` so music generation works without live playback.
 - [ ] Extend export workflow with `--playlist-out` and batch rendering from the main binary.
 - [ ] Tighten cross-algorithm intros, outros, cadence handling, and loudness normalization so switching genres feels cohesive.

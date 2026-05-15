@@ -26,11 +26,12 @@ type Model struct {
 	keyName string
 	seed    int64
 
-	volume    int
-	paused    bool
-	recording bool
-	status    string
-	statusTTL time.Time
+	volume       int
+	paused       bool
+	recording    bool
+	status       string
+	statusTTL    time.Time
+	stickyStatus string
 
 	themeIdx  int // index into Themes
 	visualIdx int // index into Visuals
@@ -103,9 +104,8 @@ func (m *Model) advancePlaylist() {
 	m.algo = track.Spec.Display
 	m.seed = track.Seed
 	m.nextTrackAt = time.Now().Add(track.Duration)
-	m.status = fmt.Sprintf("▶ %d/%d %s",
-		m.playlistIdx+1, len(m.playlist.Tracks), track.Spec.Display)
-	m.statusTTL = time.Now().Add(3 * time.Second)
+	m.flashStatus(fmt.Sprintf("▶ %d/%d %s",
+		m.playlistIdx+1, len(m.playlist.Tracks), track.Spec.Display), 3*time.Second)
 
 	// Keep the genre cycle index in sync if this track matches a genre.
 	for i, g := range m.genres {
@@ -127,8 +127,7 @@ func (m *Model) switchAlgo(step int) {
 	algo := m.buildFn(spec)
 	m.cmd.SwapAlgorithm(algo)
 	m.algo = spec.Display
-	m.status = "switched: " + spec.Display
-	m.statusTTL = time.Now().Add(2 * time.Second)
+	m.flashStatus("switched: "+spec.Display, 2*time.Second)
 }
 
 type tickMsg time.Time
@@ -144,6 +143,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		return m, nil
+	case audio.BackendState:
+		m.applyAudioState(msg)
 		return m, nil
 	case tea.KeyMsg:
 		switch matchKey(msg) {
@@ -167,28 +169,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case actionRecord:
 			path, err := m.cmd.ToggleRecord()
 			if err != nil {
-				m.status = "rec error: " + err.Error()
-				m.statusTTL = time.Now().Add(3 * time.Second)
+				m.flashStatus("rec error: "+err.Error(), 3*time.Second)
 				m.recording = false
 			} else if path != "" {
 				m.recording = true
-				m.status = "rec → " + path
-				m.statusTTL = time.Now().Add(3 * time.Second)
+				m.flashStatus("rec → "+path, 3*time.Second)
 			} else {
 				m.recording = false
-				m.status = "rec stopped"
-				m.statusTTL = time.Now().Add(3 * time.Second)
+				m.flashStatus("rec stopped", 3*time.Second)
 			}
 		case actionTheme:
 			if len(m.themes) > 1 {
 				m.themeIdx = (m.themeIdx + 1) % len(m.themes)
-				m.status = "theme: " + m.themes[m.themeIdx].Name
-				m.statusTTL = time.Now().Add(2 * time.Second)
+				m.flashStatus("theme: "+m.themes[m.themeIdx].Name, 2*time.Second)
 			}
 		case actionVisual:
 			m.visualIdx = (m.visualIdx + 1) % len(Visuals)
-			m.status = "visual: " + Visuals[m.visualIdx].Name
-			m.statusTTL = time.Now().Add(2 * time.Second)
+			m.flashStatus("visual: "+Visuals[m.visualIdx].Name, 2*time.Second)
 		case actionNextAlgo:
 			m.switchAlgo(1)
 		case actionPrevAlgo:
@@ -239,6 +236,35 @@ func (m Model) activeTheme() ColorTheme {
 	return m.themes[m.themeIdx]
 }
 
+func (m *Model) flashStatus(text string, ttl time.Duration) {
+	m.status = text
+	m.statusTTL = time.Now().Add(ttl)
+}
+
+func (m *Model) setStickyStatus(text string) {
+	m.stickyStatus = text
+}
+
+func (m Model) currentStatus(now time.Time) string {
+	if now.Before(m.statusTTL) {
+		return m.status
+	}
+	return m.stickyStatus
+}
+
+func (m *Model) applyAudioState(state audio.BackendState) {
+	switch state.Kind {
+	case audio.BackendStateStarting:
+		m.setStickyStatus(state.StatusText())
+	case audio.BackendStateReady:
+		m.setStickyStatus("")
+		m.flashStatus(state.StatusText(), 2*time.Second)
+	case audio.BackendStateNoDefaultDevice, audio.BackendStateHung,
+		audio.BackendStateRenderOnly, audio.BackendStateInitFailed:
+		m.setStickyStatus(state.StatusText())
+	}
+}
+
 func topBar(m Model, w int, theme ColorTheme) string {
 	var label string
 	if m.playlist != nil {
@@ -281,10 +307,16 @@ func bottomBar(m Model, w int, theme ColorTheme) string {
 		hint += "   [s] skip"
 	}
 	hint += "   [q] quit"
+
+	status := m.currentStatus(time.Now())
+	if status != "" {
+		status = trimToWidth(status, maxInt(0, w/2))
+		hint = trimToWidth(hint, maxInt(0, w-lipgloss.Width(status)-1))
+	}
 	left := lipgloss.NewStyle().Faint(true).Render(hint)
 	right := ""
-	if time.Now().Before(m.statusTTL) {
-		right = lipgloss.NewStyle().Foreground(theme.BarHi).Render(m.status)
+	if status != "" {
+		right = lipgloss.NewStyle().Foreground(theme.BarHi).Render(status)
 	}
 	pad := w - lipgloss.Width(left) - lipgloss.Width(right)
 	if pad < 1 {
@@ -301,6 +333,35 @@ func spaces(n int) string {
 	return string(out)
 }
 
+func trimToWidth(text string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	if lipgloss.Width(text) <= max {
+		return text
+	}
+	if max <= 3 {
+		runes := []rune(text)
+		if len(runes) > max {
+			runes = runes[:max]
+		}
+		return string(runes)
+	}
+	runes := []rune(text)
+	limit := max - 3
+	if len(runes) > limit {
+		runes = runes[:limit]
+	}
+	return string(runes) + "..."
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 func centerBox(w, h int, text string) string {
 	if w < 1 || h < 1 {
 		return text
@@ -313,7 +374,7 @@ func centerBox(w, h int, text string) string {
 			if pad < 0 {
 				pad = 0
 			}
-			lines[i] = spaces(pad) + text
+			lines[i] = spaces(pad) + trimToWidth(text, maxInt(0, w-pad))
 		} else {
 			lines[i] = ""
 		}

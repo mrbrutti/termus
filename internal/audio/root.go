@@ -22,8 +22,9 @@ type Root struct {
 	scope *scope.Ring
 
 	// hot-path atomics
-	volume atomic.Uint32 // 0..100
-	paused atomic.Bool
+	volume    atomic.Uint32 // 0..100
+	paused    atomic.Bool
+	streaming atomic.Bool
 
 	// command channels for non-hot-path events
 	recCmd   chan recordCmd
@@ -66,8 +67,8 @@ type swapReq struct {
 // Default fade lengths used by the public swap methods. The audio thread runs
 // at 44.1 kHz, so 8820 frames ≈ 200 ms and 88200 frames ≈ 2 s.
 const (
-	defaultSwapFade      = 8820  // ~200 ms — keyboard cycling
-	defaultPlaylistFade  = 88200 // ~2 s — playlist transitions
+	defaultSwapFade     = 8820  // ~200 ms — keyboard cycling
+	defaultPlaylistFade = 88200 // ~2 s — playlist transitions
 )
 
 // NewRoot constructs a Root for the given algorithm and scope sink.
@@ -127,6 +128,9 @@ func (r *Root) TogglePause() { r.paused.Store(!r.paused.Load()) }
 // ToggleRecord starts or stops recording. Filename pattern:
 // `termus-<seed>-<unix>.wav` in the current directory.
 func (r *Root) ToggleRecord() (string, error) {
+	if !r.streaming.Load() {
+		return "", fmt.Errorf("audio backend not ready")
+	}
 	reply := make(chan recordReply, 1)
 	r.recCmd <- recordCmd{start: r.wavStartRequested(), reply: reply}
 	rep := <-reply
@@ -144,6 +148,7 @@ func (r *Root) wavStartRequested() bool {
 
 // Stream implements beep.Streamer.
 func (r *Root) Stream(samples [][2]float64) (n int, ok bool) {
+	r.streaming.Store(true)
 	r.handleCommands()
 
 	n = len(samples)

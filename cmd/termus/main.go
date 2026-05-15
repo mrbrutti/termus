@@ -8,7 +8,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/gopxl/beep/v2"
-	"github.com/gopxl/beep/v2/speaker"
 	"github.com/sinshu/go-meltysynth/meltysynth"
 
 	"github.com/mrbrutti/termus/internal/audio"
@@ -132,19 +131,6 @@ func main() {
 	root.SetSeed(*seed)
 	root.SetVolume(*initialVol)
 
-	// Initialize beep speaker. The buffer must be big enough that one Stream
-	// call can be produced before the speaker drains its previous chunk.
-	// time.Second/60 (≈17ms) was too tight for Eno's per-sample work on
-	// real hardware — caused ~25% underrun → silent output. time.Second/20
-	// (50ms) gives comfortable headroom. Latency is unnoticeable for ambient.
-	sr := beep.SampleRate(44100)
-	if err := speaker.Init(sr, sr.N(time.Second/20)); err != nil {
-		fmt.Fprintln(os.Stderr, "audio init failed:", err)
-		os.Exit(1)
-	}
-	defer speaker.Close()
-	speaker.Play(root)
-
 	// Build the switchable algorithm list. If we have a SoundFont loaded
 	// we expose all SF2-backed genres; otherwise we fall back to the
 	// pure-synth variants so cycling never crashes on a nil SoundFont.
@@ -187,7 +173,18 @@ func main() {
 			pl.Name, len(pl.Tracks), *playlistDur)
 	}
 
+	// Start the live audio backend asynchronously so a bad CoreAudio/default-
+	// device state does not block the TUI from launching.
+	sr := beep.SampleRate(44100)
+	live := audio.StartLive(root, sr, sr.N(time.Second/20), 3*time.Second)
+	defer live.Close()
+
 	p := tea.NewProgram(model, tea.WithAltScreen())
+	go func() {
+		for state := range live.States() {
+			p.Send(state)
+		}
+	}()
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "tui error:", err)
 		os.Exit(1)
