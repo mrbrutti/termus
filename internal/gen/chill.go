@@ -947,7 +947,6 @@ func (a *Chill) currentBar() int {
 
 func (a *Chill) applyArrangement() {
 	a.section = a.form.SectionAt(a.samplesElapsed)
-	mix := SectionMixProfileFor(a.section)
 	if a.saxOn != nil {
 		*a.saxOn = a.section.LeadLevel > 0 && a.section.Kind != FormOutro
 	}
@@ -961,14 +960,29 @@ func (a *Chill) applyArrangement() {
 		return
 	}
 	core := a.core
-	core.setReverbSend(3, SectionCC(96, mix.ReverbDelta))
-	core.setChannelCutoff(0, SectionCC(32, mix.BrightnessDelta))
-	core.setChannelCutoff(2, SectionCC(56, mix.BrightnessDelta/2))
-	core.setChannelCutoff(4, SectionCC(42, mix.BrightnessDelta/2))
-	core.setChannelExpression(0, SectionCC(104, mix.ExpressionDelta))
-	core.setChannelExpression(2, SectionCC(100, mix.ExpressionDelta/2))
-	core.setChannelExpression(3, SectionCC(108, mix.ExpressionDelta))
-	core.setChannelExpression(4, SectionCC(102, mix.ExpressionDelta/2))
+	comp := SectionSceneFor(a.section, RoleComp)
+	bass := SectionSceneFor(a.section, RoleBass)
+	lead := SectionSceneFor(a.section, RoleLead)
+	texture := SectionSceneFor(a.section, RoleTexture)
+	drums := SectionSceneFor(a.section, RoleDrums)
+	core.setReverbSend(0, SectionCC(56, comp.ReverbDelta))
+	core.setReverbSend(1, SectionCC(24, bass.ReverbDelta))
+	core.setReverbSend(2, SectionCC(80, texture.ReverbDelta))
+	core.setReverbSend(3, SectionCC(96, lead.ReverbDelta))
+	core.setReverbSend(4, SectionCC(50, comp.ReverbDelta))
+	core.setReverbSend(drumChannel, SectionCC(30, drums.ReverbDelta))
+	core.setChannelCutoff(0, SectionCC(32, comp.BrightnessDelta))
+	core.setChannelCutoff(1, SectionCC(68, bass.BrightnessDelta))
+	core.setChannelCutoff(2, SectionCC(56, texture.BrightnessDelta))
+	core.setChannelCutoff(3, SectionCC(70, lead.BrightnessDelta))
+	core.setChannelCutoff(4, SectionCC(42, comp.BrightnessDelta))
+	core.setChannelCutoff(drumChannel, SectionCC(88, drums.BrightnessDelta))
+	core.setChannelExpression(0, SectionCC(104, comp.ExpressionDelta))
+	core.setChannelExpression(1, SectionCC(100, bass.ExpressionDelta))
+	core.setChannelExpression(2, SectionCC(100, texture.ExpressionDelta))
+	core.setChannelExpression(3, SectionCC(108, lead.ExpressionDelta))
+	core.setChannelExpression(4, SectionCC(102, comp.ExpressionDelta))
+	core.setChannelExpression(drumChannel, SectionCC(96, drums.ExpressionDelta))
 }
 
 func (a *Chill) SectionGain() float64 {

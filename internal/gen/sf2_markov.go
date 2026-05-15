@@ -421,7 +421,6 @@ func (a *SF2Markov) Next(left, right []float64) {
 
 func (a *SF2Markov) applyArrangement() {
 	a.section = a.form.SectionAt(a.samplesElapsed)
-	mix := SectionMixProfileFor(a.section)
 	if a.oboeOn != nil {
 		*a.oboeOn = (a.section.TextureLevel > 1 || a.section.Kind == FormCadence) &&
 			a.section.Kind != FormOutro
@@ -429,13 +428,25 @@ func (a *SF2Markov) applyArrangement() {
 	if a.core == nil {
 		return
 	}
-	a.core.setReverbSend(4, SectionCC(88, mix.ReverbDelta))
-	a.core.setChannelCutoff(0, SectionCC(110, mix.BrightnessDelta))
-	a.core.setChannelCutoff(3, SectionCC(80, mix.BrightnessDelta/2))
-	a.core.setChannelCutoff(4, SectionCC(100, mix.BrightnessDelta))
-	a.core.setChannelExpression(0, SectionCC(112, mix.ExpressionDelta))
-	a.core.setChannelExpression(3, SectionCC(102, mix.ExpressionDelta/2))
-	a.core.setChannelExpression(4, SectionCC(106, mix.ExpressionDelta))
+	lead := SectionSceneFor(a.section, RoleLead)
+	bass := SectionSceneFor(a.section, RoleBass)
+	comp := SectionSceneFor(a.section, RoleComp)
+	texture := SectionSceneFor(a.section, RoleTexture)
+	a.core.setReverbSend(0, SectionCC(84, lead.ReverbDelta))
+	a.core.setReverbSend(1, SectionCC(56, bass.ReverbDelta))
+	a.core.setReverbSend(2, SectionCC(64, comp.ReverbDelta))
+	a.core.setReverbSend(3, SectionCC(100, texture.ReverbDelta))
+	a.core.setReverbSend(4, SectionCC(88, lead.ReverbDelta))
+	a.core.setChannelCutoff(0, SectionCC(110, lead.BrightnessDelta))
+	a.core.setChannelCutoff(1, SectionCC(90, bass.BrightnessDelta))
+	a.core.setChannelCutoff(2, SectionCC(88, comp.BrightnessDelta))
+	a.core.setChannelCutoff(3, SectionCC(80, texture.BrightnessDelta))
+	a.core.setChannelCutoff(4, SectionCC(100, lead.BrightnessDelta))
+	a.core.setChannelExpression(0, SectionCC(112, lead.ExpressionDelta))
+	a.core.setChannelExpression(1, SectionCC(104, bass.ExpressionDelta))
+	a.core.setChannelExpression(2, SectionCC(100, comp.ExpressionDelta))
+	a.core.setChannelExpression(3, SectionCC(102, texture.ExpressionDelta))
+	a.core.setChannelExpression(4, SectionCC(106, lead.ExpressionDelta))
 }
 
 func (a *SF2Markov) SectionGain() float64 {

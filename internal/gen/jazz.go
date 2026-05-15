@@ -853,19 +853,28 @@ func (a *Jazz) Next(left, right []float64) {
 
 func (a *Jazz) applyArrangement() {
 	a.section = a.form.SectionAt(a.samplesElapsed)
-	mix := SectionMixProfileFor(a.section)
 	if a.saxOn != nil {
 		*a.saxOn = a.section.LeadLevel > 0 && a.section.Kind != FormOutro
 	}
 	if a.core == nil {
 		return
 	}
-	a.core.setReverbSend(2, SectionCC(86, mix.ReverbDelta))
-	a.core.setChannelCutoff(0, SectionCC(96, mix.BrightnessDelta))
-	a.core.setChannelCutoff(2, SectionCC(110, mix.BrightnessDelta/2))
-	a.core.setChannelExpression(0, SectionCC(108, mix.ExpressionDelta))
-	a.core.setChannelExpression(1, SectionCC(104, mix.ExpressionDelta/2))
-	a.core.setChannelExpression(2, SectionCC(110, mix.ExpressionDelta))
+	comp := SectionSceneFor(a.section, RoleComp)
+	bass := SectionSceneFor(a.section, RoleBass)
+	lead := SectionSceneFor(a.section, RoleLead)
+	drums := SectionSceneFor(a.section, RoleDrums)
+	a.core.setReverbSend(0, SectionCC(48, comp.ReverbDelta))
+	a.core.setReverbSend(1, SectionCC(18, bass.ReverbDelta))
+	a.core.setReverbSend(2, SectionCC(86, lead.ReverbDelta))
+	a.core.setReverbSend(drumChannel, SectionCC(42, drums.ReverbDelta))
+	a.core.setChannelCutoff(0, SectionCC(96, comp.BrightnessDelta))
+	a.core.setChannelCutoff(1, SectionCC(88, bass.BrightnessDelta))
+	a.core.setChannelCutoff(2, SectionCC(110, lead.BrightnessDelta))
+	a.core.setChannelCutoff(drumChannel, SectionCC(92, drums.BrightnessDelta))
+	a.core.setChannelExpression(0, SectionCC(108, comp.ExpressionDelta))
+	a.core.setChannelExpression(1, SectionCC(104, bass.ExpressionDelta))
+	a.core.setChannelExpression(2, SectionCC(110, lead.ExpressionDelta))
+	a.core.setChannelExpression(drumChannel, SectionCC(100, drums.ExpressionDelta))
 }
 
 func (a *Jazz) SectionGain() float64 {
