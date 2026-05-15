@@ -68,9 +68,34 @@ type jazzChord struct {
 	rootSemi int
 	tones    []int
 	label    string
-	// majMin: 0=major-quality (maj7 / dom7), 1=minor-quality (m7 / m7b5).
-	// Used by the melody generator to pick the right bebop scale.
-	majMin int
+	quality  string
+}
+
+func jazzMaj7(rootSemi int, label string) jazzChord {
+	return jazzChord{
+		rootSemi: rootSemi,
+		tones:    []int{rootSemi, rootSemi + 4, rootSemi + 7, rootSemi + 11},
+		label:    label,
+		quality:  "maj7",
+	}
+}
+
+func jazzMin7(rootSemi int, label string) jazzChord {
+	return jazzChord{
+		rootSemi: rootSemi,
+		tones:    []int{rootSemi, rootSemi + 3, rootSemi + 7, rootSemi + 10},
+		label:    label,
+		quality:  "m7",
+	}
+}
+
+func jazzDom7(rootSemi int, label string) jazzChord {
+	return jazzChord{
+		rootSemi: rootSemi,
+		tones:    []int{rootSemi, rootSemi + 4, rootSemi + 7, rootSemi + 10},
+		label:    label,
+		quality:  "7",
+	}
 }
 
 // jazzProgressions: 4-bar ii-V-I-vi cycles in semitone offsets from the
@@ -79,24 +104,57 @@ type jazzChord struct {
 var jazzProgressions = [][]jazzChord{
 	// In C: |Dm7|G7|Cmaj7|Am7|
 	{
-		{rootSemi: 2, tones: []int{2, 5, 9, 12}, label: "Dm7", majMin: 1},
-		{rootSemi: 7, tones: []int{7, 11, 14, 17}, label: "G7", majMin: 0},
-		{rootSemi: 0, tones: []int{0, 4, 7, 11}, label: "Cmaj7", majMin: 0},
-		{rootSemi: 9, tones: []int{9, 12, 16, 19}, label: "Am7", majMin: 1},
+		jazzMin7(2, "Dm7"),
+		jazzDom7(7, "G7"),
+		jazzMaj7(0, "Cmaj7"),
+		jazzMin7(9, "Am7"),
 	},
 	// "Autumn Leaves" feel: |Am7|D7|Gmaj7|Cmaj7|
 	{
-		{rootSemi: 9, tones: []int{9, 12, 16, 19}, label: "Am7", majMin: 1},
-		{rootSemi: 2, tones: []int{2, 6, 9, 12}, label: "D7", majMin: 0},
-		{rootSemi: 7, tones: []int{7, 11, 14, 18}, label: "Gmaj7", majMin: 0},
-		{rootSemi: 0, tones: []int{0, 4, 7, 11}, label: "Cmaj7", majMin: 0},
+		jazzMin7(9, "Am7"),
+		jazzDom7(2, "D7"),
+		jazzMaj7(7, "Gmaj7"),
+		jazzMaj7(0, "Cmaj7"),
 	},
 	// Minor blues: |Cm7|Fm7|Gm7|Cm7|
 	{
-		{rootSemi: 0, tones: []int{0, 3, 7, 10}, label: "Cm7", majMin: 1},
-		{rootSemi: 5, tones: []int{5, 8, 12, 15}, label: "Fm7", majMin: 1},
-		{rootSemi: 7, tones: []int{7, 10, 14, 17}, label: "Gm7", majMin: 1},
-		{rootSemi: 0, tones: []int{0, 3, 7, 10}, label: "Cm7", majMin: 1},
+		jazzMin7(0, "Cm7"),
+		jazzMin7(5, "Fm7"),
+		jazzMin7(7, "Gm7"),
+		jazzMin7(0, "Cm7"),
+	},
+	// Secondary-dominant cycle.
+	{
+		jazzMin7(2, "Dm7"),
+		jazzDom7(7, "G7"),
+		jazzMaj7(0, "Cmaj7"),
+		jazzDom7(9, "A7"),
+		jazzMin7(2, "Dm7"),
+		jazzDom7(7, "G7"),
+		jazzMaj7(0, "Cmaj7"),
+		jazzDom7(9, "A7"),
+	},
+	// Borrowed iv + turnaround.
+	{
+		jazzMin7(2, "Dm7"),
+		jazzDom7(7, "G7"),
+		jazzMaj7(0, "Cmaj7"),
+		jazzMin7(5, "Fm7"),
+		jazzMin7(4, "Em7"),
+		jazzDom7(9, "A7"),
+		jazzMin7(2, "Dm7"),
+		jazzDom7(7, "G7"),
+	},
+	// Tritone-sub color.
+	{
+		jazzMin7(2, "Dm7"),
+		jazzDom7(1, "Db7"),
+		jazzMaj7(0, "Cmaj7"),
+		jazzDom7(9, "A7"),
+		jazzMin7(2, "Dm7"),
+		jazzDom7(7, "G7"),
+		jazzMaj7(0, "Cmaj7"),
+		jazzDom7(8, "Ab7"),
 	},
 }
 
@@ -192,10 +250,14 @@ func (a *Jazz) Seed(seedVal int64) {
 
 	// Pick a progression.
 	base := jazzProgressions[a.rng.Intn(len(jazzProgressions))]
-	// Two repeats = 8-bar form.
-	a.progression = make([]jazzChord, 0, 2*len(base))
-	a.progression = append(a.progression, base...)
-	a.progression = append(a.progression, base...)
+	base = a.reharmonizeProgression(base)
+	if len(base) < 8 {
+		a.progression = make([]jazzChord, 0, 2*len(base))
+		a.progression = append(a.progression, base...)
+		a.progression = append(a.progression, base...)
+	} else {
+		a.progression = append([]jazzChord(nil), base...)
+	}
 
 	// Tempo: 120–148 BPM medium swing.
 	bpm := 120.0 + 28.0*a.rng.Float64()
@@ -582,6 +644,44 @@ func (a *Jazz) makeBassPlan(totalBeats int) []int {
 		}
 	}
 	return out
+}
+
+func (a *Jazz) reharmonizeProgression(base []jazzChord) []jazzChord {
+	out := append([]jazzChord(nil), base...)
+	if len(out) == 0 {
+		return out
+	}
+	for i := range out {
+		next := out[(i+1)%len(out)]
+		switch {
+		case next.quality == "m7" && a.rng.Float64() < 0.28:
+			out[i] = a.secondaryDominantOf(next)
+		case jazzIsDominant(out[i]) && a.rng.Float64() < 0.22:
+			out[i] = jazzTritoneSub(out[i])
+		case out[i].quality == "maj7" && next.rootSemi == 9 && a.rng.Float64() < 0.25:
+			out[i] = jazzMaj7(8, "Abmaj7")
+		}
+	}
+	if len(out) >= 2 && out[len(out)-1].quality != "7" && a.rng.Float64() < 0.35 {
+		out[len(out)-1] = a.secondaryDominantOf(out[0])
+	}
+	return out
+}
+
+func (a *Jazz) secondaryDominantOf(target jazzChord) jazzChord {
+	root := wrapPitchClass(target.rootSemi + 7)
+	label := pitchClassLabel(root) + "7"
+	return jazzDom7(root, label)
+}
+
+func jazzTritoneSub(chord jazzChord) jazzChord {
+	root := wrapPitchClass(chord.rootSemi + 6)
+	label := pitchClassLabel(root) + "7"
+	return jazzDom7(root, label)
+}
+
+func jazzIsDominant(chord jazzChord) bool {
+	return chord.quality == "7"
 }
 
 func (a *Jazz) buildCompLine(interval, numBars int) []int {

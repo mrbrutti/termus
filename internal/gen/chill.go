@@ -79,6 +79,27 @@ type chillChord struct {
 	label string // human label, for debug/logging
 }
 
+func chillMaj7(rootSemi int, label string) chillChord {
+	return chillChord{
+		tones: []int{rootSemi, rootSemi + 4, rootSemi + 7, rootSemi + 11},
+		label: label,
+	}
+}
+
+func chillMin7(rootSemi int, label string) chillChord {
+	return chillChord{
+		tones: []int{rootSemi, rootSemi + 3, rootSemi + 7, rootSemi + 10},
+		label: label,
+	}
+}
+
+func chillDom7(rootSemi int, label string) chillChord {
+	return chillChord{
+		tones: []int{rootSemi, rootSemi + 4, rootSemi + 7, rootSemi + 10},
+		label: label,
+	}
+}
+
 // chillChordOption extends chillChord with a list of valid next-chord
 // indices in the same palette. Pattern lifted from meel-hd/lofi-engine's
 // state-machine chord grammar — each chord knows what can follow it,
@@ -356,6 +377,7 @@ func (a *Chill) Seed(seedVal int64) {
 	} else {
 		a.progression = chillProgressions[a.rng.Intn(len(chillProgressions))]
 	}
+	a.progression = a.reharmonizeProgression(a.progression)
 	numBars := len(a.progression)
 	a.vibeMotifs = a.makeVibeMotifs()
 	a.guitarMotifs = a.makeGuitarMotifs()
@@ -781,6 +803,48 @@ func (a *Chill) makeSaxMotifs() MotifMemory {
 	)
 	cadence := stitchPhrase(aPhrase[:4], []int{chillPlanEleventh, chillPlanPickupBelow, chillPlanResolveThird, chillPlanRoot})
 	return MotifMemory{A: aPhrase, Aprime: aPrime, B: bPhrase, Cadence: cadence, Outro: []int{chillPlanRest, chillPlanResolveThird, chillPlanRoot}}
+}
+
+func (a *Chill) reharmonizeProgression(base []chillChord) []chillChord {
+	out := append([]chillChord(nil), base...)
+	if len(out) == 0 {
+		return out
+	}
+	for i := range out {
+		next := out[(i+1)%len(out)]
+		nextRoot := wrapPitchClass(next.tones[0])
+		switch {
+		case nextRoot == 0 && a.rng.Float64() < 0.24:
+			out[i] = chillDom7(10, "bVII7")
+		case chordRootSemi(out[i]) == 5 && chillHasMajorThird(out[i]) && a.rng.Float64() < 0.28:
+			out[i] = chillMin7(5, "iv7")
+		case nextRoot != chordRootSemi(out[i]) && a.rng.Float64() < 0.20:
+			out[i] = chillSecondaryDominant(next)
+		}
+	}
+	if len(out) > 0 && a.rng.Float64() < 0.30 {
+		out[len(out)-1] = chillMaj7(8, "bVImaj7")
+	}
+	return out
+}
+
+func chillSecondaryDominant(target chillChord) chillChord {
+	root := wrapPitchClass(chordRootSemi(target) + 7)
+	return chillDom7(root, pitchClassLabel(root)+"7")
+}
+
+func chordRootSemi(chord chillChord) int {
+	if len(chord.tones) == 0 {
+		return 0
+	}
+	return wrapPitchClass(chord.tones[0])
+}
+
+func chillHasMajorThird(chord chillChord) bool {
+	if len(chord.tones) < 2 {
+		return false
+	}
+	return wrapPitchClass(chord.tones[1]-chord.tones[0]) == 4
 }
 
 func (a *Chill) resolvePlanNote(slot int, chord chillChord, code, octaveBump, low, high int) int {
