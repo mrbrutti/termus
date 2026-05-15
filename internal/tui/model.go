@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -36,6 +37,7 @@ type Model struct {
 	paused       bool
 	recording    bool
 	debugVisible bool
+	helpVisible  bool
 	status       string
 	statusTTL    time.Time
 	stickyStatus string
@@ -282,7 +284,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyAudioState(msg)
 		return m, nil
 	case tea.KeyMsg:
-		switch matchKey(msg) {
+		action := matchKey(msg)
+		if m.helpVisible && action != actionHelp && action != actionQuit {
+			return m, nil
+		}
+		switch action {
 		case actionQuit:
 			return m, tea.Quit
 		case actionPause:
@@ -326,6 +332,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.flashStatus("debug: on", 2*time.Second)
 			} else {
 				m.flashStatus("debug: off", 2*time.Second)
+			}
+		case actionHelp:
+			m.helpVisible = !m.helpVisible
+			if m.helpVisible {
+				m.flashStatus("help: on", 2*time.Second)
+			} else {
+				m.flashStatus("help: off", 2*time.Second)
 			}
 		case actionNextAlgo:
 			m.switchAlgo(1)
@@ -383,11 +396,15 @@ func (m Model) View() string {
 
 	top := topBar(m, innerW, theme)
 	bottom := bottomBar(m, innerW, theme)
+	body := scopeStr
+	if m.helpVisible {
+		body = helpPanel(m, innerW, innerH, theme)
+	}
 	if m.debugVisible {
 		debug := debugBar(m, innerW, theme)
-		return lipgloss.JoinVertical(lipgloss.Left, top, debug, scopeStr, bottom)
+		return lipgloss.JoinVertical(lipgloss.Left, top, debug, body, bottom)
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, top, scopeStr, bottom)
+	return lipgloss.JoinVertical(lipgloss.Left, top, body, bottom)
 }
 
 func (m Model) activeTheme() ColorTheme {
@@ -514,23 +531,34 @@ func bottomBar(m Model, w int, theme ColorTheme) string {
 	if m.paused {
 		state = "PAUSED"
 	}
-	hint := fmt.Sprintf("[space] %s   [↑↓] vol %d%%   [r] rec",
-		state, m.volume)
-	if len(m.themes) > 1 {
-		hint += fmt.Sprintf("   [c] %s", theme.Name)
+	hintParts := []string{
+		fmt.Sprintf("[space] %s", state),
+		fmt.Sprintf("[↑↓] %d%%", m.volume),
+		fmt.Sprintf("[C] %s", Visuals[m.visualIdx].Name),
+		"[?] help",
+	}
+	if m.recording {
+		hintParts = append(hintParts, "[r] stop rec")
 	} else {
-		hint += fmt.Sprintf("   [%s]", theme.Name)
+		hintParts = append(hintParts, "[r] rec")
 	}
-	hint += fmt.Sprintf("   [C] %s", Visuals[m.visualIdx].Name)
+	if len(m.themes) > 1 {
+		hintParts = append(hintParts, fmt.Sprintf("[c] %s", theme.Name))
+	}
 	if len(m.genres) > 1 {
-		hint += "   [n/p] algo"
+		hintParts = append(hintParts, "[n/p] algo")
 	}
-	hint += "   [[/]] seed   [a/b] slots   [tab] A/B   [k/x] keep/reject"
-	hint += "   [d] debug"
+	if m.debugVisible {
+		hintParts = append(hintParts, "[d] debug on")
+	}
 	if m.playlist != nil {
-		hint += "   [s] skip"
+		hintParts = append(hintParts, "[s] skip")
 	}
-	hint += "   [q] quit"
+	hintParts = append(hintParts, "[q] quit")
+	if m.helpVisible {
+		hintParts = []string{"[?] close help", "[q] quit"}
+	}
+	hint := strings.Join(hintParts, "   ")
 
 	status := m.currentStatus(time.Now())
 	if status != "" {
@@ -547,6 +575,63 @@ func bottomBar(m Model, w int, theme ColorTheme) string {
 		pad = 1
 	}
 	return left + spaces(pad) + right
+}
+
+func helpPanel(m Model, w, h int, theme ColorTheme) string {
+	bodyW := maxInt(24, minInt(w-6, 76))
+	bodyH := maxInt(10, minInt(h-2, 18))
+	lines := []string{
+		styleHelpLine(theme, false, "Playback", "[space] pause/resume   [↑↓] volume   [r] record"),
+		styleHelpLine(theme, false, "Look", "[C] visual   [c] theme   [d] debug"),
+		styleHelpLine(theme, false, "Seeds", "[[/]] browse   [a/b] store   [tab] compare   [k/x] keep/reject"),
+		styleHelpLine(theme, false, "Tracks", "[n/p] algorithm   [s] skip playlist track"),
+		styleHelpLine(theme, false, "Close", "[?] close this overlay   [q] quit"),
+	}
+	lines = filterHelpLines(lines, m)
+	content := strings.Join(lines, "\n")
+	panel := lipgloss.NewStyle().
+		Width(bodyW).
+		Height(bodyH).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(theme.BarFg).
+		Padding(1, 2).
+		Render(
+			lipgloss.JoinVertical(
+				lipgloss.Left,
+				lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render("TERMUS HELP"),
+				"",
+				content,
+			),
+		)
+	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, panel)
+}
+
+func styleHelpLine(theme ColorTheme, dim bool, title, text string) string {
+	label := lipgloss.NewStyle().Foreground(theme.BarHi).Render(title)
+	valueStyle := lipgloss.NewStyle()
+	if dim {
+		valueStyle = valueStyle.Faint(true)
+	}
+	return label + "  " + valueStyle.Render(text)
+}
+
+func filterHelpLines(lines []string, m Model) []string {
+	out := make([]string, 0, len(lines))
+	for idx, line := range lines {
+		switch idx {
+		case 3:
+			if len(m.genres) <= 1 && m.playlist == nil {
+				continue
+			}
+			if m.playlist == nil {
+				line = styleHelpLine(m.activeTheme(), false, "Tracks", "[n/p] algorithm")
+			} else if len(m.genres) <= 1 {
+				line = styleHelpLine(m.activeTheme(), false, "Tracks", "[s] skip playlist track")
+			}
+		}
+		out = append(out, line)
+	}
+	return out
 }
 
 func spaces(n int) string {
@@ -581,6 +666,13 @@ func trimToWidth(text string, max int) string {
 
 func maxInt(a, b int) int {
 	if a > b {
+		return a
+	}
+	return b
+}
+
+func minInt(a, b int) int {
+	if a < b {
 		return a
 	}
 	return b

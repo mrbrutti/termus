@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/mrbrutti/termus/internal/audio"
 	"github.com/mrbrutti/termus/internal/gen"
 )
@@ -59,6 +61,12 @@ func TestBottomBarLeavesRoomForStatus(t *testing.T) {
 	if !strings.Contains(bar, "audio: starting...") {
 		t.Fatalf("bottom bar missing status: %q", bar)
 	}
+	if !strings.Contains(bar, "[?] help") {
+		t.Fatalf("bottom bar should expose help entry point: %q", bar)
+	}
+	if strings.Contains(bar, "[[/]] seed") {
+		t.Fatalf("bottom bar should stay compact, got: %q", bar)
+	}
 }
 
 func TestTopBarShowsTitle(t *testing.T) {
@@ -83,6 +91,35 @@ func TestDebugBarShowsDedicatedInspector(t *testing.T) {
 	bar := debugBar(m, 100, DefaultTheme())
 	if !strings.Contains(bar, "DEBUG") || !strings.Contains(bar, "bar 3") || !strings.Contains(bar, "Dm7") {
 		t.Fatalf("debug bar missing inspector fields: %q", bar)
+	}
+}
+
+func TestHelpPanelShowsCoreControls(t *testing.T) {
+	m := Model{
+		helpVisible: true,
+		genres:      []gen.AlgoSpec{{Name: "ambient", Display: "Ambient"}, {Name: "jazz", Display: "Jazz"}},
+		playlist:    &gen.Playlist{Name: "mix", Tracks: []gen.Track{{Duration: time.Second}}},
+		themes:      []ColorTheme{DefaultTheme()},
+	}
+	panel := helpPanel(m, 90, 18, DefaultTheme())
+	for _, want := range []string{"TERMUS HELP", "Playback", "Seeds", "Tracks", "[?] close this overlay"} {
+		if !strings.Contains(panel, want) {
+			t.Fatalf("help panel missing %q:\n%s", want, panel)
+		}
+	}
+}
+
+func TestHelpBlocksNonHelpKeys(t *testing.T) {
+	cmd := &tuiCommanderStub{}
+	m := Model{
+		cmd:         cmd,
+		helpVisible: true,
+		volume:      60,
+	}
+	next, _ := m.Update(keyMsg("up"))
+	got := next.(Model)
+	if got.volume != 60 {
+		t.Fatalf("volume changed while help overlay visible: %d", got.volume)
 	}
 }
 
@@ -117,4 +154,8 @@ func TestSeedBrowserStoresAndTogglesAB(t *testing.T) {
 	if len(cmd.swaps) != 2 {
 		t.Fatalf("swap count = %d, want 2", len(cmd.swaps))
 	}
+}
+
+func keyMsg(key string) tea.KeyMsg {
+	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)}
 }
