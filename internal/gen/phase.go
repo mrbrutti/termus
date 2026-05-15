@@ -189,17 +189,38 @@ func (a *Phase) Seed(seedVal int64) {
 	a.core = core
 }
 
-// makePhaseFigure builds the 8-note phasing pattern: descending then
-// ascending pentatonic-minor scale tones, in a single 1-octave register
-// (around C5–C6 so the mallet attacks are bright and distinct).
+// makePhaseFigure builds the literal Steve Reich "Piano Phase" (1967)
+// pattern: 12 sixteenth notes using 5 distinct pitches (E4, F#4, B4, C#5,
+// D5). The pattern is asymmetric so each phase offset sounds perceptually
+// distinct from the others.
+//
+// Original Piano Phase: E4 F#4 B4 C#5 D5 F#4 E4 F#4 B4 C#5 D5 F#4
+// We transpose into the current key for variety while preserving the
+// scale-degree intervals.
 func (a *Phase) makePhaseFigure() []int {
+	// Scale-degree pattern from Piano Phase (in F# dorian-ish):
+	//   E4 = root - 2  → degree -1
+	//   F#4 = root     → degree 0
+	//   B4 = root + 5  → degree 3
+	//   C#5 = root + 7 → degree 4
+	//   D5 = root + 8  → degree 5
+	// 12-note sequence:
+	pattern := []int{-1, 0, 3, 4, 5, 0, -1, 0, 3, 4, 5, 0}
+	// Use dorian/aeolian-ish scale so the b3 lands correctly.
+	scale := []int{0, 2, 3, 5, 7, 8, 10}
 	root := a.currentRoot() + 24 // around C5
-	// Pattern: scale degrees [0, 2, 4, 3, 1, 2, 0, 4] — a balanced contour
-	// that reads as melodic but interlocks well in phase shift.
-	pattern := []int{0, 2, 4, 3, 1, 2, 0, 4}
 	out := make([]int, len(pattern))
 	for i, deg := range pattern {
-		key := root + scalePentatonicMinor[deg]
+		oct := 0
+		for deg < 0 {
+			deg += len(scale)
+			oct--
+		}
+		for deg >= len(scale) {
+			deg -= len(scale)
+			oct++
+		}
+		key := root + scale[deg] + 12*oct
 		for key < 72 {
 			key += 12
 		}

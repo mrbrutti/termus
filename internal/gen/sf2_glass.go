@@ -63,17 +63,18 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	a.rng = rand.New(rand.NewSource(seedVal)) //nolint:gosec
 	a.rootMidi = 48 + a.rng.Intn(7) // C3..F#3
 	a.keyOffset = 0
-	if a.rng.Float64() < 0.55 {
+	// Boards of Canada "Roygbiv" canonical recipe: major pentatonic only,
+	// avoiding 4th and 7th (which sound un-bell-like). 60% major pent for
+	// the Roygbiv brightness, 40% minor pent for the moodier BoC tracks.
+	if a.rng.Float64() < 0.60 {
 		a.scale = majorPentatonic
 	} else {
 		a.scale = minorPentatonic
 	}
-	// Two harmonic centers — tonic and either +7 (dominant) or +5 (subdom).
-	if a.rng.Float64() < 0.5 {
-		a.chordOffsets = []int{0, 7}
-	} else {
-		a.chordOffsets = []int{0, 5}
-	}
+	// Roygbiv progression: I-IV-I-V (4 chords per cycle). The 4th-chord cycle
+	// is what makes Boards of Canada read as bells rather than abstract
+	// pentatonic noodling.
+	a.chordOffsets = []int{0, 5, 0, 7}
 	a.currentChordIdx = 0
 	a.samplesElapsed = 0
 	a.scheduleNextChord()
