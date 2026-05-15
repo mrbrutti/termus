@@ -51,3 +51,14 @@
 - [x] Add richer SF2 performance modulation such as vibrato curves, note-level drift, and brightness shaping so sustained lines sound less static.
 - [x] Make drum writing more phrase-based with 2-bar / 4-bar memory, stronger fill targeting, and bar-to-bar anti-repetition in `jazz` and `chill`.
 - [x] Add a TUI seed browser / A-B workflow so generated takes can be compared, replayed, and kept or rejected quickly during tuning.
+
+## Control Center
+
+- [ ] Add a toggleable control-center panel for advanced music, session, curation, and audio actions, and document it in the `?` help overlay without expanding the default chrome.
+- [ ] Add saveable sessions that persist the current algorithm, seed, visual, theme, volume, and playback context for later recall.
+- [ ] Add favorites, ratings, tags, recent history, and best-takes browsing for seeds so curation can happen inside the app instead of only through raw seed numbers.
+- [ ] Add live musical controls behind the panel, including density, brightness, swing, reverb, motion, and drone-depth style macros where the active algorithm supports them.
+- [ ] Add live seed morphing so the app can glide between takes instead of only hard-switching seeds.
+- [ ] Add tempo-aware rhythmic controls for groove-based genres and phrase-length controls for ambient-style genres behind the same panel.
+- [ ] Add explicit audio recovery controls such as retry live audio and render-only fallback actions behind the panel.
+- [ ] Improve endings with graceful cadences and export outros so rendered tracks stop feeling abruptly truncated.
