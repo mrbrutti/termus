@@ -555,15 +555,16 @@ func (a *Chill) Seed(seedVal int64) {
 	// one-shots — but the engine fires it anyway and it's harmless.
 	kickNotes := make([]int, 2*numBars)
 	for i := range kickNotes {
-		kickNotes[i] = drumKick
+		kickNotes[i] = a.kickNoteAt(i)
 	}
 	core.addTrack(SF2Track{
 		Channel: drumChannel, Velocity: 92, Notes: kickNotes,
 		PeriodSec: cycleSec, Phase01: 0,
+		ResolveNote:            func(slot int, _ int) int { return a.kickNoteAt(slot) },
 		Gate:                   0.08,
 		ResolveTimingOffsetSec: cyclicTimingOffset(-4, 0),
 		VelocityJitter:         8, TimingJitterSec: 0.003, // kick — anchors the groove, must be tight
-		FireProbability: 0.90, // occasional skip so the groove varies subtly
+		FireProbability: 0.95,
 		OnFire:          core.triggerDuck,
 	})
 	snareNotes := make([]int, 2*numBars)
@@ -637,6 +638,19 @@ func (a *Chill) Seed(seedVal int64) {
 		ResolveNote:    func(slot int, _ int) int { return a.openHatNoteAt(slot) },
 		Gate:           0.10,
 		VelocityJitter: 8, TimingJitterSec: 0.005,
+	})
+	fillNotes := make([]int, 4*numBars)
+	for i := range fillNotes {
+		fillNotes[i] = a.snareFillNoteAt(i)
+	}
+	core.addTrack(SF2Track{
+		Channel: drumChannel, Velocity: 46, Notes: fillNotes,
+		PeriodSec:      cycleSec,
+		Phase01:        0,
+		ResolveNote:    func(slot int, _ int) int { return a.snareFillNoteAt(slot) },
+		Gate:           0.08,
+		VelocityJitter: 8, TimingJitterSec: 0.005,
+		FireProbability: 0.90,
 	})
 
 	// Tape hiss — subtle white-noise floor at ~-50 dBFS.
@@ -1050,7 +1064,10 @@ func (a *Chill) DebugStatus() DebugStatus {
 
 func (a *Chill) ghostSnareNoteAt(slot int) int {
 	bar := slot % maxInt(1, len(a.progression))
-	if (bar+1)%4 == 0 || bar == len(a.progression)-1 {
+	if a.section.Kind == FormCadence {
+		return drumSnare
+	}
+	if bar%4 == 1 || (bar+1)%4 == 0 || bar == len(a.progression)-1 {
 		return drumSnare
 	}
 	return -1
@@ -1061,7 +1078,7 @@ func (a *Chill) crashNoteAt(slot int) int {
 	if bar == 0 || a.section.Kind == FormCadence {
 		return drumCrash
 	}
-	if (bar+1)%8 == 0 {
+	if (bar+1)%4 == 0 && a.section.Kind != FormBreakdown {
 		return drumCrash
 	}
 	return -1
@@ -1069,8 +1086,53 @@ func (a *Chill) crashNoteAt(slot int) int {
 
 func (a *Chill) openHatNoteAt(slot int) int {
 	bar := slot % maxInt(1, len(a.progression))
-	if (bar+1)%4 == 0 {
+	if a.section.Kind == FormCadence {
 		return drumHiHatOpen
+	}
+	if (bar+1)%4 == 0 || bar%4 == 1 {
+		return drumHiHatOpen
+	}
+	return -1
+}
+
+func (a *Chill) kickNoteAt(slot int) int {
+	if len(a.progression) == 0 {
+		return drumKick
+	}
+	bar := (slot / 2) % len(a.progression)
+	beat := slot % 2
+	if beat == 0 {
+		return drumKick
+	}
+	if a.section.Kind == FormCadence || (bar+1)%4 == 0 {
+		return drumKick
+	}
+	if a.section.Kind == FormB && bar%2 == 0 {
+		return drumKick
+	}
+	if bar%4 == 0 {
+		return drumKick
+	}
+	return -1
+}
+
+func (a *Chill) snareFillNoteAt(slot int) int {
+	if len(a.progression) == 0 {
+		return -1
+	}
+	bar := (slot / 4) % len(a.progression)
+	step := slot % 4
+	if a.section.Kind != FormCadence && (bar+1)%4 != 0 {
+		return -1
+	}
+	if a.section.Kind == FormCadence {
+		if step >= 1 {
+			return drumSnare
+		}
+		return -1
+	}
+	if step >= 2 {
+		return drumSnare
 	}
 	return -1
 }

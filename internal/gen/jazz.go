@@ -425,31 +425,33 @@ func (a *Jazz) Seed(seedVal int64) {
 	// fires only ~40% of bars.
 	snareNotes := make([]int, numBars)
 	for i := range snareNotes {
-		snareNotes[i] = jazzSnareBrushed
+		snareNotes[i] = a.snareCompNoteAt(i)
 	}
 	core.addTrack(SF2Track{
 		Channel: drumChannel, Velocity: 52, Notes: snareNotes,
 		PeriodSec:              cycleSec,
 		Phase01:                0.75 / float64(numBars), // beat 4
+		ResolveNote:            func(slot int, _ int) int { return a.snareCompNoteAt(slot) },
 		Gate:                   0.08,
 		ResolveTimingOffsetSec: cyclicTimingOffset(18),
 		VelocityJitter:         12, TimingJitterSec: 0.010,
-		FireProbability: 0.40, // sparse fills only
+		FireProbability: 0.82,
 	})
 
 	// --- Feathered kick on beats 1 and 3 — barely audible in modern jazz,
 	// just enough to anchor the time. Velocity very low.
 	kickNotes := make([]int, 2*numBars)
 	for i := range kickNotes {
-		kickNotes[i] = jazzKickKey
+		kickNotes[i] = a.kickNoteAt(i)
 	}
 	core.addTrack(SF2Track{
 		Channel: drumChannel, Velocity: 38, Notes: kickNotes,
 		PeriodSec: cycleSec, Phase01: 0,
+		ResolveNote:            func(slot int, _ int) int { return a.kickNoteAt(slot) },
 		Gate:                   0.08,
 		ResolveTimingOffsetSec: cyclicTimingOffset(0, 3),
 		VelocityJitter:         6, TimingJitterSec: 0.004,
-		FireProbability: 0.60, // sometimes drops out, like a real bassist
+		FireProbability: 0.90,
 	})
 
 	// --- Sax solo: 2-slot-per-bar phrase with explicit rests, so the line can
@@ -524,6 +526,19 @@ func (a *Jazz) Seed(seedVal int64) {
 		ResolveNote:    func(slot int, _ int) int { return a.ghostSnareNoteAt(slot) },
 		Gate:           0.08,
 		VelocityJitter: 8, TimingJitterSec: 0.006,
+	})
+	fillNotes := make([]int, 4*numBars)
+	for i := range fillNotes {
+		fillNotes[i] = a.brushFillNoteAt(i)
+	}
+	core.addTrack(SF2Track{
+		Channel: drumChannel, Velocity: 42, Notes: fillNotes,
+		PeriodSec:      cycleSec,
+		Phase01:        0,
+		ResolveNote:    func(slot int, _ int) int { return a.brushFillNoteAt(slot) },
+		Gate:           0.06,
+		VelocityJitter: 8, TimingJitterSec: 0.005,
+		FireProbability: 0.88,
 	})
 
 	a.core = core
@@ -947,7 +962,10 @@ func (a *Jazz) DebugStatus() DebugStatus {
 
 func (a *Jazz) crashNoteAt(slot int) int {
 	bar := slot % len(a.progression)
-	if bar == 0 || (bar+1)%4 == 0 {
+	if bar == 0 || a.section.Kind == FormCadence {
+		return drumCrash
+	}
+	if (bar+1)%4 == 0 && a.section.Kind != FormBreakdown {
 		return drumCrash
 	}
 	return -1
@@ -962,7 +980,69 @@ func (a *Jazz) currentBar() int {
 
 func (a *Jazz) ghostSnareNoteAt(slot int) int {
 	bar := slot % len(a.progression)
-	if (bar+1)%4 == 0 {
+	if a.section.Kind == FormCadence {
+		return jazzSnareBrushed
+	}
+	if bar%4 == 1 || (bar+1)%4 == 0 {
+		return jazzSnareBrushed
+	}
+	return -1
+}
+
+func (a *Jazz) kickNoteAt(slot int) int {
+	if len(a.progression) == 0 {
+		return jazzKickKey
+	}
+	bar := (slot / 2) % len(a.progression)
+	beat := slot % 2
+	if beat == 0 {
+		return jazzKickKey
+	}
+	if a.section.Kind == FormCadence || (bar+1)%4 == 0 {
+		return jazzKickKey
+	}
+	if a.section.Kind == FormB && bar%2 == 0 {
+		return jazzKickKey
+	}
+	if bar%4 == 0 {
+		return jazzKickKey
+	}
+	return -1
+}
+
+func (a *Jazz) snareCompNoteAt(slot int) int {
+	if len(a.progression) == 0 {
+		return jazzSnareBrushed
+	}
+	bar := slot % len(a.progression)
+	if a.section.Kind == FormIntro && bar%2 == 1 {
+		return -1
+	}
+	if a.section.Kind == FormBreakdown && (bar+1)%4 != 0 {
+		return -1
+	}
+	if a.section.Kind == FormCadence || (bar+1)%4 == 0 || bar%4 == 1 {
+		return jazzSnareBrushed
+	}
+	return -1
+}
+
+func (a *Jazz) brushFillNoteAt(slot int) int {
+	if len(a.progression) == 0 {
+		return -1
+	}
+	bar := (slot / 4) % len(a.progression)
+	step := slot % 4
+	if a.section.Kind != FormCadence && (bar+1)%4 != 0 {
+		return -1
+	}
+	if a.section.Kind == FormCadence {
+		if step >= 1 {
+			return jazzSnareBrushed
+		}
+		return -1
+	}
+	if step >= 2 {
 		return jazzSnareBrushed
 	}
 	return -1
