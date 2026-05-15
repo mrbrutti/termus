@@ -39,4 +39,4 @@
 - [x] Bring stem and MIDI export into the main `./termus` binary so direct renders can emit full tuning artifacts without going through `listencheck`.
 - [x] Add richer SF2 performance modulation such as vibrato curves, note-level drift, and brightness shaping so sustained lines sound less static.
 - [x] Make drum writing more phrase-based with 2-bar / 4-bar memory, stronger fill targeting, and bar-to-bar anti-repetition in `jazz` and `chill`.
-- [ ] Add a TUI seed browser / A-B workflow so generated takes can be compared, replayed, and kept or rejected quickly during tuning.
+- [x] Add a TUI seed browser / A-B workflow so generated takes can be compared, replayed, and kept or rejected quickly during tuning.

@@ -14,7 +14,12 @@ import (
 
 // BuildAlgoFn constructs a fresh Algorithm for the given spec. main.go closes
 // over the loaded SoundFont (or nil) and any per-build wiring like IR setup.
-type BuildAlgoFn func(spec gen.AlgoSpec) gen.Algorithm
+type BuildAlgoFn func(spec gen.AlgoSpec, seed int64) gen.Algorithm
+
+type seedBookmark struct {
+	Spec gen.AlgoSpec
+	Seed int64
+}
 
 // Model is the bubbletea model for termus.
 type Model struct {
@@ -44,6 +49,9 @@ type Model struct {
 	genres   []gen.AlgoSpec // ordered list of switchable algorithms
 	genreIdx int            // current index into genres
 	buildFn  BuildAlgoFn    // closure used to construct a new algorithm
+	seedA    *seedBookmark
+	seedB    *seedBookmark
+	kept     map[string]seedBookmark
 
 	// Playlist auto-advance.
 	playlist     *gen.Playlist
@@ -107,8 +115,7 @@ func (m *Model) advancePlaylist() {
 	}
 	m.playlistIdx = (m.playlistIdx + 1) % len(m.playlist.Tracks)
 	track := m.playlist.Tracks[m.playlistIdx]
-	algo := m.buildFn(track.Spec)
-	algo.Seed(track.Seed)
+	algo := m.buildFn(track.Spec, track.Seed)
 	m.cmd.SwapAlgorithmFade(algo, m.playlistFade)
 	m.algo = track.Spec.Display
 	m.seed = track.Seed
@@ -133,10 +140,128 @@ func (m *Model) switchAlgo(step int) {
 	}
 	m.genreIdx = (m.genreIdx + step + len(m.genres)) % len(m.genres)
 	spec := m.genres[m.genreIdx]
-	algo := m.buildFn(spec)
+	algo := m.buildFn(spec, m.seed)
 	m.cmd.SwapAlgorithm(algo)
 	m.algo = spec.Display
 	m.flashStatus("switched: "+spec.Display, 2*time.Second)
+}
+
+func (m Model) currentSpec() (gen.AlgoSpec, bool) {
+	if m.genreIdx >= 0 && m.genreIdx < len(m.genres) {
+		return m.genres[m.genreIdx], true
+	}
+	return gen.AlgoSpec{}, false
+}
+
+func (m *Model) swapToSeed(spec gen.AlgoSpec, seed int64, status string) {
+	if m.playlist != nil || m.buildFn == nil {
+		return
+	}
+	if seed < 0 {
+		seed = 0
+	}
+	algo := m.buildFn(spec, seed)
+	m.cmd.SwapAlgorithm(algo)
+	m.algo = spec.Display
+	m.seed = seed
+	for i, g := range m.genres {
+		if g.Name == spec.Name {
+			m.genreIdx = i
+			break
+		}
+	}
+	m.flashStatus(status, 2*time.Second)
+}
+
+func (m *Model) browseSeed(delta int64) {
+	if m.playlist != nil {
+		return
+	}
+	spec, ok := m.currentSpec()
+	if !ok {
+		return
+	}
+	next := m.seed + delta
+	if next < 0 {
+		next = 0
+	}
+	m.swapToSeed(spec, next, fmt.Sprintf("seed: %d", next))
+}
+
+func (m *Model) storeSeed(slot string) {
+	if m.playlist != nil {
+		return
+	}
+	spec, ok := m.currentSpec()
+	if !ok {
+		return
+	}
+	bookmark := &seedBookmark{Spec: spec, Seed: m.seed}
+	if slot == "A" {
+		m.seedA = bookmark
+	} else {
+		m.seedB = bookmark
+	}
+	m.flashStatus(fmt.Sprintf("%s ← %s/%d", slot, spec.Display, m.seed), 2*time.Second)
+}
+
+func (m *Model) toggleSeedCompare() {
+	if m.playlist != nil {
+		return
+	}
+	switch {
+	case m.seedA != nil && seedMatches(m.seedA, m) && m.seedB != nil:
+		m.swapToSeed(m.seedB.Spec, m.seedB.Seed, fmt.Sprintf("B → %d", m.seedB.Seed))
+	case m.seedB != nil && seedMatches(m.seedB, m) && m.seedA != nil:
+		m.swapToSeed(m.seedA.Spec, m.seedA.Seed, fmt.Sprintf("A → %d", m.seedA.Seed))
+	case m.seedA != nil:
+		m.swapToSeed(m.seedA.Spec, m.seedA.Seed, fmt.Sprintf("A → %d", m.seedA.Seed))
+	case m.seedB != nil:
+		m.swapToSeed(m.seedB.Spec, m.seedB.Seed, fmt.Sprintf("B → %d", m.seedB.Seed))
+	}
+}
+
+func (m *Model) keepSeed() {
+	if m.playlist != nil {
+		return
+	}
+	spec, ok := m.currentSpec()
+	if !ok {
+		return
+	}
+	if m.kept == nil {
+		m.kept = make(map[string]seedBookmark)
+	}
+	key := bookmarkKey(spec, m.seed)
+	m.kept[key] = seedBookmark{Spec: spec, Seed: m.seed}
+	m.flashStatus(fmt.Sprintf("kept %s/%d (%d)", spec.Display, m.seed, len(m.kept)), 2*time.Second)
+}
+
+func (m *Model) rejectSeed() {
+	if m.playlist != nil {
+		return
+	}
+	spec, ok := m.currentSpec()
+	if !ok {
+		return
+	}
+	next := m.seed + 1
+	m.swapToSeed(spec, next, fmt.Sprintf("reject → %d", next))
+}
+
+func seedMatches(mark *seedBookmark, m *Model) bool {
+	return mark != nil && mark.Seed == m.seed && mark.Spec.Name == m.algoSpecName()
+}
+
+func (m Model) algoSpecName() string {
+	if spec, ok := m.currentSpec(); ok {
+		return spec.Name
+	}
+	return ""
+}
+
+func bookmarkKey(spec gen.AlgoSpec, seed int64) string {
+	return fmt.Sprintf("%s:%d", spec.Name, seed)
 }
 
 type tickMsg time.Time
@@ -210,6 +335,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.playlist != nil {
 				m.advancePlaylist()
 			}
+		case actionPrevSeed:
+			m.browseSeed(-1)
+		case actionNextSeed:
+			m.browseSeed(1)
+		case actionStoreA:
+			m.storeSeed("A")
+		case actionStoreB:
+			m.storeSeed("B")
+		case actionToggleAB:
+			m.toggleSeedCompare()
+		case actionKeepSeed:
+			m.keepSeed()
+		case actionRejectSeed:
+			m.rejectSeed()
 		}
 		return m, nil
 	case tickMsg:
@@ -309,6 +448,14 @@ func topBar(m Model, w int, theme ColorTheme) string {
 			right += "  " + rec
 		}
 	}
+	if seeds := m.seedSlotsLabel(); seeds != "" {
+		seeds = lipgloss.NewStyle().Faint(true).Render(seeds)
+		if right == "" {
+			right = seeds
+		} else {
+			right = seeds + "  " + right
+		}
+	}
 	if right != "" {
 		label = trimToWidth(label, maxInt(0, w-lipgloss.Width(right)-1))
 	}
@@ -318,6 +465,30 @@ func topBar(m Model, w int, theme ColorTheme) string {
 		pad = 1
 	}
 	return left + spaces(pad) + right
+}
+
+func (m Model) seedSlotsLabel() string {
+	parts := make([]string, 0, 3)
+	if m.seedA != nil {
+		parts = append(parts, fmt.Sprintf("A=%d", m.seedA.Seed))
+	}
+	if m.seedB != nil {
+		parts = append(parts, fmt.Sprintf("B=%d", m.seedB.Seed))
+	}
+	if len(m.kept) > 0 {
+		parts = append(parts, fmt.Sprintf("keep=%d", len(m.kept)))
+	}
+	switch len(parts) {
+	case 0:
+		return ""
+	case 1:
+		return parts[0]
+	}
+	out := parts[0]
+	for _, part := range parts[1:] {
+		out += " · " + part
+	}
+	return out
 }
 
 func debugBar(m Model, w int, theme ColorTheme) string {
@@ -354,6 +525,7 @@ func bottomBar(m Model, w int, theme ColorTheme) string {
 	if len(m.genres) > 1 {
 		hint += "   [n/p] algo"
 	}
+	hint += "   [[/]] seed   [a/b] slots   [tab] A/B   [k/x] keep/reject"
 	hint += "   [d] debug"
 	if m.playlist != nil {
 		hint += "   [s] skip"

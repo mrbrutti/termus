@@ -237,8 +237,8 @@ func main() {
 	root := audio.NewRoot(liveAlgo, ring)
 	root.SetSeed(*seed)
 	root.SetVolume(*initialVol)
-	buildFn := func(s gen.AlgoSpec) gen.Algorithm {
-		return gen.WrapDebugStatus(buildAlgo(s, *seed), presetLabel(s))
+	buildFn := func(s gen.AlgoSpec, algoSeed int64) gen.Algorithm {
+		return gen.WrapDebugStatus(buildAlgo(s, algoSeed), presetLabel(s))
 	}
 
 	model := tui.New(ring, root, liveAlgo.Name(), "Cmin", *seed, *initialVol).

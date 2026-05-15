@@ -17,6 +17,13 @@ const (
 	actionNextTrack
 	actionVisual
 	actionDebug
+	actionPrevSeed
+	actionNextSeed
+	actionStoreA
+	actionStoreB
+	actionToggleAB
+	actionKeepSeed
+	actionRejectSeed
 )
 
 func matchKey(msg tea.KeyMsg) keyAction {
@@ -43,6 +50,20 @@ func matchKey(msg tea.KeyMsg) keyAction {
 		return actionNextTrack
 	case "d":
 		return actionDebug
+	case "[":
+		return actionPrevSeed
+	case "]":
+		return actionNextSeed
+	case "a":
+		return actionStoreA
+	case "b":
+		return actionStoreB
+	case "tab":
+		return actionToggleAB
+	case "k":
+		return actionKeepSeed
+	case "x":
+		return actionRejectSeed
 	}
 	return actionNone
 }
