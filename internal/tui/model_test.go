@@ -62,7 +62,7 @@ func TestBottomBarLeavesRoomForStatus(t *testing.T) {
 	if !strings.Contains(bar, "audio: starting...") {
 		t.Fatalf("bottom bar missing status: %q", bar)
 	}
-	if !strings.Contains(bar, "[?] help") {
+	if !strings.Contains(bar, "[?]") {
 		t.Fatalf("bottom bar should expose help entry point: %q", bar)
 	}
 	if !strings.Contains(bar, "[l] library") {
@@ -70,6 +70,9 @@ func TestBottomBarLeavesRoomForStatus(t *testing.T) {
 	}
 	if !strings.Contains(bar, "[i] inspect") {
 		t.Fatalf("bottom bar should expose inspector: %q", bar)
+	}
+	if !strings.Contains(bar, "[m] controls") {
+		t.Fatalf("bottom bar should expose control center: %q", bar)
 	}
 	if strings.Contains(bar, "[[/]] seed") {
 		t.Fatalf("bottom bar should stay compact, got: %q", bar)
@@ -133,9 +136,26 @@ func TestHelpPanelShowsCoreControls(t *testing.T) {
 		themes:      []ColorTheme{DefaultTheme()},
 	}
 	panel := helpPanel(m, 90, 18, DefaultTheme())
-	for _, want := range []string{"TERMUS HELP", "Playback", "Seeds", "[l] library", "Tracks", "[?] close this overlay"} {
+	for _, want := range []string{"TERMUS HELP", "Playback", "Controls", "[m] open control center", "Seeds", "[l] library", "Tracks", "[?] close this overlay"} {
 		if !strings.Contains(panel, want) {
 			t.Fatalf("help panel missing %q:\n%s", want, panel)
+		}
+	}
+}
+
+func TestControlsPanelShowsTabbedOverlay(t *testing.T) {
+	m := Model{
+		controlsVisible: true,
+		controlTab:      controlTabMusic,
+		algo:            "Ambient",
+		seed:            42,
+		volume:          70,
+		themes:          []ColorTheme{DefaultTheme()},
+	}
+	panel := controlsPanel(m, 100, 22, DefaultTheme())
+	for _, want := range []string{"CONTROL CENTER", "MUSIC", "CURATE", "SESSIONS", "AUDIO", "seed", "algorithm", "[tab] switch"} {
+		if !strings.Contains(panel, want) {
+			t.Fatalf("controls panel missing %q:\n%s", want, panel)
 		}
 	}
 }

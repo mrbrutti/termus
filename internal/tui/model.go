@@ -41,6 +41,7 @@ type Model struct {
 	libraryVisible     bool
 	inspectorVisible   bool
 	exportVisible      bool
+	controlsVisible    bool
 	exportBusy         bool
 	reducedChrome      bool
 	splashVisible      bool
@@ -64,6 +65,8 @@ type Model struct {
 	savedSeeds []savedSeedRecord
 	libraryIdx int
 	exporter   *ExportController
+	controlTab controlTab
+	controlRow int
 
 	// Playlist auto-advance.
 	playlist        *gen.Playlist
@@ -323,6 +326,21 @@ func (m *Model) toggleExportDrawer() {
 	m.flashStatus("export: off", 2*time.Second)
 }
 
+func (m *Model) toggleControls() {
+	m.controlsVisible = !m.controlsVisible
+	if m.controlsVisible {
+		m.helpVisible = false
+		m.libraryVisible = false
+		m.inspectorVisible = false
+		m.exportVisible = false
+		m.splashVisible = false
+		m.controlRow = 0
+		m.flashStatus("controls: on", 2*time.Second)
+		return
+	}
+	m.flashStatus("controls: off", 2*time.Second)
+}
+
 func (m *Model) toggleReducedChrome() {
 	m.reducedChrome = !m.reducedChrome
 	if m.reducedChrome {
@@ -519,11 +537,36 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-		action := matchKey(msg)
-		if m.helpVisible && action != actionHelp && action != actionQuit && action != actionZen {
+		if m.controlsVisible {
+			switch msg.String() {
+			case "q", "ctrl+c":
+				return m, tea.Quit
+			case "m", "esc":
+				m.toggleControls()
+			case "tab":
+				m.controlTab = m.controlTab.next()
+				m.controlRow = 0
+			case "shift+tab":
+				m.controlTab = m.controlTab.prev()
+				m.controlRow = 0
+			case "up":
+				m.moveControlRow(-1)
+			case "down":
+				m.moveControlRow(1)
+			case "left":
+				m.adjustControlRow(-1)
+			case "right":
+				m.adjustControlRow(1)
+			case "enter", " ":
+				return m, m.activateControlRow()
+			}
 			return m, nil
 		}
-		if m.inspectorVisible && action != actionInspector && action != actionQuit && action != actionExport && action != actionZen {
+		action := matchKey(msg)
+		if m.helpVisible && action != actionHelp && action != actionQuit && action != actionZen && action != actionControls {
+			return m, nil
+		}
+		if m.inspectorVisible && action != actionInspector && action != actionQuit && action != actionExport && action != actionZen && action != actionControls {
 			return m, nil
 		}
 		switch action {
@@ -591,6 +634,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.toggleInspector()
 		case actionExport:
 			m.toggleExportDrawer()
+		case actionControls:
+			m.toggleControls()
 		case actionZen:
 			m.toggleReducedChrome()
 		case actionNextAlgo:
@@ -673,6 +718,8 @@ func (m Model) View() string {
 		body = inspectorPanel(m, innerW, innerH, theme)
 	} else if m.exportVisible {
 		body = exportPanel(m, innerW, innerH, theme)
+	} else if m.controlsVisible {
+		body = controlsPanel(m, innerW, innerH, theme)
 	} else if m.splashVisible {
 		body = splashPanel(m, innerW, innerH, theme)
 	}
@@ -987,8 +1034,9 @@ func bottomBar(m Model, w int, theme ColorTheme, compact bool) string {
 			"[l] library",
 			"[i] inspect",
 			"[e] export",
-			"[z] zen",
+			"[m] controls",
 			"[?] help",
+			"[z] zen",
 		}
 	}
 	if m.recording {
@@ -1017,12 +1065,14 @@ func bottomBar(m Model, w int, theme ColorTheme, compact bool) string {
 		hintParts = []string{"[i] close", "[e] export", "[r] record", "[q] quit"}
 	} else if m.exportVisible {
 		hintParts = []string{"[w] wav", "[m] midi", "[t] stems", "[r] record", "[e] close", "[q] quit"}
+	} else if m.controlsVisible {
+		hintParts = []string{"[↑↓] browse", "[←→] adjust", "[enter] apply", "[tab] next tab", "[m] close", "[q] quit"}
 	}
 	hint := strings.Join(hintParts, "   ")
 
 	status := m.currentStatus(time.Now())
 	if status != "" {
-		status = trimToWidth(status, maxInt(0, w/2))
+		status = trimToWidth(status, maxInt(0, w/3))
 		hint = trimToWidth(hint, maxInt(0, w-lipgloss.Width(status)-1))
 	}
 	left := lipgloss.NewStyle().Faint(true).Render(hint)
@@ -1043,6 +1093,7 @@ func helpPanel(m Model, w, h int, theme ColorTheme) string {
 	lines := []string{
 		styleHelpLine(theme, false, "Playback", "[space] pause/resume   [↑↓] volume   [r] record"),
 		styleHelpLine(theme, false, "Look", "[C] visual   [c] theme   [d] debug   [i] inspect   [z] zen"),
+		styleHelpLine(theme, false, "Controls", "[m] open control center   [tab] switch tabs   [←→] adjust"),
 		styleHelpLine(theme, false, "Seeds", "[[/]] browse   [a/b] store   [tab] compare   [k/x] keep/reject   [l] library"),
 		styleHelpLine(theme, false, "Export", "[e] drawer   [w] wav   [m] midi   [t] stems"),
 		styleHelpLine(theme, false, "Tracks", "[n/p] algorithm   [s] skip playlist track"),
@@ -1103,7 +1154,7 @@ func splashPanel(m Model, w, h int, theme ColorTheme) string {
 		"",
 		styleHelpLine(theme, false, "Play", "[space] pause/resume   [↑↓] volume   [C] visual"),
 		styleHelpLine(theme, false, "Browse", "[[/]] seed   [a/b] store   [tab] compare"),
-		styleHelpLine(theme, false, "Inspect", "[d] debug   [i] inspector   [l] library"),
+		styleHelpLine(theme, false, "Inspect", "[d] debug   [i] inspector   [l] library   [m] controls"),
 		styleHelpLine(theme, false, "Export", "[e] export drawer   [r] record   [z] zen"),
 		"",
 		lipgloss.NewStyle().Faint(true).Render("Press any key to start exploring."),

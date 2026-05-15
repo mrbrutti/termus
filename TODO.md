@@ -54,7 +54,7 @@
 
 ## Control Center
 
-- [ ] Add a toggleable control-center panel for advanced music, session, curation, and audio actions, and document it in the `?` help overlay without expanding the default chrome.
+- [x] Add a toggleable control-center panel for advanced music, session, curation, and audio actions, and document it in the `?` help overlay without expanding the default chrome.
 - [ ] Add saveable sessions that persist the current algorithm, seed, visual, theme, volume, and playback context for later recall.
 - [ ] Add favorites, ratings, tags, recent history, and best-takes browsing for seeds so curation can happen inside the app instead of only through raw seed numbers.
 - [ ] Add live musical controls behind the panel, including density, brightness, swing, reverb, motion, and drone-depth style macros where the active algorithm supports them.

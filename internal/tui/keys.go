@@ -21,6 +21,7 @@ const (
 	actionLibrary
 	actionInspector
 	actionExport
+	actionControls
 	actionZen
 	actionPrevSeed
 	actionNextSeed
@@ -63,6 +64,8 @@ func matchKey(msg tea.KeyMsg) keyAction {
 		return actionInspector
 	case "e":
 		return actionExport
+	case "m":
+		return actionControls
 	case "z":
 		return actionZen
 	case "[":
