@@ -69,9 +69,90 @@ type chillChord struct {
 	label string // human label, for debug/logging
 }
 
-// chillProgressions: each is a 4-chord turnaround. The first three are
-// major-key jazz turnarounds; the last two are minor-key (very common in
-// modern lofi).
+// chillChordOption extends chillChord with a list of valid next-chord
+// indices in the same palette. Pattern lifted from meel-hd/lofi-engine's
+// state-machine chord grammar — each chord knows what can follow it,
+// producing musically-coherent progressions of arbitrary length without
+// us hand-curating every possibility. Beats hand-curated 4-chord loops
+// for variety; loses a little of their tightness.
+type chillChordOption struct {
+	tones    []int
+	label    string
+	nextIdxs []int
+}
+
+// Major-key chord grammar. Indices match diatonic scale degrees so the
+// nextIdxs read like Roman-numeral progression rules:
+//   I    → ii iii IV V vi vii (root chord, can go anywhere)
+//   ii   → iii V vii          (predominant)
+//   iii  → IV vi              (median, weak)
+//   IV   → ii V               (subdominant → predominant or dominant)
+//   V    → I iii vi           (dominant → tonic or deceptive)
+//   vi   → ii IV              (relative-minor area)
+//   vii  → I iii              (leading-tone)
+var chillMajorChordGrammar = []chillChordOption{
+	{tones: []int{0, 4, 7, 11}, label: "Imaj7", nextIdxs: []int{1, 2, 3, 4, 5, 6}},
+	{tones: []int{2, 5, 9, 12}, label: "ii7", nextIdxs: []int{2, 4, 6}},
+	{tones: []int{4, 7, 11, 14}, label: "iii7", nextIdxs: []int{3, 5}},
+	{tones: []int{5, 9, 12, 16}, label: "IVmaj7", nextIdxs: []int{1, 4}},
+	{tones: []int{7, 11, 14, 17}, label: "V7", nextIdxs: []int{0, 2, 5}},
+	{tones: []int{9, 12, 16, 19}, label: "vi7", nextIdxs: []int{1, 3}},
+	{tones: []int{11, 14, 17, 21}, label: "vii_m7b5", nextIdxs: []int{0, 2}},
+}
+
+// Minor-key chord grammar:
+//   i   → iv V VI VII III     (tonic, goes most places)
+//   iv  → i V VII             (subdominant)
+//   V   → i VI                (cadential dominant; borrowed from harmonic minor)
+//   VI  → iv VII              (relative-major area)
+//   VII → i III               (subtonic resolves to tonic or relative major)
+//   III → iv VI               (relative major)
+var chillMinorChordGrammar = []chillChordOption{
+	{tones: []int{0, 3, 7, 10}, label: "i7", nextIdxs: []int{1, 2, 3, 4, 5}},
+	{tones: []int{5, 8, 12, 15}, label: "iv7", nextIdxs: []int{0, 2, 4}},
+	{tones: []int{7, 11, 14, 17}, label: "V7", nextIdxs: []int{0, 3}},
+	{tones: []int{8, 12, 15, 19}, label: "VImaj7", nextIdxs: []int{1, 4}},
+	{tones: []int{10, 14, 17, 20}, label: "VII7", nextIdxs: []int{0, 5}},
+	{tones: []int{3, 7, 10, 14}, label: "IIImaj7", nextIdxs: []int{1, 3}},
+}
+
+// markovWalkChords generates `length` chords by walking the chord grammar.
+// Starts on a stable degree (tonic 70% of the time, V 20%, vi 10%) and
+// follows each chord's nextIdxs list to pick the next one.
+func markovWalkChords(rng *rand.Rand, grammar []chillChordOption, length int) []chillChord {
+	out := make([]chillChord, length)
+	var idx int
+	switch r := rng.Float64(); {
+	case r < 0.70:
+		idx = 0 // tonic
+	case r < 0.90:
+		// "V" / dominant chord — for both grammars, that's index 4 (V7) or
+		// for the minor table also index 4 (VII7). Both are legitimate
+		// "non-tonic" openings.
+		idx = 4
+	default:
+		// "relative minor / VI" — index 5 in both tables
+		idx = 5
+	}
+	if idx >= len(grammar) {
+		idx = 0
+	}
+	out[0] = chillChord{tones: grammar[idx].tones, label: grammar[idx].label}
+	for i := 1; i < length; i++ {
+		nexts := grammar[idx].nextIdxs
+		if len(nexts) == 0 {
+			idx = 0
+		} else {
+			idx = nexts[rng.Intn(len(nexts))]
+		}
+		out[i] = chillChord{tones: grammar[idx].tones, label: grammar[idx].label}
+	}
+	return out
+}
+
+// chillProgressions: legacy hand-curated 4-chord turnarounds. Kept as a
+// fallback for the 25% of seeds that go this route — tight Imaj7-VI-IV-V
+// loops still have their charm vs. the 8-chord Markov walks below.
 var chillProgressions = [][]chillChord{
 	// Major: ii-V-I-VI (classic jazz)
 	{
@@ -229,8 +310,22 @@ func (a *Chill) Seed(seedVal int64) {
 	// producing.
 	core.setVinylCrackle(6, 0.022, 1.5)
 
-	// Pick a progression.
-	a.progression = chillProgressions[a.rng.Intn(len(chillProgressions))]
+	// Pick a progression. 75% of seeds get a Markov-walked 8-chord progression
+	// (per chord grammar rules above); 25% get a hand-curated 4-chord
+	// turnaround. The two modes have different feels — Markov walks tend
+	// to wander more "compositionally" and are less predictable; the
+	// hand-curated turnarounds are tight loops that feel like classic
+	// lofi study-beat backings.
+	if a.rng.Float64() < 0.75 {
+		// 60% major-key, 40% minor for the Markov walks.
+		grammar := chillMajorChordGrammar
+		if a.rng.Float64() < 0.40 {
+			grammar = chillMinorChordGrammar
+		}
+		a.progression = markovWalkChords(a.rng, grammar, 8)
+	} else {
+		a.progression = chillProgressions[a.rng.Intn(len(chillProgressions))]
+	}
 
 	// Tempo: 65 BPM ± 4 (61–69 BPM range, seed-driven). Per research, lofi
 	// sits at 65–95 BPM and the sweet spot for "doesn't tire the listener
