@@ -19,13 +19,7 @@ func testSamples(n int) []float64 {
 func TestEachVisualRendersWithoutPanic(t *testing.T) {
 	const w, h = 60, 10
 	samples := testSamples(2048)
-	ctx := RenderContext{
-		Theme: DefaultTheme(),
-		Background: AnimeBackground{
-			Enabled: true,
-			Frame:   12,
-		},
-	}
+	ctx := RenderContext{Theme: DefaultTheme()}
 	for _, v := range Visuals {
 		out := v.Render(samples, w, h, ctx)
 		lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
@@ -52,19 +46,5 @@ func TestDetectAdaptiveUIForAscii(t *testing.T) {
 	ui := detectAdaptiveUIWith(termenv.Ascii, true)
 	if len(ui.Themes) != 1 || ui.Themes[0].Name != "mono" {
 		t.Fatalf("ascii profile should force mono theme, got %+v", ui.Themes)
-	}
-}
-
-func TestAnimeBackgroundAddsAsciiWhenForegroundBlank(t *testing.T) {
-	ctx := RenderContext{
-		Theme: DefaultTheme(),
-		Background: AnimeBackground{
-			Enabled: true,
-			Frame:   8,
-		},
-	}
-	out := RenderBars(make([]float64, 128), 32, 8, ctx)
-	if !strings.ContainsAny(out, ".+*#/|~()_\\") {
-		t.Fatalf("expected animated ASCII background glyphs, got:\n%s", out)
 	}
 }

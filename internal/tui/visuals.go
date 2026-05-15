@@ -1,9 +1,11 @@
 package tui
 
 import (
-	"github.com/madelynnblue/go-dsp/fft"
 	"math"
 	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/madelynnblue/go-dsp/fft"
 )
 
 // VisualStyle is one renderable visualization mode. Render produces a w×h
@@ -11,6 +13,11 @@ import (
 type VisualStyle struct {
 	Name   string
 	Render func(samples []float64, w, h int, ctx RenderContext) string
+}
+
+// RenderContext bundles the non-audio styling inputs shared by all visuals.
+type RenderContext struct {
+	Theme ColorTheme
 }
 
 // Visuals is the ordered list of selectable visualization styles. [C] in the
@@ -253,6 +260,12 @@ func renderMirrorColumns(bars []float64, h int, ctx RenderContext) string {
 		b.WriteByte('\n')
 	}
 	return b.String()
+}
+
+func renderCell(ch rune, cx, cy, w, h int, ctx RenderContext) string {
+	return lipgloss.NewStyle().
+		Foreground(ctx.Theme.ColorAt(cx, cy, w, h)).
+		Render(string(ch))
 }
 
 // blankCells returns an empty w×h grid as the renderer's "nothing to draw"

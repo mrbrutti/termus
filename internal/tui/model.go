@@ -36,7 +36,6 @@ type Model struct {
 	visualIdx int // index into Visuals
 	themes    []ColorTheme
 	ui        AdaptiveUI
-	bgFrame   int
 
 	// Algorithm switching ([n]/[p]).
 	genres   []gen.AlgoSpec // ordered list of switchable algorithms
@@ -201,7 +200,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tickMsg:
-		m.bgFrame++
 		if m.playlist != nil && !m.paused && time.Now().After(m.nextTrackAt) {
 			m.advancePlaylist()
 		}
@@ -224,10 +222,6 @@ func (m Model) View() string {
 	visual := Visuals[m.visualIdx]
 	scopeStr := visual.Render(samples, innerW, innerH, RenderContext{
 		Theme: theme,
-		Background: AnimeBackground{
-			Enabled: true,
-			Frame:   m.bgFrame,
-		},
 	})
 
 	top := topBar(m, innerW, theme)

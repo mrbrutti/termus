@@ -20,8 +20,8 @@ func RenderBrailleThemed(samples []float64, w, h int, theme ColorTheme) string {
 	return RenderBrailleWithContext(samples, w, h, RenderContext{Theme: theme})
 }
 
-// RenderBrailleWithContext is the background-aware braille renderer used by
-// the TUI's visual system.
+// RenderBrailleWithContext is the context-aware braille renderer used by the
+// TUI's visual system.
 func RenderBrailleWithContext(samples []float64, w, h int, ctx RenderContext) string {
 	if w < 4 || h < 1 {
 		return "(too small)\n"
