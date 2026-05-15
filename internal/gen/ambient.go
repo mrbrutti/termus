@@ -45,6 +45,7 @@ type Ambient struct {
 	samplesElapsed int64
 	nextChordAt    int64
 	nextSectionAt  int64
+	section        FormSection
 
 	bellsOn   *bool
 	celestaOn *bool
@@ -53,8 +54,10 @@ type Ambient struct {
 	// against the current chord at fire time so the harmony actually moves.
 	bellContour        []int
 	bellStartDegree    int
+	bellMotifs         MotifMemory
 	celestaContour     []int
 	celestaStartDegree int
+	celestaMotifs      MotifMemory
 }
 
 // ambientChord is one harmonic center: a root offset from the key center,
@@ -119,6 +122,8 @@ func (a *Ambient) Seed(seedVal int64) {
 	a.bellStartDegree = a.rng.Intn(3)
 	a.celestaContour = append([]int(nil), melodicPhrases[3][:4]...)
 	a.celestaStartDegree = 1 + a.rng.Intn(2)
+	a.bellMotifs = a.makeBellMotifs()
+	a.celestaMotifs = a.makeCelestaMotifs()
 	a.scheduleNextChord()
 
 	bellsStart := true
@@ -126,6 +131,7 @@ func (a *Ambient) Seed(seedVal int64) {
 	a.bellsOn = &bellsStart
 	a.celestaOn = &celestaStart
 	a.scheduleNextSection()
+	a.syncSection()
 
 	core, err := newSF2Core(a.sf, 3.2, seedVal)
 	if err != nil {
@@ -264,6 +270,7 @@ func (a *Ambient) Seed(seedVal int64) {
 	})
 
 	a.core = core
+	a.applyArrangement()
 }
 
 // padNote returns one MIDI key for the pad/strings, picking chord tone
@@ -318,7 +325,8 @@ func (a *Ambient) bellNoteAt(voice, slot int) int {
 		return 72
 	}
 	c := a.chords[a.currentChordIdx]
-	key := scaleNoteAt(a.bellContour, slot+voice*2, c.tones, a.currentRoot()+c.rootSemi+36, a.bellStartDegree, 0)
+	phrase := a.bellMotifs.PhraseFor(a.section.Kind)
+	key := scaleNoteAt(phrase, slot+voice*2, c.tones, a.currentRoot()+c.rootSemi+36, a.bellStartDegree, 0)
 	return clampMidiToRange(key, 72, 96)
 }
 
@@ -327,8 +335,15 @@ func (a *Ambient) celestaNote(slot int) int {
 	if len(a.chords) == 0 {
 		return 84
 	}
+	phrase := a.celestaMotifs.PhraseFor(a.section.Kind)
+	if len(phrase) == 0 {
+		return -1
+	}
+	if a.bellsOn != nil && *a.bellsOn && a.section.Kind != FormB && slot%len(phrase) < len(phrase)/2 {
+		return -1
+	}
 	c := a.chords[a.currentChordIdx]
-	key := scaleNoteAt(a.celestaContour, slot, c.tones, a.currentRoot()+c.rootSemi+48, a.celestaStartDegree, 0)
+	key := scaleNoteAt(phrase, slot, c.tones, a.currentRoot()+c.rootSemi+48, a.celestaStartDegree, 0)
 	return clampMidiToRange(key, 84, 96)
 }
 
@@ -376,6 +391,9 @@ func (a *Ambient) advance() {
 		}
 		a.scheduleNextSection()
 	}
+	if chordAdvanced {
+		a.syncSection()
+	}
 }
 
 func (a *Ambient) DebugStatus() DebugStatus {
@@ -383,18 +401,10 @@ func (a *Ambient) DebugStatus() DebugStatus {
 	if len(a.chords) > 0 {
 		chord = a.chords[a.currentChordIdx].label
 	}
-	section := "pad"
-	switch {
-	case a.bellsOn != nil && *a.bellsOn && a.celestaOn != nil && *a.celestaOn:
-		section = "bells+celesta"
-	case a.bellsOn != nil && *a.bellsOn:
-		section = "bells"
-	case a.celestaOn != nil && *a.celestaOn:
-		section = "celesta"
-	}
 	return DebugStatus{
 		Chord:   chord,
-		Section: section,
+		Section: string(a.section.Kind),
+		Bar:     a.currentChordIdx + 1,
 	}
 }
 
@@ -416,4 +426,69 @@ func (a *Ambient) Next(left, right []float64) {
 	a.advance()
 	a.core.renderInto(left, right)
 	a.samplesElapsed += int64(len(left))
+}
+
+func (a *Ambient) makeBellMotifs() MotifMemory {
+	base := trimOrRepeatPhrase(a.bellContour, 8, 0)
+	return MotifMemory{
+		A:       base,
+		Aprime:  rotatePhrase(sequencePhrase(base, map[int]int{6: 4, 4: 2, -2: 0}), 1),
+		B:       reversePhrase(base),
+		Cadence: []int{0, 2, 0, -2},
+		Outro:   []int{0, -2, 0, -2},
+	}
+}
+
+func (a *Ambient) makeCelestaMotifs() MotifMemory {
+	base := trimOrRepeatPhrase(a.celestaContour, 6, 0)
+	answer := stitchPhrase([]int{-2, 0}, rotatePhrase(base, 1))
+	return MotifMemory{
+		A:       base,
+		Aprime:  sequencePhrase(base, map[int]int{4: 2, 2: 0}),
+		B:       trimOrRepeatPhrase(answer, len(base), 0),
+		Cadence: []int{0, 2, 0, 2},
+		Outro:   []int{0, -2},
+	}
+}
+
+func (a *Ambient) syncSection() {
+	cadence := len(a.chords) > 0 && a.currentChordIdx == len(a.chords)-1
+	bells := a.bellsOn != nil && *a.bellsOn
+	celesta := a.celestaOn != nil && *a.celestaOn
+	a.section = textureSectionForLayers(bells, celesta, cadence)
+	if a.samplesElapsed == 0 {
+		a.section = sectionTemplate(FormIntro)
+	}
+	a.applyArrangement()
+}
+
+func (a *Ambient) applyArrangement() {
+	if a.core == nil {
+		return
+	}
+	texture := SectionSceneFor(a.section, RoleTexture)
+	lead := SectionSceneFor(a.section, RoleLead)
+	bass := SectionSceneFor(a.section, RoleBass)
+	a.core.setReverbSend(0, SectionCC(100, texture.ReverbDelta))
+	a.core.setReverbSend(1, SectionCC(96, texture.ReverbDelta))
+	a.core.setReverbSend(2, SectionCC(110, texture.ReverbDelta))
+	a.core.setReverbSend(3, SectionCC(120, lead.ReverbDelta))
+	a.core.setReverbSend(4, SectionCC(120, lead.ReverbDelta))
+	a.core.setReverbSend(5, SectionCC(30, bass.ReverbDelta))
+	a.core.setChannelCutoff(0, SectionCC(72, texture.BrightnessDelta))
+	a.core.setChannelCutoff(1, SectionCC(64, texture.BrightnessDelta))
+	a.core.setChannelCutoff(2, SectionCC(80, texture.BrightnessDelta))
+	a.core.setChannelCutoff(3, SectionCC(110, lead.BrightnessDelta))
+	a.core.setChannelCutoff(4, SectionCC(110, lead.BrightnessDelta))
+	a.core.setChannelCutoff(5, SectionCC(56, bass.BrightnessDelta))
+	a.core.setChannelExpression(0, SectionCC(98, texture.ExpressionDelta))
+	a.core.setChannelExpression(1, SectionCC(96, texture.ExpressionDelta))
+	a.core.setChannelExpression(2, SectionCC(100, texture.ExpressionDelta))
+	a.core.setChannelExpression(3, SectionCC(108, lead.ExpressionDelta))
+	a.core.setChannelExpression(4, SectionCC(104, lead.ExpressionDelta))
+	a.core.setChannelExpression(5, SectionCC(100, bass.ExpressionDelta))
+}
+
+func (a *Ambient) SectionGain() float64 {
+	return SectionMixProfileFor(a.section).Gain
 }

@@ -83,3 +83,27 @@ func trimOrRepeatPhrase(src []int, n int, fill int) []int {
 	}
 	return out
 }
+
+func reversePhrase(src []int) []int {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make([]int, len(src))
+	for i := range src {
+		out[len(src)-1-i] = src[i]
+	}
+	return out
+}
+
+func rotatePhrase(src []int, shift int) []int {
+	if len(src) == 0 {
+		return nil
+	}
+	n := len(src)
+	shift = ((shift % n) + n) % n
+	out := make([]int, n)
+	for i := range src {
+		out[i] = src[(i+shift)%n]
+	}
+	return out
+}

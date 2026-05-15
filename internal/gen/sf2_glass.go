@@ -40,14 +40,18 @@ type SF2Glass struct {
 	samplesElapsed int64
 	nextChordAt    int64
 	nextSectionAt  int64
+	section        FormSection
 	musicBoxOn     *bool
 
 	bellContour         []int
 	bellStartDegree     int
+	bellMotifs          MotifMemory
 	celestaContour      []int
 	celestaStartDegree  int
+	celestaMotifs       MotifMemory
 	musicBoxContour     []int
 	musicBoxStartDegree int
+	musicBoxMotifs      MotifMemory
 }
 
 // majorPentatonic: 0, 2, 4, 7, 9 (the "happy" pentatonic).
@@ -87,11 +91,15 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	a.celestaStartDegree = 1 + a.rng.Intn(2)
 	a.musicBoxContour = append([]int(nil), melodicPhrases[5][:4]...)
 	a.musicBoxStartDegree = a.rng.Intn(3)
+	a.bellMotifs = a.makeBellMotifs()
+	a.celestaMotifs = a.makeCelestaMotifs()
+	a.musicBoxMotifs = a.makeMusicBoxMotifs()
 	a.scheduleNextChord()
 
 	musicBoxStart := true
 	a.musicBoxOn = &musicBoxStart
 	a.scheduleNextSection()
+	a.syncSection()
 
 	// Master gain raised aggressively (3.0 → 4.2) — bell content is sparse
 	// by nature so the long silences pull the RMS down even with reasonable
@@ -155,7 +163,7 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 0, Velocity: 72, Notes: bellSlots,
 		PeriodSec: 21.7, Phase01: a.rng.Float64(),
-		ResolveNote:    func(slot int, _ int) int { return a.phraseNoteAt(slot, a.bellContour, a.bellStartDegree, 12, 60, 96) },
+		ResolveNote:    func(slot int, _ int) int { return a.bellPhraseNote(slot) },
 		Gate:           0.70,
 		VelocityJitter: 16, TimingJitterSec: 0.10,
 	})
@@ -166,9 +174,7 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 1, Velocity: 56, Notes: celestaSlots,
 		PeriodSec: 29.7, Phase01: a.rng.Float64(),
-		ResolveNote: func(slot int, _ int) int {
-			return a.phraseNoteAt(slot, a.celestaContour, a.celestaStartDegree, 24, 72, 96)
-		},
+		ResolveNote:    func(slot int, _ int) int { return a.celestaPhraseNote(slot) },
 		Gate:           0.56,
 		VelocityJitter: 14, TimingJitterSec: 0.10,
 	})
@@ -194,10 +200,10 @@ func (a *SF2Glass) Seed(seedVal int64) {
 		Channel: 3, Velocity: 44, Notes: musicBoxSlots,
 		PeriodSec: 43.1, Phase01: a.rng.Float64(),
 		ResolveNote: func(slot int, _ int) int {
-			if slot%len(musicBoxSlots) >= len(a.musicBoxContour) {
+			if slot%len(musicBoxSlots) >= len(a.musicBoxMotifs.PhraseFor(a.section.Kind)) {
 				return -1
 			}
-			return a.phraseNoteAt(slot, a.musicBoxContour, a.musicBoxStartDegree, 12, 72, 92)
+			return a.musicBoxPhraseNote(slot)
 		},
 		Gate:           0.52,
 		VelocityJitter: 12, TimingJitterSec: 0.12,
@@ -244,6 +250,7 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	})
 
 	a.core = core
+	a.applyArrangement()
 }
 
 func (a *SF2Glass) phraseNoteAt(slot int, contour []int, startDegree, octaveBump, low, high int) int {
@@ -251,6 +258,32 @@ func (a *SF2Glass) phraseNoteAt(slot int, contour []int, startDegree, octaveBump
 	root := a.currentRoot() + chordOff + 12 + octaveBump
 	key := scaleNoteAt(contour, slot, a.scale, root, startDegree, 0)
 	return clampMidiToRange(key, low, high)
+}
+
+func (a *SF2Glass) bellPhraseNote(slot int) int {
+	return a.phraseNoteAt(slot, a.bellMotifs.PhraseFor(a.section.Kind), a.bellStartDegree, 12, 60, 96)
+}
+
+func (a *SF2Glass) celestaPhraseNote(slot int) int {
+	phrase := a.celestaMotifs.PhraseFor(a.section.Kind)
+	if len(phrase) == 0 {
+		return -1
+	}
+	if a.section.Kind != FormB && slot%len(phrase) < len(phrase)/2 {
+		return -1
+	}
+	return a.phraseNoteAt(slot, phrase, a.celestaStartDegree, 24, 72, 96)
+}
+
+func (a *SF2Glass) musicBoxPhraseNote(slot int) int {
+	phrase := a.musicBoxMotifs.PhraseFor(a.section.Kind)
+	if len(phrase) == 0 {
+		return -1
+	}
+	if a.section.Kind != FormCadence && slot%len(phrase) < len(phrase)/2 {
+		return -1
+	}
+	return a.phraseNoteAt(slot, phrase, a.musicBoxStartDegree, 12, 72, 92)
 }
 
 // bellNote returns a pentatonic-scale MIDI key for a bell voice. voice picks
@@ -321,6 +354,9 @@ func (a *SF2Glass) advance() {
 		*a.musicBoxOn = !*a.musicBoxOn
 		a.scheduleNextSection()
 	}
+	if chordAdvanced {
+		a.syncSection()
+	}
 }
 
 func (a *SF2Glass) SetReverbIR(ir []float64, wet float64) {
@@ -330,17 +366,14 @@ func (a *SF2Glass) SetReverbIR(ir []float64, wet float64) {
 }
 
 func (a *SF2Glass) DebugStatus() DebugStatus {
-	section := "halo"
-	if a.musicBoxOn != nil && *a.musicBoxOn {
-		section = "halo+box"
-	}
 	chord := ""
 	if len(a.chordOffsets) > 0 {
 		chord = chordOffsetLabel(a.chordOffsets[a.currentChordIdx])
 	}
 	return DebugStatus{
 		Chord:   chord,
-		Section: section,
+		Section: string(a.section.Kind),
+		Bar:     a.currentChordIdx + 1,
 	}
 }
 
@@ -355,4 +388,81 @@ func (a *SF2Glass) Next(left, right []float64) {
 	a.advance()
 	a.core.renderInto(left, right)
 	a.samplesElapsed += int64(len(left))
+}
+
+func (a *SF2Glass) makeBellMotifs() MotifMemory {
+	base := trimOrRepeatPhrase(a.bellContour, 8, 0)
+	return MotifMemory{
+		A:       base,
+		Aprime:  rotatePhrase(sequencePhrase(base, map[int]int{6: 4, 4: 2}), 1),
+		B:       reversePhrase(base),
+		Cadence: []int{0, 2, 4, 2},
+		Outro:   []int{0, -2},
+	}
+}
+
+func (a *SF2Glass) makeCelestaMotifs() MotifMemory {
+	base := trimOrRepeatPhrase(a.celestaContour, 8, 0)
+	return MotifMemory{
+		A:       base,
+		Aprime:  rotatePhrase(base, 2),
+		B:       stitchPhrase([]int{-2, 0}, trimOrRepeatPhrase(base, 4, 0)),
+		Cadence: []int{2, 4, 2, 0},
+		Outro:   []int{0, -2},
+	}
+}
+
+func (a *SF2Glass) makeMusicBoxMotifs() MotifMemory {
+	base := trimOrRepeatPhrase(a.musicBoxContour, 4, 0)
+	return MotifMemory{
+		A:       base,
+		Aprime:  rotatePhrase(base, 1),
+		B:       reversePhrase(base),
+		Cadence: []int{0, 2, 0, -2},
+		Outro:   []int{0, -2},
+	}
+}
+
+func (a *SF2Glass) syncSection() {
+	cadence := len(a.chordOffsets) > 0 && a.currentChordIdx == len(a.chordOffsets)-1 && a.musicBoxOn != nil && *a.musicBoxOn
+	musicBox := a.musicBoxOn != nil && *a.musicBoxOn
+	a.section = textureSectionForLayers(true, musicBox, cadence)
+	if !musicBox && a.currentChordIdx == 0 {
+		a.section = sectionTemplate(FormIntro)
+	}
+	a.applyArrangement()
+}
+
+func (a *SF2Glass) applyArrangement() {
+	if a.core == nil {
+		return
+	}
+	lead := SectionSceneFor(a.section, RoleLead)
+	texture := SectionSceneFor(a.section, RoleTexture)
+	bass := SectionSceneFor(a.section, RoleBass)
+	a.core.setReverbSend(0, SectionCC(120, lead.ReverbDelta))
+	a.core.setReverbSend(1, SectionCC(120, lead.ReverbDelta))
+	a.core.setReverbSend(2, SectionCC(120, lead.ReverbDelta))
+	a.core.setReverbSend(3, SectionCC(110, texture.ReverbDelta))
+	a.core.setReverbSend(4, SectionCC(96, texture.ReverbDelta))
+	a.core.setReverbSend(5, SectionCC(100, texture.ReverbDelta))
+	a.core.setReverbSend(6, SectionCC(30, bass.ReverbDelta))
+	a.core.setChannelCutoff(0, SectionCC(120, lead.BrightnessDelta))
+	a.core.setChannelCutoff(1, SectionCC(120, lead.BrightnessDelta))
+	a.core.setChannelCutoff(2, SectionCC(120, lead.BrightnessDelta))
+	a.core.setChannelCutoff(3, SectionCC(110, texture.BrightnessDelta))
+	a.core.setChannelCutoff(4, SectionCC(60, texture.BrightnessDelta))
+	a.core.setChannelCutoff(5, SectionCC(76, texture.BrightnessDelta))
+	a.core.setChannelCutoff(6, SectionCC(50, bass.BrightnessDelta))
+	a.core.setChannelExpression(0, SectionCC(110, lead.ExpressionDelta))
+	a.core.setChannelExpression(1, SectionCC(104, lead.ExpressionDelta))
+	a.core.setChannelExpression(2, SectionCC(96, lead.ExpressionDelta))
+	a.core.setChannelExpression(3, SectionCC(98, texture.ExpressionDelta))
+	a.core.setChannelExpression(4, SectionCC(96, texture.ExpressionDelta))
+	a.core.setChannelExpression(5, SectionCC(98, texture.ExpressionDelta))
+	a.core.setChannelExpression(6, SectionCC(100, bass.ExpressionDelta))
+}
+
+func (a *SF2Glass) SectionGain() float64 {
+	return SectionMixProfileFor(a.section).Gain
 }

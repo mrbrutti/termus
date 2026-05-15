@@ -38,10 +38,13 @@ type Phase struct {
 	chordRoots      []int // 4 chord-root offsets from key center
 	currentChordIdx int
 	phaseFigure     []int
+	phaseMotifs     MotifMemory
+	crotalesMotifs  MotifMemory
 
 	samplesElapsed int64
 	nextChordAt    int64
 	nextDriftAt    int64
+	section        FormSection
 }
 
 func NewPhase(sf *meltysynth.SoundFont) *Phase { return &Phase{sf: sf} }
@@ -66,8 +69,11 @@ func (a *Phase) Seed(seedVal int64) {
 		scalePentatonicMinor[1],
 	}
 	a.phaseFigure = a.makePhaseFigure()
+	a.phaseMotifs = a.makePhaseMotifs()
+	a.crotalesMotifs = a.makeCrotalesMotifs()
 	a.currentChordIdx = 0
 	a.scheduleNextChord()
+	a.syncSection()
 
 	core, err := newSF2Core(a.sf, 2.8, seedVal)
 	if err != nil {
@@ -193,16 +199,16 @@ func (a *Phase) Seed(seedVal int64) {
 	})
 
 	// --- Glockenspiel crotales: very rare high accents — 1 hit every ~45 s.
+	crotalesSlots := make([]int, len(a.crotalesMotifs.A))
 	core.addTrack(SF2Track{
-		Channel: 5, Velocity: 40, Notes: []int{a.crotalesNote()},
+		Channel: 5, Velocity: 40, Notes: crotalesSlots,
 		PeriodSec: 47.3, Phase01: a.rng.Float64(),
-		MutationRate:   0.50,
-		MutateOne:      func(_ int, _ int) int { return a.crotalesNote() },
-		ResolveNote:    func(_ int, _ int) int { return a.crotalesNote() },
+		ResolveNote:    func(slot int, _ int) int { return a.crotalesNote(slot) },
 		VelocityJitter: 14, TimingJitterSec: 0.10,
 	})
 
 	a.core = core
+	a.applyArrangement()
 }
 
 // makePhaseFigure builds the literal Steve Reich "Piano Phase" (1967)
@@ -227,7 +233,7 @@ func (a *Phase) makePhaseFigure() []int {
 func (a *Phase) phaseFigureNote(slot int) int {
 	scale := []int{0, 2, 3, 5, 7, 8, 10}
 	root := a.currentRoot() + a.chordRoots[a.currentChordIdx] + 24
-	key := scaleNoteAt(a.phaseFigure, slot, scale, root, 0, 0)
+	key := scaleNoteAt(a.phaseMotifs.PhraseFor(a.section.Kind), slot, scale, root, 0, 0)
 	return clampMidiToRange(key, 72, 88)
 }
 
@@ -266,20 +272,20 @@ func (a *Phase) bassRoot() int {
 
 // crotalesNote returns a very-high chord-tone for the glockenspiel accents
 // (C6–C7).
-func (a *Phase) crotalesNote() int {
+func (a *Phase) crotalesNote(slot int) int {
 	if len(a.chordRoots) == 0 {
 		return 84
 	}
+	phrase := a.crotalesMotifs.PhraseFor(a.section.Kind)
+	if len(phrase) == 0 {
+		return -1
+	}
+	if a.section.Kind != FormCadence && slot%len(phrase) < len(phrase)/2 {
+		return -1
+	}
 	cr := a.chordRoots[a.currentChordIdx]
-	deg := scalePentatonicMinor[a.rng.Intn(len(scalePentatonicMinor))]
-	key := a.currentRoot() + cr + deg + 36
-	for key < 84 {
-		key += 12
-	}
-	for key > 96 {
-		key -= 12
-	}
-	return key
+	key := scaleNoteAt(phrase, slot, scalePentatonicMinor, a.currentRoot()+cr+36, 1, 0)
+	return clampMidiToRange(key, 84, 96)
 }
 
 func (a *Phase) scheduleNextChord() {
@@ -312,6 +318,9 @@ func (a *Phase) advance() {
 		}
 		a.scheduleNextDrift()
 	}
+	if chordAdvanced {
+		a.syncSection()
+	}
 }
 
 func (a *Phase) DebugStatus() DebugStatus {
@@ -321,7 +330,8 @@ func (a *Phase) DebugStatus() DebugStatus {
 	}
 	return DebugStatus{
 		Chord:   chord,
-		Section: "phase",
+		Section: string(a.section.Kind),
+		Bar:     a.currentChordIdx + 1,
 	}
 }
 
@@ -342,4 +352,65 @@ func (a *Phase) Next(left, right []float64) {
 	a.advance()
 	a.core.renderInto(left, right)
 	a.samplesElapsed += int64(len(left))
+}
+
+func (a *Phase) makePhaseMotifs() MotifMemory {
+	base := copyPhrase(a.phaseFigure)
+	return MotifMemory{
+		A:       base,
+		Aprime:  rotatePhrase(base, 2),
+		B:       reversePhrase(base),
+		Cadence: trimOrRepeatPhrase(stitchPhrase(base[:6], []int{0, -1, 0, 3}), len(base), 0),
+		Outro:   []int{-1, 0, 3, 0},
+	}
+}
+
+func (a *Phase) makeCrotalesMotifs() MotifMemory {
+	base := []int{0, 2, 4, 2}
+	return MotifMemory{
+		A:       base,
+		Aprime:  rotatePhrase(base, 1),
+		B:       reversePhrase(base),
+		Cadence: []int{4, 2, 0, 2},
+		Outro:   []int{0, -2},
+	}
+}
+
+func (a *Phase) syncSection() {
+	a.section = cycleTextureSection(a.currentChordIdx, len(a.chordRoots))
+	if a.samplesElapsed == 0 {
+		a.section = sectionTemplate(FormIntro)
+	}
+	a.applyArrangement()
+}
+
+func (a *Phase) applyArrangement() {
+	if a.core == nil {
+		return
+	}
+	lead := SectionSceneFor(a.section, RoleLead)
+	texture := SectionSceneFor(a.section, RoleTexture)
+	bass := SectionSceneFor(a.section, RoleBass)
+	a.core.setReverbSend(0, SectionCC(115, lead.ReverbDelta))
+	a.core.setReverbSend(1, SectionCC(115, lead.ReverbDelta))
+	a.core.setReverbSend(2, SectionCC(96, texture.ReverbDelta))
+	a.core.setReverbSend(3, SectionCC(80, texture.ReverbDelta))
+	a.core.setReverbSend(4, SectionCC(30, bass.ReverbDelta))
+	a.core.setReverbSend(5, SectionCC(120, lead.ReverbDelta))
+	a.core.setChannelCutoff(0, SectionCC(100, lead.BrightnessDelta))
+	a.core.setChannelCutoff(1, SectionCC(100, lead.BrightnessDelta))
+	a.core.setChannelCutoff(2, SectionCC(64, texture.BrightnessDelta))
+	a.core.setChannelCutoff(3, SectionCC(72, texture.BrightnessDelta))
+	a.core.setChannelCutoff(4, SectionCC(50, bass.BrightnessDelta))
+	a.core.setChannelCutoff(5, SectionCC(120, lead.BrightnessDelta))
+	a.core.setChannelExpression(0, SectionCC(106, lead.ExpressionDelta))
+	a.core.setChannelExpression(1, SectionCC(102, lead.ExpressionDelta))
+	a.core.setChannelExpression(2, SectionCC(98, texture.ExpressionDelta))
+	a.core.setChannelExpression(3, SectionCC(96, texture.ExpressionDelta))
+	a.core.setChannelExpression(4, SectionCC(100, bass.ExpressionDelta))
+	a.core.setChannelExpression(5, SectionCC(104, lead.ExpressionDelta))
+}
+
+func (a *Phase) SectionGain() float64 {
+	return SectionMixProfileFor(a.section).Gain
 }

@@ -40,6 +40,9 @@ type SF2Drone struct {
 
 	samplesElapsed int64
 	nextChordAt    int64
+	section        FormSection
+
+	shimmerMotifs MotifMemory
 }
 
 // droneChord is one harmonic center as a set of semitone offsets from the
@@ -83,7 +86,9 @@ func (a *SF2Drone) Seed(seedVal int64) {
 	a.samplesElapsed = 0
 	a.currentChordIdx = 0
 	a.chords = droneCycles[a.rng.Intn(len(droneCycles))]
+	a.shimmerMotifs = a.makeShimmerMotifs()
 	a.scheduleNextChord()
+	a.syncSection()
 
 	core, err := newSF2Core(a.sf, 3.6, seedVal)
 	if err != nil {
@@ -164,11 +169,11 @@ func (a *SF2Drone) Seed(seedVal int64) {
 
 	// --- Choir aahs: 1 voice in the upper register, very sparse.
 	core.addTrack(SF2Track{
-		Channel: 2, Velocity: 44, Notes: []int{a.droneTone(1, 24)},
+		Channel: 2, Velocity: 44, Notes: []int{a.choirTone(1)},
 		PeriodSec: 71.7, Phase01: a.rng.Float64(),
 		MutationRate:   0.30,
-		MutateOne:      func(_ int, _ int) int { return a.droneTone(1, 24) },
-		ResolveNote:    func(_ int, _ int) int { return a.droneTone(1, 24) },
+		MutateOne:      func(_ int, _ int) int { return a.choirTone(1) },
+		ResolveNote:    func(_ int, _ int) int { return a.choirTone(1) },
 		Gate:           0.98,
 		Legato:         true,
 		VelocityJitter: 8, TimingJitterSec: 0.20,
@@ -176,12 +181,11 @@ func (a *SF2Drone) Seed(seedVal int64) {
 
 	// --- FM EP shimmer: a single high voice that catches upper partials of
 	// the chord. Very long period, infrequent retrigger.
+	shimmerSlots := make([]int, len(a.shimmerMotifs.A))
 	core.addTrack(SF2Track{
-		Channel: 3, Velocity: 38, Notes: []int{a.droneTone(2, 36)},
+		Channel: 3, Velocity: 38, Notes: shimmerSlots,
 		PeriodSec: 91.1, Phase01: a.rng.Float64(),
-		MutationRate:   0.40,
-		MutateOne:      func(_ int, _ int) int { return a.droneTone(2, 36) },
-		ResolveNote:    func(_ int, _ int) int { return a.droneTone(2, 36) },
+		ResolveNote:    func(slot int, _ int) int { return a.shimmerNote(slot) },
 		Gate:           0.98,
 		Legato:         true,
 		VelocityJitter: 10, TimingJitterSec: 0.25,
@@ -200,6 +204,7 @@ func (a *SF2Drone) Seed(seedVal int64) {
 	})
 
 	a.core = core
+	a.applyArrangement()
 }
 
 func (a *SF2Drone) droneTone(voice, bumpSemis int) int {
@@ -233,6 +238,31 @@ func (a *SF2Drone) bassRoot() int {
 	return key
 }
 
+func (a *SF2Drone) choirTone(voice int) int {
+	if len(a.chords) == 0 {
+		return 72
+	}
+	if a.section.Kind == FormIntro && voice > 0 {
+		voice = 0
+	}
+	return a.droneTone(voice, 24)
+}
+
+func (a *SF2Drone) shimmerNote(slot int) int {
+	if a.section.Kind == FormIntro || a.section.Kind == FormBreakdown {
+		if slot%len(a.shimmerMotifs.A) < len(a.shimmerMotifs.A)/2 {
+			return -1
+		}
+	}
+	phrase := a.shimmerMotifs.PhraseFor(a.section.Kind)
+	if len(phrase) == 0 {
+		return -1
+	}
+	chord := a.chords[a.currentChordIdx]
+	key := scaleNoteAt(phrase, slot, chord.tones, a.currentRoot()+24, 1, 24)
+	return clampMidiToRange(key, 78, 98)
+}
+
 func (a *SF2Drone) scheduleNextChord() {
 	// 90–150 s per chord — even slower than ambient.
 	secs := 90.0 + 60.0*a.rng.Float64()
@@ -243,6 +273,7 @@ func (a *SF2Drone) advance() {
 	if a.samplesElapsed >= a.nextChordAt {
 		a.currentChordIdx = (a.currentChordIdx + 1) % len(a.chords)
 		a.scheduleNextChord()
+		a.syncSection()
 	}
 }
 
@@ -272,6 +303,54 @@ func (a *SF2Drone) DebugStatus() DebugStatus {
 	}
 	return DebugStatus{
 		Chord:   chord,
-		Section: "drone",
+		Section: string(a.section.Kind),
+		Bar:     a.currentChordIdx + 1,
 	}
+}
+
+func (a *SF2Drone) makeShimmerMotifs() MotifMemory {
+	base := []int{0, 2, 4, 2}
+	return MotifMemory{
+		A:       base,
+		Aprime:  rotatePhrase(base, 1),
+		B:       reversePhrase(base),
+		Cadence: []int{0, 4, 2, 0},
+		Outro:   []int{0, 2},
+	}
+}
+
+func (a *SF2Drone) syncSection() {
+	a.section = cycleTextureSection(a.currentChordIdx, len(a.chords))
+	if a.samplesElapsed == 0 {
+		a.section = sectionTemplate(FormIntro)
+	}
+	a.applyArrangement()
+}
+
+func (a *SF2Drone) applyArrangement() {
+	if a.core == nil {
+		return
+	}
+	texture := SectionSceneFor(a.section, RoleTexture)
+	lead := SectionSceneFor(a.section, RoleLead)
+	bass := SectionSceneFor(a.section, RoleBass)
+	a.core.setReverbSend(0, SectionCC(120, texture.ReverbDelta))
+	a.core.setReverbSend(1, SectionCC(110, texture.ReverbDelta))
+	a.core.setReverbSend(2, SectionCC(120, texture.ReverbDelta))
+	a.core.setReverbSend(3, SectionCC(100, lead.ReverbDelta))
+	a.core.setReverbSend(4, SectionCC(40, bass.ReverbDelta))
+	a.core.setChannelCutoff(0, SectionCC(70, texture.BrightnessDelta))
+	a.core.setChannelCutoff(1, SectionCC(64, texture.BrightnessDelta))
+	a.core.setChannelCutoff(2, SectionCC(76, texture.BrightnessDelta))
+	a.core.setChannelCutoff(3, SectionCC(88, lead.BrightnessDelta))
+	a.core.setChannelCutoff(4, SectionCC(50, bass.BrightnessDelta))
+	a.core.setChannelExpression(0, SectionCC(96, texture.ExpressionDelta))
+	a.core.setChannelExpression(1, SectionCC(94, texture.ExpressionDelta))
+	a.core.setChannelExpression(2, SectionCC(98, texture.ExpressionDelta))
+	a.core.setChannelExpression(3, SectionCC(102, lead.ExpressionDelta))
+	a.core.setChannelExpression(4, SectionCC(100, bass.ExpressionDelta))
+}
+
+func (a *SF2Drone) SectionGain() float64 {
+	return SectionMixProfileFor(a.section).Gain
 }

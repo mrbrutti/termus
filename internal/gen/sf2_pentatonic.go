@@ -41,8 +41,10 @@ type SF2Pentatonic struct {
 	samplesElapsed int64
 	nextSectionAt  int64
 	glockOn        *bool
+	section        FormSection
 
 	melodyPhrase []int
+	glockMotifs  MotifMemory
 }
 
 // lullabyChord is one bar of harmony in 3/4. tones are semitone offsets from
@@ -106,10 +108,12 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 	a.keyOffset = 0
 	a.progression = lullabyProgressions[a.rng.Intn(len(lullabyProgressions))]
 	a.samplesElapsed = 0
+	a.glockMotifs = a.makeGlockMotifs()
 
 	glockStart := false // glockenspiel starts off — appears later for variety
 	a.glockOn = &glockStart
 	a.scheduleNextSection()
+	a.syncSection()
 
 	// Master gain raised aggressively (2.4 → 3.8) — like bells, lullaby's
 	// sparse 3/4-waltz content has long pauses between hits, so the
@@ -222,22 +226,15 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 		VelocityJitter: 12, TimingJitterSec: 0.018,
 	})
 
-	// --- Glockenspiel ornament: very high, sparse — 1 hit per 4 bars on the
-	// 3rd of the chord.
-	glockNotes := make([]int, numBars/4)
-	if len(glockNotes) < 1 {
-		glockNotes = make([]int, 1)
-	}
-	for i := range glockNotes {
-		glockNotes[i] = a.compTone(i*4, 1) + 24
-	}
+	// --- Glockenspiel ornament: high answering figures that only answer the
+	// music-box phrase in later bars and cadences.
+	glockNotes := make([]int, numBars)
 	core.addTrack(SF2Track{
 		Channel: 3, Velocity: 48, Notes: glockNotes,
-		PeriodSec:    cycleSec,
-		Phase01:      0.125 / float64(numBars), // slight offset from beat 1
-		MutationRate: 0.35,
-		MutateOne: func(slot int, _ int) int {
-			return a.compTone(slot*4, 1) + 24
+		PeriodSec: cycleSec,
+		Phase01:   0.125 / float64(numBars), // slight offset from beat 1
+		ResolveNote: func(slot int, _ int) int {
+			return a.glockNoteAt(slot)
 		},
 		Gate:           0.42,
 		VelocityJitter: 12, TimingJitterSec: 0.030,
@@ -260,6 +257,7 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 	}
 
 	a.core = core
+	a.applyArrangement()
 }
 
 // bassRoot returns the harp-bass root for the i-th bar. Lower octave to
@@ -384,6 +382,22 @@ func (a *SF2Pentatonic) currentBar() int {
 	return int((a.samplesElapsed / a.barSamples) % int64(len(a.progression)))
 }
 
+func (a *SF2Pentatonic) glockNoteAt(slot int) int {
+	phrase := a.glockMotifs.PhraseFor(a.section.Kind)
+	if len(phrase) == 0 {
+		return -1
+	}
+	code := phrase[((slot%len(phrase))+len(phrase))%len(phrase)]
+	if code < 0 {
+		return -1
+	}
+	if a.section.Kind != FormCadence && slot%len(phrase) < len(phrase)/2 {
+		return -1
+	}
+	idx := 1 + code%2
+	return clampMidiToRange(a.compTone(slot, idx)+24, 84, 100)
+}
+
 // padNote returns a soft chord-tone for the choir-aahs bed. It follows the
 // current bar's harmony rather than pulling a random chord from the form.
 func (a *SF2Pentatonic) padNote(voice int) int {
@@ -410,6 +424,7 @@ func (a *SF2Pentatonic) advance() {
 		*a.glockOn = !*a.glockOn
 		a.scheduleNextSection()
 	}
+	a.syncSection()
 }
 
 func (a *SF2Pentatonic) DebugStatus() DebugStatus {
@@ -417,13 +432,9 @@ func (a *SF2Pentatonic) DebugStatus() DebugStatus {
 	if len(a.progression) > 0 {
 		chord = a.progression[a.currentBar()].label
 	}
-	section := "waltz"
-	if a.glockOn != nil && *a.glockOn {
-		section = "waltz+glock"
-	}
 	return DebugStatus{
 		Chord:   chord,
-		Section: section,
+		Section: string(a.section.Kind),
 		Bar:     a.currentBar() + 1,
 	}
 }
@@ -442,7 +453,59 @@ func (a *SF2Pentatonic) Next(left, right []float64) {
 		}
 		return
 	}
+	prev := a.samplesElapsed
 	a.advance()
 	a.core.renderInto(left, right)
 	a.samplesElapsed += int64(len(left))
+	if crossedQuantizedBoundary(prev, a.samplesElapsed, a.barSamples) {
+		a.syncSection()
+	}
+}
+
+func (a *SF2Pentatonic) makeGlockMotifs() MotifMemory {
+	base := []int{-1, 0, -1, 1, -1, 0, -1, 1}
+	return MotifMemory{
+		A:       base,
+		Aprime:  []int{-1, 1, -1, 0, -1, 1, -1, 0},
+		B:       []int{-1, 0, 1, -1, -1, 1, 0, -1},
+		Cadence: []int{-1, 1, -1, 1, -1, 1, 0, 1},
+		Outro:   []int{-1, -1, -1, 0},
+	}
+}
+
+func (a *SF2Pentatonic) syncSection() {
+	a.section = waltzTextureSection(a.currentBar(), len(a.progression), a.glockOn != nil && *a.glockOn)
+	if a.samplesElapsed == 0 {
+		a.section = sectionTemplate(FormIntro)
+	}
+	a.applyArrangement()
+}
+
+func (a *SF2Pentatonic) applyArrangement() {
+	if a.core == nil {
+		return
+	}
+	bass := SectionSceneFor(a.section, RoleBass)
+	lead := SectionSceneFor(a.section, RoleLead)
+	comp := SectionSceneFor(a.section, RoleComp)
+	texture := SectionSceneFor(a.section, RoleTexture)
+	a.core.setReverbSend(0, SectionCC(70, bass.ReverbDelta))
+	a.core.setReverbSend(1, SectionCC(100, lead.ReverbDelta))
+	a.core.setReverbSend(2, SectionCC(110, comp.ReverbDelta))
+	a.core.setReverbSend(3, SectionCC(110, lead.ReverbDelta))
+	a.core.setReverbSend(4, SectionCC(84, texture.ReverbDelta))
+	a.core.setChannelCutoff(0, SectionCC(96, bass.BrightnessDelta))
+	a.core.setChannelCutoff(1, SectionCC(120, lead.BrightnessDelta))
+	a.core.setChannelCutoff(2, SectionCC(120, comp.BrightnessDelta))
+	a.core.setChannelCutoff(3, SectionCC(120, lead.BrightnessDelta))
+	a.core.setChannelCutoff(4, SectionCC(64, texture.BrightnessDelta))
+	a.core.setChannelExpression(0, SectionCC(100, bass.ExpressionDelta))
+	a.core.setChannelExpression(1, SectionCC(108, lead.ExpressionDelta))
+	a.core.setChannelExpression(2, SectionCC(102, comp.ExpressionDelta))
+	a.core.setChannelExpression(3, SectionCC(104, lead.ExpressionDelta))
+	a.core.setChannelExpression(4, SectionCC(98, texture.ExpressionDelta))
+}
+
+func (a *SF2Pentatonic) SectionGain() float64 {
+	return SectionMixProfileFor(a.section).Gain
 }

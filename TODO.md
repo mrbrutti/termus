@@ -34,7 +34,7 @@
 
 ## Next Music Pass
 
-- [ ] Extend the motif-memory, section-scene, and dialogue treatment into the ambient-family generators (`ambient`, `glass`, `drone`, `phase`, `lullaby`) so the quieter modes evolve like composed textures instead of independent loops.
+- [x] Extend the motif-memory, section-scene, and dialogue treatment into the ambient-family generators (`ambient`, `glass`, `drone`, `phase`, `lullaby`) so the quieter modes evolve like composed textures instead of independent loops.
 - [ ] Add phrase scoring and seed ranking to `cmd/termus-listencheck` so seed triage can use cadence, repetition, occupancy, and harmonic-motion metrics instead of manual listening alone.
 - [ ] Bring stem and MIDI export into the main `./termus` binary so direct renders can emit full tuning artifacts without going through `listencheck`.
 - [ ] Add richer SF2 performance modulation such as vibrato curves, note-level drift, and brightness shaping so sustained lines sound less static.
