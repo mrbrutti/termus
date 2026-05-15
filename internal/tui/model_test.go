@@ -153,7 +153,7 @@ func TestControlsPanelShowsTabbedOverlay(t *testing.T) {
 		themes:          []ColorTheme{DefaultTheme()},
 	}
 	panel := controlsPanel(m, 100, 22, DefaultTheme())
-	for _, want := range []string{"CONTROL CENTER", "MUSIC", "CURATE", "SESSIONS", "AUDIO", "seed", "algorithm", "[tab] switch"} {
+	for _, want := range []string{"CONTROL CENTER", "MUSIC", "CURATE", "SESSIONS", "AUDIO", "density", "brightness", "reverb", "[tab] switch"} {
 		if !strings.Contains(panel, want) {
 			t.Fatalf("controls panel missing %q:\n%s", want, panel)
 		}

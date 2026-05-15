@@ -45,6 +45,7 @@ type Phase struct {
 	nextChordAt    int64
 	nextDriftAt    int64
 	section        FormSection
+	profile        ControlProfile
 }
 
 func NewPhase(sf *meltysynth.SoundFont) *Phase { return &Phase{sf: sf} }
@@ -52,6 +53,8 @@ func NewPhase(sf *meltysynth.SoundFont) *Phase { return &Phase{sf: sf} }
 func (a *Phase) Name() string { return "phase" }
 
 func (a *Phase) currentRoot() int { return a.rootMidi + a.keyOffset }
+
+func (a *Phase) ApplyControlProfile(profile ControlProfile) { a.profile = profileOrDefault(profile) }
 
 func (a *Phase) Seed(seedVal int64) {
 	a.rng = rand.New(rand.NewSource(seedVal)) //nolint:gosec
@@ -400,27 +403,32 @@ func (a *Phase) applyArrangement() {
 	if a.core == nil {
 		return
 	}
+	profile := profileOrDefault(a.profile)
 	lead := SectionSceneFor(a.section, RoleLead)
 	texture := SectionSceneFor(a.section, RoleTexture)
 	bass := SectionSceneFor(a.section, RoleBass)
-	a.core.setReverbSend(0, SectionCC(115, lead.ReverbDelta))
-	a.core.setReverbSend(1, SectionCC(115, lead.ReverbDelta))
-	a.core.setReverbSend(2, SectionCC(96, texture.ReverbDelta))
-	a.core.setReverbSend(3, SectionCC(80, texture.ReverbDelta))
-	a.core.setReverbSend(4, SectionCC(30, bass.ReverbDelta))
-	a.core.setReverbSend(5, SectionCC(120, lead.ReverbDelta))
-	a.core.setChannelCutoff(0, SectionCC(100, lead.BrightnessDelta))
-	a.core.setChannelCutoff(1, SectionCC(100, lead.BrightnessDelta))
-	a.core.setChannelCutoff(2, SectionCC(64, texture.BrightnessDelta))
-	a.core.setChannelCutoff(3, SectionCC(72, texture.BrightnessDelta))
-	a.core.setChannelCutoff(4, SectionCC(50, bass.BrightnessDelta))
-	a.core.setChannelCutoff(5, SectionCC(120, lead.BrightnessDelta))
-	a.core.setChannelExpression(0, SectionCC(106, lead.ExpressionDelta))
-	a.core.setChannelExpression(1, SectionCC(102, lead.ExpressionDelta))
-	a.core.setChannelExpression(2, SectionCC(98, texture.ExpressionDelta))
-	a.core.setChannelExpression(3, SectionCC(96, texture.ExpressionDelta))
-	a.core.setChannelExpression(4, SectionCC(100, bass.ExpressionDelta))
-	a.core.setChannelExpression(5, SectionCC(104, lead.ExpressionDelta))
+	reverbDelta := ReverbDelta(profile)
+	brightDelta := BrightnessDelta(profile)
+	densityDelta := int32(ProfileCentered(profile.Density) * 8)
+	droneDelta := DroneDepthDelta(profile)
+	a.core.setReverbSend(0, SectionCC(115, lead.ReverbDelta+reverbDelta))
+	a.core.setReverbSend(1, SectionCC(115, lead.ReverbDelta+reverbDelta))
+	a.core.setReverbSend(2, SectionCC(96, texture.ReverbDelta+reverbDelta))
+	a.core.setReverbSend(3, SectionCC(80, texture.ReverbDelta+reverbDelta))
+	a.core.setReverbSend(4, SectionCC(30, bass.ReverbDelta+reverbDelta/3))
+	a.core.setReverbSend(5, SectionCC(120, lead.ReverbDelta+reverbDelta))
+	a.core.setChannelCutoff(0, SectionCC(100, lead.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(1, SectionCC(100, lead.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(2, SectionCC(64, texture.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(3, SectionCC(72, texture.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(4, SectionCC(50, bass.BrightnessDelta+brightDelta/2))
+	a.core.setChannelCutoff(5, SectionCC(120, lead.BrightnessDelta+brightDelta))
+	a.core.setChannelExpression(0, SectionCC(106, lead.ExpressionDelta+densityDelta/2))
+	a.core.setChannelExpression(1, SectionCC(102, lead.ExpressionDelta+densityDelta/2))
+	a.core.setChannelExpression(2, SectionCC(98, texture.ExpressionDelta+densityDelta/2))
+	a.core.setChannelExpression(3, SectionCC(96, texture.ExpressionDelta+densityDelta/2))
+	a.core.setChannelExpression(4, SectionCC(100, bass.ExpressionDelta+droneDelta))
+	a.core.setChannelExpression(5, SectionCC(104, lead.ExpressionDelta+densityDelta/2))
 }
 
 func (a *Phase) SectionGain() float64 {

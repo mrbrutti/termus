@@ -50,10 +50,11 @@ type Model struct {
 	stickyStatus       string
 	volumeOverlayUntil time.Time
 
-	themeIdx  int // index into Themes
-	visualIdx int // index into Visuals
-	themes    []ColorTheme
-	ui        AdaptiveUI
+	themeIdx     int // index into Themes
+	visualIdx    int // index into Visuals
+	themes       []ColorTheme
+	ui           AdaptiveUI
+	musicProfile *gen.ControlProfile
 
 	// Algorithm switching ([n]/[p]).
 	genres          []gen.AlgoSpec // ordered list of switchable algorithms
@@ -133,6 +134,11 @@ func (m Model) WithDebug(visible bool) Model {
 
 func (m Model) WithExportController(exporter *ExportController) Model {
 	m.exporter = exporter
+	return m
+}
+
+func (m Model) WithControlProfile(profile *gen.ControlProfile) Model {
+	m.musicProfile = profile
 	return m
 }
 
@@ -365,6 +371,49 @@ func (m *Model) toggleReducedChrome() {
 		return
 	}
 	m.flashStatus("zen: off", 2*time.Second)
+}
+
+func (m *Model) activeSpec() (gen.AlgoSpec, bool) {
+	if spec, ok := m.currentSpec(); ok {
+		return spec, true
+	}
+	if m.playlist != nil && m.playlistIdx >= 0 && m.playlistIdx < len(m.playlist.Tracks) {
+		return m.playlist.Tracks[m.playlistIdx].Spec, true
+	}
+	return gen.AlgoSpec{}, false
+}
+
+func (m *Model) ensureMusicProfile() *gen.ControlProfile {
+	if m.musicProfile == nil {
+		profile := gen.DefaultControlProfile()
+		m.musicProfile = &profile
+	}
+	return m.musicProfile
+}
+
+func (m *Model) updateMusicProfile(label string, mutate func(*gen.ControlProfile)) {
+	profile := m.ensureMusicProfile()
+	mutate(profile)
+	profile.Density = clampInt(profile.Density, 0, 4)
+	profile.Brightness = clampInt(profile.Brightness, 0, 4)
+	profile.Motion = clampInt(profile.Motion, 0, 4)
+	profile.Reverb = clampInt(profile.Reverb, 0, 4)
+	profile.Swing = clampInt(profile.Swing, 0, 4)
+	profile.DroneDepth = clampInt(profile.DroneDepth, 0, 4)
+	profile.Tempo = clampInt(profile.Tempo, 0, 4)
+	profile.Phrase = clampInt(profile.Phrase, 0, 4)
+	m.refreshCurrentTake(label)
+}
+
+func (m *Model) refreshCurrentTake(label string) {
+	spec, ok := m.activeSpec()
+	if !ok || m.buildFn == nil {
+		return
+	}
+	algo := m.buildFn(spec, m.seed)
+	m.cmd.SwapAlgorithmFade(algo, 15435)
+	m.algo = spec.Display
+	m.flashStatus(label, 2*time.Second)
 }
 
 func (m Model) currentExportTarget() (gen.AlgoSpec, int64, bool) {

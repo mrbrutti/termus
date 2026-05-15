@@ -7,6 +7,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/mrbrutti/termus/internal/gen"
 )
 
 type controlTab int
@@ -85,46 +87,69 @@ func (m *Model) activateControlRow() tea.Cmd {
 func (m Model) controlItems() []controlItem {
 	switch m.controlTab {
 	case controlTabMusic:
+		profile := gen.DefaultControlProfile()
+		if m.musicProfile != nil {
+			profile = *m.musicProfile
+		}
 		return []controlItem{
 			{
-				Title: "seed",
-				Value: fmt.Sprintf("%d", m.seed),
-				Hint:  "left/right browse",
+				Title: "density",
+				Value: macroLabel(profile.Density, []string{"air", "lean", "steady", "lush", "full"}),
+				Hint:  "left/right rebuild",
 				Adjust: func(m *Model, delta int) {
-					m.browseSeed(int64(delta))
+					m.updateMusicProfile("density", func(profile *gen.ControlProfile) {
+						profile.Density += delta
+					})
 				},
 			},
 			{
-				Title: "algorithm",
-				Value: m.algo,
-				Hint:  "left/right cycle",
+				Title: "brightness",
+				Value: macroLabel(profile.Brightness, []string{"soft", "warm", "natural", "clear", "gloss"}),
+				Hint:  "left/right rebuild",
 				Adjust: func(m *Model, delta int) {
-					m.switchAlgo(delta)
+					m.updateMusicProfile("brightness", func(profile *gen.ControlProfile) {
+						profile.Brightness += delta
+					})
 				},
 			},
 			{
-				Title: "visual",
-				Value: Visuals[m.visualIdx].Name,
-				Hint:  "left/right cycle",
+				Title: "motion",
+				Value: macroLabel(profile.Motion, []string{"still", "settled", "breathing", "glide", "orbit"}),
+				Hint:  "left/right rebuild",
 				Adjust: func(m *Model, delta int) {
-					if len(Visuals) == 0 {
-						return
-					}
-					m.visualIdx = (m.visualIdx + delta + len(Visuals)) % len(Visuals)
-					m.flashStatus("visual: "+Visuals[m.visualIdx].Name, 2*time.Second)
+					m.updateMusicProfile("motion", func(profile *gen.ControlProfile) {
+						profile.Motion += delta
+					})
 				},
 			},
 			{
-				Title:    "theme",
-				Value:    m.activeTheme().Name,
-				Hint:     "left/right cycle",
-				Disabled: len(m.themes) <= 1,
+				Title: "reverb",
+				Value: macroLabel(profile.Reverb, []string{"dry", "close", "room", "hall", "halo"}),
+				Hint:  "left/right rebuild",
 				Adjust: func(m *Model, delta int) {
-					if len(m.themes) <= 1 {
-						return
-					}
-					m.themeIdx = (m.themeIdx + delta + len(m.themes)) % len(m.themes)
-					m.flashStatus("theme: "+m.themes[m.themeIdx].Name, 2*time.Second)
+					m.updateMusicProfile("reverb", func(profile *gen.ControlProfile) {
+						profile.Reverb += delta
+					})
+				},
+			},
+			{
+				Title: "swing",
+				Value: macroLabel(profile.Swing, []string{"straight", "tight", "groove", "late", "loose"}),
+				Hint:  "left/right rebuild",
+				Adjust: func(m *Model, delta int) {
+					m.updateMusicProfile("swing", func(profile *gen.ControlProfile) {
+						profile.Swing += delta
+					})
+				},
+			},
+			{
+				Title: "drone depth",
+				Value: macroLabel(profile.DroneDepth, []string{"light", "trim", "grounded", "deep", "sub"}),
+				Hint:  "left/right rebuild",
+				Adjust: func(m *Model, delta int) {
+					m.updateMusicProfile("drone depth", func(profile *gen.ControlProfile) {
+						profile.DroneDepth += delta
+					})
 				},
 			},
 		}
@@ -423,6 +448,14 @@ func recordingLabel(recording bool) string {
 		return "on"
 	}
 	return "off"
+}
+
+func macroLabel(value int, labels []string) string {
+	if len(labels) == 0 {
+		return ""
+	}
+	value = clampInt(value, 0, len(labels)-1)
+	return labels[value]
 }
 
 func onOff(v bool) string {

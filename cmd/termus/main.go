@@ -121,6 +121,7 @@ func main() {
 	}
 	algo := spec.Build(sf)
 	algo.Seed(*seed)
+	controlProfile := gen.DefaultControlProfile()
 
 	var ir []float64
 	var irLabel string
@@ -144,7 +145,7 @@ func main() {
 	}
 	buildRenderedAlgo := func(s gen.AlgoSpec, algoSeed int64) gen.Algorithm {
 		chosen := pickSF(sfByPreset, s, *sf2Preset)
-		a := s.Build(chosen)
+		a := gen.ConfigureControlProfile(s.Build(chosen), controlProfile)
 		a.Seed(algoSeed)
 		if len(ir) > 0 {
 			if rev, ok := a.(gen.SF2Reverberator); ok {
@@ -152,6 +153,9 @@ func main() {
 			}
 		}
 		return a
+	}
+	buildLiveAlgo := func(s gen.AlgoSpec, algoSeed int64) gen.Algorithm {
+		return gen.ApplyControlProfile(buildRenderedAlgo(s, algoSeed), controlProfile)
 	}
 	if *outPath != "" {
 		frames, err := audio.RenderToWAV(*outPath, algo, *renderSeconds, *initialVol)
@@ -232,17 +236,18 @@ func main() {
 			filepath.Join(*playlistOut, "manifest.json"), manifest.TrackCount, manifest.TotalDurationS)
 		return
 	}
-	liveAlgo := gen.WrapDebugStatus(buildAlgo(spec, *seed), presetLabel(spec))
+	liveAlgo := gen.WrapDebugStatus(buildLiveAlgo(spec, *seed), presetLabel(spec))
 	ring := scope.NewRing(4096)
 	root := audio.NewRoot(liveAlgo, ring)
 	root.SetSeed(*seed)
 	root.SetVolume(*initialVol)
 	buildFn := func(s gen.AlgoSpec, algoSeed int64) gen.Algorithm {
-		return gen.WrapDebugStatus(buildAlgo(s, algoSeed), presetLabel(s))
+		return gen.WrapDebugStatus(buildLiveAlgo(s, algoSeed), presetLabel(s))
 	}
 
 	model := tui.New(ring, root, liveAlgo.Name(), "Cmin", *seed, *initialVol).
 		WithDebug(*debugView).
+		WithControlProfile(&controlProfile).
 		WithExportController(makeTUIExporter(buildAlgo, *initialVol)).
 		WithSwitcher(genres, startIdx, buildFn)
 

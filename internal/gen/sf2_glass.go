@@ -52,6 +52,7 @@ type SF2Glass struct {
 	musicBoxContour     []int
 	musicBoxStartDegree int
 	musicBoxMotifs      MotifMemory
+	profile             ControlProfile
 }
 
 // majorPentatonic: 0, 2, 4, 7, 9 (the "happy" pentatonic).
@@ -66,6 +67,8 @@ func NewSF2Glass(sf *meltysynth.SoundFont) *SF2Glass { return &SF2Glass{sf: sf} 
 func (a *SF2Glass) Name() string { return "bells" }
 
 func (a *SF2Glass) currentRoot() int { return a.rootMidi + a.keyOffset }
+
+func (a *SF2Glass) ApplyControlProfile(profile ControlProfile) { a.profile = profileOrDefault(profile) }
 
 func (a *SF2Glass) Seed(seedVal int64) {
 	a.rng = rand.New(rand.NewSource(seedVal)) //nolint:gosec
@@ -440,6 +443,10 @@ func (a *SF2Glass) makeMusicBoxMotifs() MotifMemory {
 func (a *SF2Glass) syncSection() {
 	cadence := len(a.chordOffsets) > 0 && a.currentChordIdx == len(a.chordOffsets)-1 && a.musicBoxOn != nil && *a.musicBoxOn
 	musicBox := a.musicBoxOn != nil && *a.musicBoxOn
+	if profileOrDefault(a.profile).Density <= 1 && a.musicBoxOn != nil {
+		*a.musicBoxOn = false
+		musicBox = false
+	}
 	a.section = textureSectionForLayers(true, musicBox, cadence)
 	if !musicBox && a.currentChordIdx == 0 {
 		a.section = sectionTemplate(FormIntro)
@@ -451,30 +458,35 @@ func (a *SF2Glass) applyArrangement() {
 	if a.core == nil {
 		return
 	}
+	profile := profileOrDefault(a.profile)
 	lead := SectionSceneFor(a.section, RoleLead)
 	texture := SectionSceneFor(a.section, RoleTexture)
 	bass := SectionSceneFor(a.section, RoleBass)
-	a.core.setReverbSend(0, SectionCC(120, lead.ReverbDelta))
-	a.core.setReverbSend(1, SectionCC(120, lead.ReverbDelta))
-	a.core.setReverbSend(2, SectionCC(120, lead.ReverbDelta))
-	a.core.setReverbSend(3, SectionCC(110, texture.ReverbDelta))
-	a.core.setReverbSend(4, SectionCC(96, texture.ReverbDelta))
-	a.core.setReverbSend(5, SectionCC(100, texture.ReverbDelta))
-	a.core.setReverbSend(6, SectionCC(30, bass.ReverbDelta))
-	a.core.setChannelCutoff(0, SectionCC(120, lead.BrightnessDelta))
-	a.core.setChannelCutoff(1, SectionCC(120, lead.BrightnessDelta))
-	a.core.setChannelCutoff(2, SectionCC(120, lead.BrightnessDelta))
-	a.core.setChannelCutoff(3, SectionCC(110, texture.BrightnessDelta))
-	a.core.setChannelCutoff(4, SectionCC(60, texture.BrightnessDelta))
-	a.core.setChannelCutoff(5, SectionCC(76, texture.BrightnessDelta))
-	a.core.setChannelCutoff(6, SectionCC(50, bass.BrightnessDelta))
-	a.core.setChannelExpression(0, SectionCC(110, lead.ExpressionDelta))
-	a.core.setChannelExpression(1, SectionCC(104, lead.ExpressionDelta))
-	a.core.setChannelExpression(2, SectionCC(96, lead.ExpressionDelta))
-	a.core.setChannelExpression(3, SectionCC(98, texture.ExpressionDelta))
-	a.core.setChannelExpression(4, SectionCC(96, texture.ExpressionDelta))
-	a.core.setChannelExpression(5, SectionCC(98, texture.ExpressionDelta))
-	a.core.setChannelExpression(6, SectionCC(100, bass.ExpressionDelta))
+	reverbDelta := ReverbDelta(profile)
+	brightDelta := BrightnessDelta(profile)
+	densityDelta := int32(ProfileCentered(profile.Density) * 8)
+	droneDelta := DroneDepthDelta(profile)
+	a.core.setReverbSend(0, SectionCC(120, lead.ReverbDelta+reverbDelta))
+	a.core.setReverbSend(1, SectionCC(120, lead.ReverbDelta+reverbDelta))
+	a.core.setReverbSend(2, SectionCC(120, lead.ReverbDelta+reverbDelta))
+	a.core.setReverbSend(3, SectionCC(110, texture.ReverbDelta+reverbDelta))
+	a.core.setReverbSend(4, SectionCC(96, texture.ReverbDelta+reverbDelta))
+	a.core.setReverbSend(5, SectionCC(100, texture.ReverbDelta+reverbDelta))
+	a.core.setReverbSend(6, SectionCC(30, bass.ReverbDelta+reverbDelta/3))
+	a.core.setChannelCutoff(0, SectionCC(120, lead.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(1, SectionCC(120, lead.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(2, SectionCC(120, lead.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(3, SectionCC(110, texture.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(4, SectionCC(60, texture.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(5, SectionCC(76, texture.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(6, SectionCC(50, bass.BrightnessDelta+brightDelta/2))
+	a.core.setChannelExpression(0, SectionCC(110, lead.ExpressionDelta+densityDelta))
+	a.core.setChannelExpression(1, SectionCC(104, lead.ExpressionDelta+densityDelta))
+	a.core.setChannelExpression(2, SectionCC(96, lead.ExpressionDelta+densityDelta/2))
+	a.core.setChannelExpression(3, SectionCC(98, texture.ExpressionDelta+densityDelta/2))
+	a.core.setChannelExpression(4, SectionCC(96, texture.ExpressionDelta+densityDelta/2))
+	a.core.setChannelExpression(5, SectionCC(98, texture.ExpressionDelta+densityDelta/2))
+	a.core.setChannelExpression(6, SectionCC(100, bass.ExpressionDelta+droneDelta))
 }
 
 func (a *SF2Glass) SectionGain() float64 {

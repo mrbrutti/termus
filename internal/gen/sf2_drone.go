@@ -43,6 +43,7 @@ type SF2Drone struct {
 	section        FormSection
 
 	shimmerMotifs MotifMemory
+	profile       ControlProfile
 }
 
 // droneChord is one harmonic center as a set of semitone offsets from the
@@ -78,6 +79,8 @@ func NewSF2Drone(sf *meltysynth.SoundFont) *SF2Drone { return &SF2Drone{sf: sf} 
 func (a *SF2Drone) Name() string { return "drone" }
 
 func (a *SF2Drone) currentRoot() int { return a.rootMidi + a.keyOffset }
+
+func (a *SF2Drone) ApplyControlProfile(profile ControlProfile) { a.profile = profileOrDefault(profile) }
 
 func (a *SF2Drone) Seed(seedVal int64) {
 	a.rng = rand.New(rand.NewSource(seedVal)) //nolint:gosec
@@ -343,24 +346,29 @@ func (a *SF2Drone) applyArrangement() {
 	if a.core == nil {
 		return
 	}
+	profile := profileOrDefault(a.profile)
 	texture := SectionSceneFor(a.section, RoleTexture)
 	lead := SectionSceneFor(a.section, RoleLead)
 	bass := SectionSceneFor(a.section, RoleBass)
-	a.core.setReverbSend(0, SectionCC(120, texture.ReverbDelta))
-	a.core.setReverbSend(1, SectionCC(110, texture.ReverbDelta))
-	a.core.setReverbSend(2, SectionCC(120, texture.ReverbDelta))
-	a.core.setReverbSend(3, SectionCC(100, lead.ReverbDelta))
-	a.core.setReverbSend(4, SectionCC(40, bass.ReverbDelta))
-	a.core.setChannelCutoff(0, SectionCC(70, texture.BrightnessDelta))
-	a.core.setChannelCutoff(1, SectionCC(64, texture.BrightnessDelta))
-	a.core.setChannelCutoff(2, SectionCC(76, texture.BrightnessDelta))
-	a.core.setChannelCutoff(3, SectionCC(88, lead.BrightnessDelta))
-	a.core.setChannelCutoff(4, SectionCC(50, bass.BrightnessDelta))
-	a.core.setChannelExpression(0, SectionCC(96, texture.ExpressionDelta))
-	a.core.setChannelExpression(1, SectionCC(94, texture.ExpressionDelta))
-	a.core.setChannelExpression(2, SectionCC(98, texture.ExpressionDelta))
-	a.core.setChannelExpression(3, SectionCC(102, lead.ExpressionDelta))
-	a.core.setChannelExpression(4, SectionCC(100, bass.ExpressionDelta))
+	reverbDelta := ReverbDelta(profile)
+	brightDelta := BrightnessDelta(profile)
+	densityDelta := int32(ProfileCentered(profile.Density) * 8)
+	droneDelta := DroneDepthDelta(profile)
+	a.core.setReverbSend(0, SectionCC(120, texture.ReverbDelta+reverbDelta))
+	a.core.setReverbSend(1, SectionCC(110, texture.ReverbDelta+reverbDelta))
+	a.core.setReverbSend(2, SectionCC(120, texture.ReverbDelta+reverbDelta))
+	a.core.setReverbSend(3, SectionCC(100, lead.ReverbDelta+reverbDelta))
+	a.core.setReverbSend(4, SectionCC(40, bass.ReverbDelta+reverbDelta/3))
+	a.core.setChannelCutoff(0, SectionCC(70, texture.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(1, SectionCC(64, texture.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(2, SectionCC(76, texture.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(3, SectionCC(88, lead.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(4, SectionCC(50, bass.BrightnessDelta+brightDelta/2))
+	a.core.setChannelExpression(0, SectionCC(96, texture.ExpressionDelta+densityDelta/2))
+	a.core.setChannelExpression(1, SectionCC(94, texture.ExpressionDelta+densityDelta/2))
+	a.core.setChannelExpression(2, SectionCC(98, texture.ExpressionDelta+densityDelta/2))
+	a.core.setChannelExpression(3, SectionCC(102, lead.ExpressionDelta+densityDelta/2))
+	a.core.setChannelExpression(4, SectionCC(100, bass.ExpressionDelta+droneDelta))
 }
 
 func (a *SF2Drone) SectionGain() float64 {

@@ -45,6 +45,7 @@ type SF2Pentatonic struct {
 
 	melodyPhrase []int
 	glockMotifs  MotifMemory
+	profile      ControlProfile
 }
 
 // lullabyChord is one bar of harmony in 3/4. tones are semitone offsets from
@@ -98,6 +99,10 @@ func NewSF2Pentatonic(sf *meltysynth.SoundFont) *SF2Pentatonic {
 }
 
 func (a *SF2Pentatonic) Name() string { return "lullaby" }
+
+func (a *SF2Pentatonic) ApplyControlProfile(profile ControlProfile) {
+	a.profile = profileOrDefault(profile)
+}
 
 func (a *SF2Pentatonic) currentRoot() int { return a.rootMidi + a.keyOffset }
 
@@ -493,25 +498,30 @@ func (a *SF2Pentatonic) applyArrangement() {
 	if a.core == nil {
 		return
 	}
+	profile := profileOrDefault(a.profile)
 	bass := SectionSceneFor(a.section, RoleBass)
 	lead := SectionSceneFor(a.section, RoleLead)
 	comp := SectionSceneFor(a.section, RoleComp)
 	texture := SectionSceneFor(a.section, RoleTexture)
-	a.core.setReverbSend(0, SectionCC(70, bass.ReverbDelta))
-	a.core.setReverbSend(1, SectionCC(100, lead.ReverbDelta))
-	a.core.setReverbSend(2, SectionCC(110, comp.ReverbDelta))
-	a.core.setReverbSend(3, SectionCC(110, lead.ReverbDelta))
-	a.core.setReverbSend(4, SectionCC(84, texture.ReverbDelta))
-	a.core.setChannelCutoff(0, SectionCC(96, bass.BrightnessDelta))
-	a.core.setChannelCutoff(1, SectionCC(120, lead.BrightnessDelta))
-	a.core.setChannelCutoff(2, SectionCC(120, comp.BrightnessDelta))
-	a.core.setChannelCutoff(3, SectionCC(120, lead.BrightnessDelta))
-	a.core.setChannelCutoff(4, SectionCC(64, texture.BrightnessDelta))
-	a.core.setChannelExpression(0, SectionCC(100, bass.ExpressionDelta))
-	a.core.setChannelExpression(1, SectionCC(108, lead.ExpressionDelta))
-	a.core.setChannelExpression(2, SectionCC(102, comp.ExpressionDelta))
-	a.core.setChannelExpression(3, SectionCC(104, lead.ExpressionDelta))
-	a.core.setChannelExpression(4, SectionCC(98, texture.ExpressionDelta))
+	reverbDelta := ReverbDelta(profile)
+	brightDelta := BrightnessDelta(profile)
+	densityDelta := int32(ProfileCentered(profile.Density) * 8)
+	droneDelta := DroneDepthDelta(profile)
+	a.core.setReverbSend(0, SectionCC(70, bass.ReverbDelta+reverbDelta/3))
+	a.core.setReverbSend(1, SectionCC(100, lead.ReverbDelta+reverbDelta))
+	a.core.setReverbSend(2, SectionCC(110, comp.ReverbDelta+reverbDelta))
+	a.core.setReverbSend(3, SectionCC(110, lead.ReverbDelta+reverbDelta))
+	a.core.setReverbSend(4, SectionCC(84, texture.ReverbDelta+reverbDelta))
+	a.core.setChannelCutoff(0, SectionCC(96, bass.BrightnessDelta+brightDelta/2))
+	a.core.setChannelCutoff(1, SectionCC(120, lead.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(2, SectionCC(120, comp.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(3, SectionCC(120, lead.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(4, SectionCC(64, texture.BrightnessDelta+brightDelta))
+	a.core.setChannelExpression(0, SectionCC(100, bass.ExpressionDelta+droneDelta))
+	a.core.setChannelExpression(1, SectionCC(108, lead.ExpressionDelta+densityDelta))
+	a.core.setChannelExpression(2, SectionCC(102, comp.ExpressionDelta+densityDelta/2))
+	a.core.setChannelExpression(3, SectionCC(104, lead.ExpressionDelta+densityDelta))
+	a.core.setChannelExpression(4, SectionCC(98, texture.ExpressionDelta+densityDelta/2))
 }
 
 func (a *SF2Pentatonic) SectionGain() float64 {

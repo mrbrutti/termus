@@ -58,6 +58,7 @@ type Jazz struct {
 	accentAnd4  []bool
 	saxPlan     []int
 	saxMotifs   MotifMemory
+	profile     ControlProfile
 }
 
 // jazzChord is one bar of harmony. tones are MIDI semitone offsets from
@@ -194,6 +195,27 @@ func (a *Jazz) Name() string { return "jazz" }
 
 func (a *Jazz) currentRoot() int { return a.rootMidi + a.keyOffset }
 
+func (a *Jazz) ApplyControlProfile(profile ControlProfile) { a.profile = profileOrDefault(profile) }
+
+func (a *Jazz) swingOffset(slot int) float64 {
+	profile := profileOrDefault(a.profile)
+	base := SwingOffsetSeconds(profile, 0.008)
+	if slot%2 == 1 {
+		return base
+	}
+	return -base * 0.25
+}
+
+func (a *Jazz) wrapSwing(base func(int) float64) func(int) float64 {
+	return func(slot int) float64 {
+		offset := a.swingOffset(slot)
+		if base == nil {
+			return offset
+		}
+		return base(slot) + offset
+	}
+}
+
 func (a *Jazz) Seed(seedVal int64) {
 	a.rng = rand.New(rand.NewSource(seedVal)) //nolint:gosec
 	// Bb / F / Eb / C are common horn keys — pick from this group.
@@ -294,9 +316,9 @@ func (a *Jazz) Seed(seedVal int64) {
 		Legato:      true,
 		TieRepeats:  true,
 		OverlapSec:  0.010,
-		ResolveTimingOffsetSec: cyclicTimingOffset(
+		ResolveTimingOffsetSec: a.wrapSwing(cyclicTimingOffset(
 			0, 3, 1, -6,
-		),
+		)),
 		ResolveVelocity: func(slot int, key int, base int32) int32 {
 			if slot%4 == 0 {
 				return base + 4
@@ -322,7 +344,7 @@ func (a *Jazz) Seed(seedVal int64) {
 			PeriodSec: cycleSec, Phase01: 0,
 			ResolveNote:            func(slot int, _ int) int { return a.compRootless(slot, intv) },
 			Gate:                   0.48,
-			ResolveTimingOffsetSec: cyclicTimingOffset(0),
+			ResolveTimingOffsetSec: a.wrapSwing(cyclicTimingOffset(0)),
 			ResolveVelocity: func(slot int, key int, base int32) int32 {
 				if a.section.TextureLevel > 1 {
 					return base + 5
@@ -350,7 +372,7 @@ func (a *Jazz) Seed(seedVal int64) {
 		Phase01:                0.417 / float64(numBars),
 		ResolveNote:            func(slot int, _ int) int { return a.compAccentAnd2At(slot) },
 		Gate:                   0.34,
-		ResolveTimingOffsetSec: cyclicTimingOffset(11),
+		ResolveTimingOffsetSec: a.wrapSwing(cyclicTimingOffset(11)),
 		VelocityJitter:         12, TimingJitterSec: 0.020,
 	})
 	core.addTrack(SF2Track{
@@ -359,7 +381,7 @@ func (a *Jazz) Seed(seedVal int64) {
 		Phase01:                0.75 / float64(numBars),
 		ResolveNote:            func(slot int, _ int) int { return a.compAccentBeat4At(slot) },
 		Gate:                   0.32,
-		ResolveTimingOffsetSec: cyclicTimingOffset(7),
+		ResolveTimingOffsetSec: a.wrapSwing(cyclicTimingOffset(7)),
 		VelocityJitter:         10, TimingJitterSec: 0.018,
 	})
 	core.addTrack(SF2Track{
@@ -368,7 +390,7 @@ func (a *Jazz) Seed(seedVal int64) {
 		Phase01:                0.917 / float64(numBars),
 		ResolveNote:            func(slot int, _ int) int { return a.compAccentAnd4At(slot) },
 		Gate:                   0.34,
-		ResolveTimingOffsetSec: cyclicTimingOffset(10),
+		ResolveTimingOffsetSec: a.wrapSwing(cyclicTimingOffset(10)),
 		VelocityJitter:         12, TimingJitterSec: 0.020,
 	})
 
@@ -386,7 +408,7 @@ func (a *Jazz) Seed(seedVal int64) {
 		Channel: drumChannel, Velocity: 78, Notes: rideQuarterNotes,
 		PeriodSec: cycleSec, Phase01: 0,
 		Gate:                   0.08,
-		ResolveTimingOffsetSec: cyclicTimingOffset(-2, -4, -1, -3),
+		ResolveTimingOffsetSec: a.wrapSwing(cyclicTimingOffset(-2, -4, -1, -3)),
 		VelocityJitter:         10, TimingJitterSec: 0.004,
 	})
 	// --- Ride: swung "& of 2" and "& of 4" — completes the jazz ride pattern.
@@ -400,7 +422,7 @@ func (a *Jazz) Seed(seedVal int64) {
 		PeriodSec:              cycleSec,
 		Phase01:                0.417 / float64(numBars), // start at "& of 2" of bar 0
 		Gate:                   0.08,
-		ResolveTimingOffsetSec: cyclicTimingOffset(-6, -4),
+		ResolveTimingOffsetSec: a.wrapSwing(cyclicTimingOffset(-6, -4)),
 		VelocityJitter:         10, TimingJitterSec: 0.006,
 		FireProbability: 0.92,
 	})
@@ -417,7 +439,7 @@ func (a *Jazz) Seed(seedVal int64) {
 		PeriodSec:              cycleSec,
 		Phase01:                0.25 / float64(numBars), // beats 2 & 4
 		Gate:                   0.08,
-		ResolveTimingOffsetSec: cyclicTimingOffset(8, 10),
+		ResolveTimingOffsetSec: a.wrapSwing(cyclicTimingOffset(8, 10)),
 		VelocityJitter:         8, TimingJitterSec: 0.004,
 	})
 
@@ -433,7 +455,7 @@ func (a *Jazz) Seed(seedVal int64) {
 		Phase01:                0.75 / float64(numBars), // beat 4
 		ResolveNote:            func(slot int, _ int) int { return a.snareCompNoteAt(slot) },
 		Gate:                   0.08,
-		ResolveTimingOffsetSec: cyclicTimingOffset(18),
+		ResolveTimingOffsetSec: a.wrapSwing(cyclicTimingOffset(18)),
 		VelocityJitter:         12, TimingJitterSec: 0.010,
 		FireProbability: 0.82,
 	})
@@ -449,7 +471,7 @@ func (a *Jazz) Seed(seedVal int64) {
 		PeriodSec: cycleSec, Phase01: 0,
 		ResolveNote:            func(slot int, _ int) int { return a.kickNoteAt(slot) },
 		Gate:                   0.08,
-		ResolveTimingOffsetSec: cyclicTimingOffset(0, 3),
+		ResolveTimingOffsetSec: a.wrapSwing(cyclicTimingOffset(0, 3)),
 		VelocityJitter:         6, TimingJitterSec: 0.004,
 		FireProbability: 0.90,
 	})
@@ -469,7 +491,7 @@ func (a *Jazz) Seed(seedVal int64) {
 		Legato:                 true,
 		TieRepeats:             true,
 		OverlapSec:             0.022,
-		ResolveTimingOffsetSec: jazzSaxTiming(a.saxPlanCodeAt),
+		ResolveTimingOffsetSec: a.wrapSwing(jazzSaxTiming(a.saxPlanCodeAt)),
 		ResolveVelocity: func(slot int, key int, base int32) int32 {
 			switch a.section.Kind {
 			case FormB, FormCadence:
@@ -918,8 +940,9 @@ func (a *Jazz) Next(left, right []float64) {
 
 func (a *Jazz) applyArrangement() {
 	a.section = a.form.SectionAt(a.samplesElapsed)
+	profile := profileOrDefault(a.profile)
 	if a.saxOn != nil {
-		*a.saxOn = a.section.LeadLevel > 0 && a.section.Kind != FormOutro
+		*a.saxOn = a.section.LeadLevel > 0 && a.section.Kind != FormOutro && profile.Density > 0
 	}
 	if a.core == nil {
 		return
@@ -928,18 +951,21 @@ func (a *Jazz) applyArrangement() {
 	bass := SectionSceneFor(a.section, RoleBass)
 	lead := SectionSceneFor(a.section, RoleLead)
 	drums := SectionSceneFor(a.section, RoleDrums)
-	a.core.setReverbSend(0, SectionCC(48, comp.ReverbDelta))
-	a.core.setReverbSend(1, SectionCC(18, bass.ReverbDelta))
-	a.core.setReverbSend(2, SectionCC(86, lead.ReverbDelta))
-	a.core.setReverbSend(drumChannel, SectionCC(42, drums.ReverbDelta))
-	a.core.setChannelCutoff(0, SectionCC(96, comp.BrightnessDelta))
-	a.core.setChannelCutoff(1, SectionCC(88, bass.BrightnessDelta))
-	a.core.setChannelCutoff(2, SectionCC(110, lead.BrightnessDelta))
-	a.core.setChannelCutoff(drumChannel, SectionCC(92, drums.BrightnessDelta))
-	a.core.setChannelExpression(0, SectionCC(108, comp.ExpressionDelta))
-	a.core.setChannelExpression(1, SectionCC(104, bass.ExpressionDelta))
-	a.core.setChannelExpression(2, SectionCC(110, lead.ExpressionDelta))
-	a.core.setChannelExpression(drumChannel, SectionCC(100, drums.ExpressionDelta))
+	reverbDelta := ReverbDelta(profile)
+	brightDelta := BrightnessDelta(profile)
+	densityDelta := int32(ProfileCentered(profile.Density) * 8)
+	a.core.setReverbSend(0, SectionCC(48, comp.ReverbDelta+reverbDelta))
+	a.core.setReverbSend(1, SectionCC(18, bass.ReverbDelta+reverbDelta/2))
+	a.core.setReverbSend(2, SectionCC(86, lead.ReverbDelta+reverbDelta))
+	a.core.setReverbSend(drumChannel, SectionCC(42, drums.ReverbDelta+reverbDelta/2))
+	a.core.setChannelCutoff(0, SectionCC(96, comp.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(1, SectionCC(88, bass.BrightnessDelta+brightDelta/2))
+	a.core.setChannelCutoff(2, SectionCC(110, lead.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(drumChannel, SectionCC(92, drums.BrightnessDelta+brightDelta/2))
+	a.core.setChannelExpression(0, SectionCC(108, comp.ExpressionDelta+densityDelta/2))
+	a.core.setChannelExpression(1, SectionCC(104, bass.ExpressionDelta+densityDelta/3))
+	a.core.setChannelExpression(2, SectionCC(110, lead.ExpressionDelta+densityDelta))
+	a.core.setChannelExpression(drumChannel, SectionCC(100, drums.ExpressionDelta+densityDelta/2))
 }
 
 func (a *Jazz) SectionGain() float64 {

@@ -49,6 +49,7 @@ type SF2Markov struct {
 	oboeOn         *bool
 
 	violinPhrase []int
+	profile      ControlProfile
 }
 
 // classicalChord is one bar of harmony — diatonic only.
@@ -101,6 +102,10 @@ var classicalProgressions = [][]classicalChord{
 func NewSF2Markov(sf *meltysynth.SoundFont) *SF2Markov { return &SF2Markov{sf: sf} }
 
 func (a *SF2Markov) Name() string { return "classical" }
+
+func (a *SF2Markov) ApplyControlProfile(profile ControlProfile) {
+	a.profile = profileOrDefault(profile)
+}
 
 func (a *SF2Markov) currentRoot() int { return a.rootMidi + a.keyOffset }
 
@@ -421,8 +426,9 @@ func (a *SF2Markov) Next(left, right []float64) {
 
 func (a *SF2Markov) applyArrangement() {
 	a.section = a.form.SectionAt(a.samplesElapsed)
+	profile := profileOrDefault(a.profile)
 	if a.oboeOn != nil {
-		*a.oboeOn = (a.section.TextureLevel > 1 || a.section.Kind == FormCadence) &&
+		*a.oboeOn = profile.Density > 0 && (a.section.TextureLevel > 1 || a.section.Kind == FormCadence) &&
 			a.section.Kind != FormOutro
 	}
 	if a.core == nil {
@@ -432,21 +438,25 @@ func (a *SF2Markov) applyArrangement() {
 	bass := SectionSceneFor(a.section, RoleBass)
 	comp := SectionSceneFor(a.section, RoleComp)
 	texture := SectionSceneFor(a.section, RoleTexture)
-	a.core.setReverbSend(0, SectionCC(84, lead.ReverbDelta))
-	a.core.setReverbSend(1, SectionCC(56, bass.ReverbDelta))
-	a.core.setReverbSend(2, SectionCC(64, comp.ReverbDelta))
-	a.core.setReverbSend(3, SectionCC(100, texture.ReverbDelta))
-	a.core.setReverbSend(4, SectionCC(88, lead.ReverbDelta))
-	a.core.setChannelCutoff(0, SectionCC(110, lead.BrightnessDelta))
-	a.core.setChannelCutoff(1, SectionCC(90, bass.BrightnessDelta))
-	a.core.setChannelCutoff(2, SectionCC(88, comp.BrightnessDelta))
-	a.core.setChannelCutoff(3, SectionCC(80, texture.BrightnessDelta))
-	a.core.setChannelCutoff(4, SectionCC(100, lead.BrightnessDelta))
-	a.core.setChannelExpression(0, SectionCC(112, lead.ExpressionDelta))
-	a.core.setChannelExpression(1, SectionCC(104, bass.ExpressionDelta))
-	a.core.setChannelExpression(2, SectionCC(100, comp.ExpressionDelta))
-	a.core.setChannelExpression(3, SectionCC(102, texture.ExpressionDelta))
-	a.core.setChannelExpression(4, SectionCC(106, lead.ExpressionDelta))
+	reverbDelta := ReverbDelta(profile)
+	brightDelta := BrightnessDelta(profile)
+	densityDelta := int32(ProfileCentered(profile.Density) * 8)
+	droneDelta := DroneDepthDelta(profile)
+	a.core.setReverbSend(0, SectionCC(84, lead.ReverbDelta+reverbDelta))
+	a.core.setReverbSend(1, SectionCC(56, bass.ReverbDelta+reverbDelta/3))
+	a.core.setReverbSend(2, SectionCC(64, comp.ReverbDelta+reverbDelta/2))
+	a.core.setReverbSend(3, SectionCC(100, texture.ReverbDelta+reverbDelta))
+	a.core.setReverbSend(4, SectionCC(88, lead.ReverbDelta+reverbDelta))
+	a.core.setChannelCutoff(0, SectionCC(110, lead.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(1, SectionCC(90, bass.BrightnessDelta+brightDelta/2))
+	a.core.setChannelCutoff(2, SectionCC(88, comp.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(3, SectionCC(80, texture.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(4, SectionCC(100, lead.BrightnessDelta+brightDelta))
+	a.core.setChannelExpression(0, SectionCC(112, lead.ExpressionDelta+densityDelta))
+	a.core.setChannelExpression(1, SectionCC(104, bass.ExpressionDelta+droneDelta/2))
+	a.core.setChannelExpression(2, SectionCC(100, comp.ExpressionDelta+densityDelta/2))
+	a.core.setChannelExpression(3, SectionCC(102, texture.ExpressionDelta+densityDelta/2))
+	a.core.setChannelExpression(4, SectionCC(106, lead.ExpressionDelta+densityDelta))
 }
 
 func (a *SF2Markov) SectionGain() float64 {

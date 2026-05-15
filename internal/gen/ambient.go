@@ -58,6 +58,7 @@ type Ambient struct {
 	celestaContour     []int
 	celestaStartDegree int
 	celestaMotifs      MotifMemory
+	profile            ControlProfile
 }
 
 // ambientChord is one harmonic center: a root offset from the key center,
@@ -108,6 +109,8 @@ func NewAmbient(sf *meltysynth.SoundFont) *Ambient { return &Ambient{sf: sf} }
 func (a *Ambient) Name() string { return "ambient" }
 
 func (a *Ambient) currentRoot() int { return a.rootMidi + a.keyOffset }
+
+func (a *Ambient) ApplyControlProfile(profile ControlProfile) { a.profile = profileOrDefault(profile) }
 
 func (a *Ambient) Seed(seedVal int64) {
 	a.rng = rand.New(rand.NewSource(seedVal)) //nolint:gosec
@@ -469,6 +472,13 @@ func (a *Ambient) syncSection() {
 	bells := a.bellsOn != nil && *a.bellsOn
 	celesta := a.celestaOn != nil && *a.celestaOn
 	a.section = textureSectionForLayers(bells, celesta, cadence)
+	profile := profileOrDefault(a.profile)
+	if profile.Density <= 1 && a.celestaOn != nil {
+		*a.celestaOn = false
+	}
+	if profile.Density == 0 && a.bellsOn != nil && a.section.Kind != FormCadence {
+		*a.bellsOn = false
+	}
 	if a.samplesElapsed == 0 {
 		a.section = sectionTemplate(FormIntro)
 	}
@@ -479,27 +489,32 @@ func (a *Ambient) applyArrangement() {
 	if a.core == nil {
 		return
 	}
+	profile := profileOrDefault(a.profile)
 	texture := SectionSceneFor(a.section, RoleTexture)
 	lead := SectionSceneFor(a.section, RoleLead)
 	bass := SectionSceneFor(a.section, RoleBass)
-	a.core.setReverbSend(0, SectionCC(100, texture.ReverbDelta))
-	a.core.setReverbSend(1, SectionCC(96, texture.ReverbDelta))
-	a.core.setReverbSend(2, SectionCC(110, texture.ReverbDelta))
-	a.core.setReverbSend(3, SectionCC(120, lead.ReverbDelta))
-	a.core.setReverbSend(4, SectionCC(120, lead.ReverbDelta))
-	a.core.setReverbSend(5, SectionCC(30, bass.ReverbDelta))
-	a.core.setChannelCutoff(0, SectionCC(72, texture.BrightnessDelta))
-	a.core.setChannelCutoff(1, SectionCC(64, texture.BrightnessDelta))
-	a.core.setChannelCutoff(2, SectionCC(80, texture.BrightnessDelta))
-	a.core.setChannelCutoff(3, SectionCC(110, lead.BrightnessDelta))
-	a.core.setChannelCutoff(4, SectionCC(110, lead.BrightnessDelta))
-	a.core.setChannelCutoff(5, SectionCC(56, bass.BrightnessDelta))
-	a.core.setChannelExpression(0, SectionCC(98, texture.ExpressionDelta))
-	a.core.setChannelExpression(1, SectionCC(96, texture.ExpressionDelta))
-	a.core.setChannelExpression(2, SectionCC(100, texture.ExpressionDelta))
-	a.core.setChannelExpression(3, SectionCC(108, lead.ExpressionDelta))
-	a.core.setChannelExpression(4, SectionCC(104, lead.ExpressionDelta))
-	a.core.setChannelExpression(5, SectionCC(100, bass.ExpressionDelta))
+	reverbDelta := ReverbDelta(profile)
+	brightDelta := BrightnessDelta(profile)
+	densityDelta := int32(ProfileCentered(profile.Density) * 8)
+	droneDelta := DroneDepthDelta(profile)
+	a.core.setReverbSend(0, SectionCC(100, texture.ReverbDelta+reverbDelta))
+	a.core.setReverbSend(1, SectionCC(96, texture.ReverbDelta+reverbDelta))
+	a.core.setReverbSend(2, SectionCC(110, texture.ReverbDelta+reverbDelta))
+	a.core.setReverbSend(3, SectionCC(120, lead.ReverbDelta+reverbDelta))
+	a.core.setReverbSend(4, SectionCC(120, lead.ReverbDelta+reverbDelta))
+	a.core.setReverbSend(5, SectionCC(30, bass.ReverbDelta+reverbDelta/3))
+	a.core.setChannelCutoff(0, SectionCC(72, texture.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(1, SectionCC(64, texture.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(2, SectionCC(80, texture.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(3, SectionCC(110, lead.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(4, SectionCC(110, lead.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(5, SectionCC(56, bass.BrightnessDelta+brightDelta/2))
+	a.core.setChannelExpression(0, SectionCC(98, texture.ExpressionDelta+densityDelta/2))
+	a.core.setChannelExpression(1, SectionCC(96, texture.ExpressionDelta+densityDelta/2))
+	a.core.setChannelExpression(2, SectionCC(100, texture.ExpressionDelta+densityDelta/2))
+	a.core.setChannelExpression(3, SectionCC(108, lead.ExpressionDelta+densityDelta))
+	a.core.setChannelExpression(4, SectionCC(104, lead.ExpressionDelta+densityDelta))
+	a.core.setChannelExpression(5, SectionCC(100, bass.ExpressionDelta+droneDelta))
 }
 
 func (a *Ambient) SectionGain() float64 {

@@ -13,16 +13,17 @@ import (
 )
 
 type savedSessionRecord struct {
-	Label     string    `json:"label"`
-	Algo      string    `json:"algo"`
-	Display   string    `json:"display,omitempty"`
-	Seed      int64     `json:"seed"`
-	Visual    string    `json:"visual"`
-	Theme     string    `json:"theme"`
-	Volume    int       `json:"volume"`
-	Playlist  string    `json:"playlist,omitempty"`
-	Track     int       `json:"track,omitempty"`
-	SavedAt   time.Time `json:"saved_at"`
+	Label    string             `json:"label"`
+	Algo     string             `json:"algo"`
+	Display  string             `json:"display,omitempty"`
+	Seed     int64              `json:"seed"`
+	Visual   string             `json:"visual"`
+	Theme    string             `json:"theme"`
+	Volume   int                `json:"volume"`
+	Controls gen.ControlProfile `json:"controls"`
+	Playlist string             `json:"playlist,omitempty"`
+	Track    int                `json:"track,omitempty"`
+	SavedAt  time.Time          `json:"saved_at"`
 }
 
 func savedSessionsPath() (string, error) {
@@ -115,14 +116,18 @@ func (m *Model) saveCurrentSession() {
 		return
 	}
 	rec := savedSessionRecord{
-		Label:   fmt.Sprintf("%s / %d", spec.Display, m.seed),
-		Algo:    spec.Name,
-		Display: spec.Display,
-		Seed:    m.seed,
-		Visual:  Visuals[m.visualIdx].Name,
-		Theme:   m.activeTheme().Name,
-		Volume:  m.volume,
-		SavedAt: time.Now(),
+		Label:    fmt.Sprintf("%s / %d", spec.Display, m.seed),
+		Algo:     spec.Name,
+		Display:  spec.Display,
+		Seed:     m.seed,
+		Visual:   Visuals[m.visualIdx].Name,
+		Theme:    m.activeTheme().Name,
+		Volume:   m.volume,
+		Controls: gen.DefaultControlProfile(),
+		SavedAt:  time.Now(),
+	}
+	if m.musicProfile != nil {
+		rec.Controls = *m.musicProfile
 	}
 	if m.playlist != nil {
 		rec.Playlist = m.playlist.Name
@@ -169,6 +174,7 @@ func (m *Model) loadSelectedSession() {
 		m.volume = rec.Volume
 		m.cmd.SetVolume(rec.Volume)
 	}
+	*m.ensureMusicProfile() = rec.Controls
 	spec, resolved := gen.Resolve(rec.Algo)
 	if !resolved {
 		label := rec.Display

@@ -68,6 +68,7 @@ type Chill struct {
 	vibeMotifs   MotifMemory
 	guitarMotifs MotifMemory
 	saxMotifs    MotifMemory
+	profile      ControlProfile
 }
 
 // chillChord is one chord in the loop, expressed as semitone offsets from
@@ -260,6 +261,27 @@ func (a *Chill) Name() string { return "chill" }
 
 func (a *Chill) currentRoot() int { return a.rootMidi + a.keyOffset }
 
+func (a *Chill) ApplyControlProfile(profile ControlProfile) { a.profile = profileOrDefault(profile) }
+
+func (a *Chill) swingOffset(slot int) float64 {
+	profile := profileOrDefault(a.profile)
+	base := SwingOffsetSeconds(profile, 0.012)
+	if slot%2 == 1 {
+		return base
+	}
+	return -base * 0.20
+}
+
+func (a *Chill) wrapSwing(base func(int) float64) func(int) float64 {
+	return func(slot int) float64 {
+		offset := a.swingOffset(slot)
+		if base == nil {
+			return offset
+		}
+		return base(slot) + offset
+	}
+}
+
 func (a *Chill) Seed(seedVal int64) {
 	a.rng = rand.New(rand.NewSource(seedVal)) //nolint:gosec
 	a.rootMidi = 48 + a.rng.Intn(7)           // C3..F#3
@@ -416,7 +438,7 @@ func (a *Chill) Seed(seedVal int64) {
 			PeriodSec: cycleSec, Phase01: 0,
 			MutationRate: 1.0, MutateOne: mutate,
 			Gate:                   0.52,
-			ResolveTimingOffsetSec: cyclicTimingOffset(0, 12),
+			ResolveTimingOffsetSec: a.wrapSwing(cyclicTimingOffset(0, 12)),
 			ResolveVelocity: func(slot int, key int, base int32) int32 {
 				if slot%2 == 0 {
 					return base + 8
@@ -444,9 +466,9 @@ func (a *Chill) Seed(seedVal int64) {
 		Legato:       true,
 		TieRepeats:   true,
 		OverlapSec:   0.012,
-		ResolveTimingOffsetSec: cyclicTimingOffset(
+		ResolveTimingOffsetSec: a.wrapSwing(cyclicTimingOffset(
 			4, 7, 5, 0,
-		),
+		)),
 		ResolveVelocity: func(slot int, key int, base int32) int32 {
 			if slot%4 == 0 {
 				return base + 5
@@ -466,7 +488,7 @@ func (a *Chill) Seed(seedVal int64) {
 		PeriodSec: cycleSec, Phase01: 0,
 		ResolveNote:            func(slot int, _ int) int { return a.vibeNoteAt(slot) },
 		Gate:                   0.68,
-		ResolveTimingOffsetSec: cyclicTimingOffset(16, 11, 14, 9),
+		ResolveTimingOffsetSec: a.wrapSwing(cyclicTimingOffset(16, 11, 14, 9)),
 		ResolveVelocity: func(slot int, key int, base int32) int32 {
 			if a.section.TextureLevel > 1 {
 				return base + 6
@@ -489,7 +511,7 @@ func (a *Chill) Seed(seedVal int64) {
 		Phase01:                1.5 / float64(4*numBars), // 1.5 beats into the first bar
 		ResolveNote:            func(slot int, _ int) int { return a.guitarNoteAt(slot) },
 		Gate:                   0.44,
-		ResolveTimingOffsetSec: cyclicTimingOffset(18),
+		ResolveTimingOffsetSec: a.wrapSwing(cyclicTimingOffset(18)),
 		ResolveVelocity: func(slot int, key int, base int32) int32 {
 			if a.section.Kind == FormCadence {
 				return base + 8
@@ -514,7 +536,7 @@ func (a *Chill) Seed(seedVal int64) {
 		Legato:                 true,
 		TieRepeats:             true,
 		OverlapSec:             0.026,
-		ResolveTimingOffsetSec: chillLeadTiming(a.saxPlanCodeAt),
+		ResolveTimingOffsetSec: a.wrapSwing(chillLeadTiming(a.saxPlanCodeAt)),
 		ResolveVelocity: func(slot int, key int, base int32) int32 {
 			switch a.section.Kind {
 			case FormB, FormCadence:
@@ -562,7 +584,7 @@ func (a *Chill) Seed(seedVal int64) {
 		PeriodSec: cycleSec, Phase01: 0,
 		ResolveNote:            func(slot int, _ int) int { return a.kickNoteAt(slot) },
 		Gate:                   0.08,
-		ResolveTimingOffsetSec: cyclicTimingOffset(-4, 0),
+		ResolveTimingOffsetSec: a.wrapSwing(cyclicTimingOffset(-4, 0)),
 		VelocityJitter:         8, TimingJitterSec: 0.003, // kick — anchors the groove, must be tight
 		FireProbability: 0.95,
 		OnFire:          core.triggerDuck,
@@ -581,7 +603,7 @@ func (a *Chill) Seed(seedVal int64) {
 		PeriodSec:              cycleSec,
 		Phase01:                0.5/float64(2*numBars) + dillaSnareLagSec/cycleSec,
 		Gate:                   0.10,
-		ResolveTimingOffsetSec: cyclicTimingOffset(4, 6),
+		ResolveTimingOffsetSec: a.wrapSwing(cyclicTimingOffset(4, 6)),
 		VelocityJitter:         6, TimingJitterSec: 0.004,
 		FireProbability: 0.88, // snare almost always lands, with rare skips
 	})
@@ -597,7 +619,7 @@ func (a *Chill) Seed(seedVal int64) {
 		Channel: drumChannel, Velocity: 38, Notes: hihatNotes,
 		PeriodSec: cycleSec, Phase01: 0,
 		Gate:                   0.06,
-		ResolveTimingOffsetSec: cyclicTimingOffset(0, 12, -2, 11, -1, 13, -3, 8),
+		ResolveTimingOffsetSec: a.wrapSwing(cyclicTimingOffset(0, 12, -2, 11, -1, 13, -3, 8)),
 		VelocityJitter:         10,
 		TimingJitterSec:        0.006,
 		SwingAmount:            0.05,
@@ -1006,14 +1028,15 @@ func (a *Chill) currentBar() int {
 
 func (a *Chill) applyArrangement() {
 	a.section = a.form.SectionAt(a.samplesElapsed)
+	profile := profileOrDefault(a.profile)
 	if a.saxOn != nil {
-		*a.saxOn = a.section.LeadLevel > 0 && a.section.Kind != FormOutro
+		*a.saxOn = a.section.LeadLevel > 0 && a.section.Kind != FormOutro && profile.Density > 0
 	}
 	if a.guitarOn != nil {
-		*a.guitarOn = a.section.TextureLevel > 0 && a.section.Kind != FormBreakdown
+		*a.guitarOn = a.section.TextureLevel > 0 && a.section.Kind != FormBreakdown && profile.Density > 1
 	}
 	if a.vibeOn != nil {
-		*a.vibeOn = a.section.TextureLevel > 0
+		*a.vibeOn = a.section.TextureLevel > 0 && profile.Density > 0
 	}
 	if a.core == nil {
 		return
@@ -1024,24 +1047,27 @@ func (a *Chill) applyArrangement() {
 	lead := SectionSceneFor(a.section, RoleLead)
 	texture := SectionSceneFor(a.section, RoleTexture)
 	drums := SectionSceneFor(a.section, RoleDrums)
-	core.setReverbSend(0, SectionCC(56, comp.ReverbDelta))
-	core.setReverbSend(1, SectionCC(24, bass.ReverbDelta))
-	core.setReverbSend(2, SectionCC(80, texture.ReverbDelta))
-	core.setReverbSend(3, SectionCC(96, lead.ReverbDelta))
-	core.setReverbSend(4, SectionCC(50, comp.ReverbDelta))
-	core.setReverbSend(drumChannel, SectionCC(30, drums.ReverbDelta))
-	core.setChannelCutoff(0, SectionCC(32, comp.BrightnessDelta))
-	core.setChannelCutoff(1, SectionCC(68, bass.BrightnessDelta))
-	core.setChannelCutoff(2, SectionCC(56, texture.BrightnessDelta))
-	core.setChannelCutoff(3, SectionCC(70, lead.BrightnessDelta))
-	core.setChannelCutoff(4, SectionCC(42, comp.BrightnessDelta))
-	core.setChannelCutoff(drumChannel, SectionCC(88, drums.BrightnessDelta))
-	core.setChannelExpression(0, SectionCC(104, comp.ExpressionDelta))
-	core.setChannelExpression(1, SectionCC(100, bass.ExpressionDelta))
-	core.setChannelExpression(2, SectionCC(100, texture.ExpressionDelta))
-	core.setChannelExpression(3, SectionCC(108, lead.ExpressionDelta))
-	core.setChannelExpression(4, SectionCC(102, comp.ExpressionDelta))
-	core.setChannelExpression(drumChannel, SectionCC(96, drums.ExpressionDelta))
+	reverbDelta := ReverbDelta(profile)
+	brightDelta := BrightnessDelta(profile)
+	densityDelta := int32(ProfileCentered(profile.Density) * 8)
+	core.setReverbSend(0, SectionCC(56, comp.ReverbDelta+reverbDelta))
+	core.setReverbSend(1, SectionCC(24, bass.ReverbDelta+reverbDelta/2))
+	core.setReverbSend(2, SectionCC(80, texture.ReverbDelta+reverbDelta))
+	core.setReverbSend(3, SectionCC(96, lead.ReverbDelta+reverbDelta))
+	core.setReverbSend(4, SectionCC(50, comp.ReverbDelta+reverbDelta/2))
+	core.setReverbSend(drumChannel, SectionCC(30, drums.ReverbDelta+reverbDelta/2))
+	core.setChannelCutoff(0, SectionCC(32, comp.BrightnessDelta+brightDelta))
+	core.setChannelCutoff(1, SectionCC(68, bass.BrightnessDelta+brightDelta/2))
+	core.setChannelCutoff(2, SectionCC(56, texture.BrightnessDelta+brightDelta))
+	core.setChannelCutoff(3, SectionCC(70, lead.BrightnessDelta+brightDelta))
+	core.setChannelCutoff(4, SectionCC(42, comp.BrightnessDelta+brightDelta))
+	core.setChannelCutoff(drumChannel, SectionCC(88, drums.BrightnessDelta+brightDelta/2))
+	core.setChannelExpression(0, SectionCC(104, comp.ExpressionDelta+densityDelta/2))
+	core.setChannelExpression(1, SectionCC(100, bass.ExpressionDelta+densityDelta/3))
+	core.setChannelExpression(2, SectionCC(100, texture.ExpressionDelta+densityDelta/2))
+	core.setChannelExpression(3, SectionCC(108, lead.ExpressionDelta+densityDelta))
+	core.setChannelExpression(4, SectionCC(102, comp.ExpressionDelta+densityDelta/2))
+	core.setChannelExpression(drumChannel, SectionCC(96, drums.ExpressionDelta+densityDelta/2))
 }
 
 func (a *Chill) SectionGain() float64 {
