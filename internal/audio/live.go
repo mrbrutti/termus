@@ -83,8 +83,11 @@ func StartLive(root beep.Streamer, sr beep.SampleRate, bufferSize int, timeout t
 		func() error { return speaker.Init(sr, bufferSize) },
 		func() { speaker.Play(root) },
 		func() {
+			// Upstream beep/oto leaves the driver context alive even after
+			// Close() and documents that programs usually don't need to call it.
+			// Clearing the mixer is enough for quit, and avoids teardown paths
+			// that can leave the next launch without working audio on macOS.
 			speaker.Clear()
-			speaker.Close()
 		},
 		timeout,
 	)
@@ -114,7 +117,7 @@ func startLiveBackend(initFn func() error, startFn func(), closeFn func(), timeo
 // States returns the startup-state stream.
 func (b *LiveBackend) States() <-chan BackendState { return b.states }
 
-// Close shuts down the live speaker if it was successfully started.
+// Close stops live playback if it was successfully started.
 func (b *LiveBackend) Close() {
 	if !b.ready.Swap(false) {
 		return
