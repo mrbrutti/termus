@@ -16,33 +16,8 @@
     <p class="tagline">terminal music, generated from scratch</p>
   </header>
 
-  <div class="wave-wrap">
-    <svg id="waveSvg" class="wave" role="img"
-         aria-label="An animated wave illustrating termus's oscilloscope output"
-         preserveAspectRatio="none">
-      <defs>
-        <linearGradient id="waveGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%"   stop-color="#5b4bff"/>
-          <stop offset="50%"  stop-color="#5bfaff"/>
-          <stop offset="100%" stop-color="#5b4bff"/>
-        </linearGradient>
-        <filter id="waveGlow" x="-5%" y="-30%" width="110%" height="160%">
-          <feGaussianBlur stdDeviation="1.2"/>
-          <feMerge>
-            <feMergeNode/>
-            <feMergeNode in="SourceGraphic"/>
-          </feMerge>
-        </filter>
-      </defs>
-      <path id="wavePath"
-            stroke="url(#waveGrad)"
-            stroke-width="1.8"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            fill="none"
-            filter="url(#waveGlow)"
-            vector-effect="non-scaling-stroke"/>
-    </svg>
+  <div class="wave-wrap" aria-label="Animated Braille oscilloscope">
+    <pre id="brailleScope" class="braille-scope" aria-hidden="true"></pre>
   </div>
 
   <main>
@@ -59,42 +34,137 @@
 
   <script>
     (function () {
-      var svg  = document.getElementById('waveSvg');
-      var path = document.getElementById('wavePath');
-      var H    = 260;
-      var t    = 0;
+      // Render an animated Braille oscilloscope — same trick the TUI uses:
+      // a 2-dot-wide by 4-dot-tall sub-pixel grid mapped onto Unicode Braille
+      // characters (U+2800 base + bitmask). Each row of <span>s gets its own
+      // gradient color, top→bottom indigo→cyan→indigo, mirroring the
+      // app's default theme.
+      var pre = document.getElementById('brailleScope');
 
-      function renderAt(width, time) {
-        var mid = H / 2;
-        var d   = 'M 0 ' + mid.toFixed(1);
-        for (var x = 0; x <= width; x += 3) {
-          var y = mid
-            + 70 * Math.sin(0.018 * x + time * 0.0140)
-            + 28 * Math.sin(0.047 * x + time * 0.0260)
-            + 12 * Math.sin(0.103 * x + time * 0.0090);
-          d += ' L ' + x + ' ' + y.toFixed(1);
-        }
-        path.setAttribute('d', d);
+      // Bit positions within a single Braille cell, by (dx, dy):
+      //   (0,0)=0x01  (1,0)=0x08
+      //   (0,1)=0x02  (1,1)=0x10
+      //   (0,2)=0x04  (1,2)=0x20
+      //   (0,3)=0x40  (1,3)=0x80
+      var BITS = [
+        [0x01, 0x08],
+        [0x02, 0x10],
+        [0x04, 0x20],
+        [0x40, 0x80]
+      ];
+
+      function lerp(a, b, t) { return Math.round(a + (b - a) * t); }
+      function hex2(n) { var s = n.toString(16); return s.length < 2 ? '0' + s : s; }
+
+      // Triangle gradient from edge to center and back: edges = indigo,
+      // center = cyan. Matches the app's themes.go vertical gradient.
+      function colorAt(row, total) {
+        var mid = (total - 1) / 2;
+        var norm = mid > 0 ? Math.abs(row - mid) / mid : 0;
+        var r = lerp(0x5b, 0x5b, norm);
+        var g = lerp(0xfa, 0x4b, norm);
+        var b = lerp(0xff, 0xff, norm);
+        return '#' + hex2(r) + hex2(g) + hex2(b);
       }
 
-      function fit() {
-        var w = Math.max(320, svg.clientWidth | 0);
-        svg.setAttribute('viewBox', '0 0 ' + w + ' ' + H);
+      var W = 0;    // cells wide
+      var H = 12;   // cells tall
+      var t = 0;
+
+      // Row span elements, created once and updated per-frame via
+      // textContent so we never need innerHTML.
+      var rowSpans = [];
+
+      function buildRows() {
+        // Clear out the <pre> safely and rebuild row spans.
+        while (pre.firstChild) pre.removeChild(pre.firstChild);
+        rowSpans = [];
+        for (var cy = 0; cy < H; cy++) {
+          var span = document.createElement('span');
+          span.style.color = colorAt(cy, H);
+          span.style.display = 'block';
+          rowSpans.push(span);
+          pre.appendChild(span);
+        }
+      }
+
+      function measure() {
+        // Read the rendered character size and recompute how many Braille
+        // cells fit edge-to-edge.
+        var rect = pre.getBoundingClientRect();
+        var probe = document.createElement('span');
+        probe.textContent = '⠿';
+        probe.style.position = 'absolute';
+        probe.style.visibility = 'hidden';
+        probe.style.font = window.getComputedStyle(pre).font;
+        document.body.appendChild(probe);
+        var cw = probe.getBoundingClientRect().width || 10;
+        document.body.removeChild(probe);
+        W = Math.max(20, Math.floor(rect.width / cw));
+        buildRows();
       }
 
       function frame() {
-        var w = Math.max(320, svg.clientWidth | 0);
-        renderAt(w, t);
-        t += 1;
-        requestAnimationFrame(frame);
+        var dotsX = W * 2;
+        var dotsY = H * 4;
+        var mid = dotsY / 2;
+        var amp = dotsY * 0.42;
+        // Sample the wave's y-coordinate (in sub-pixel rows) at each
+        // sub-pixel column. Three incommensurate sine components + faster
+        // phase drift than the prior smooth-line version — feels alive
+        // instead of meditative.
+        var dotYs = new Array(dotsX);
+        for (var x = 0; x < dotsX; x++) {
+          var v =
+              0.62 * Math.sin(0.045 * x + t * 0.085)
+            + 0.28 * Math.sin(0.130 * x + t * 0.140)
+            + 0.16 * Math.sin(0.270 * x + t * 0.062);
+          var y = mid + amp * v;
+          if (y < 0) y = 0;
+          if (y > dotsY - 1) y = dotsY - 1;
+          dotYs[x] = y | 0;
+        }
+
+        // Convert dot grid → row of Braille chars for each cell row.
+        for (var cy = 0; cy < H; cy++) {
+          var chars = '';
+          for (var cx = 0; cx < W; cx++) {
+            var bits = 0;
+            for (var dy = 0; dy < 4; dy++) {
+              var py = cy * 4 + dy;
+              for (var dx = 0; dx < 2; dx++) {
+                var px = cx * 2 + dx;
+                if (dotYs[px] === py) bits |= BITS[dy][dx];
+              }
+            }
+            chars += String.fromCharCode(0x2800 + bits);
+          }
+          rowSpans[cy].textContent = chars;
+        }
       }
 
-      fit();
-      window.addEventListener('resize', fit);
-      if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        renderAt(Math.max(320, svg.clientWidth | 0), 0);
-      } else {
+      function tick() {
         frame();
+        t += 1;
+        requestAnimationFrame(tick);
+      }
+
+      function init() {
+        measure();
+        if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          frame();
+        } else {
+          tick();
+        }
+      }
+
+      window.addEventListener('resize', measure);
+
+      // Wait for the webfont (Space Grotesk) so initial layout doesn't jump.
+      if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(init);
+      } else {
+        init();
       }
     })();
   </script>
