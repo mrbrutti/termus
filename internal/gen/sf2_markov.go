@@ -39,6 +39,8 @@ type SF2Markov struct {
 	samplesElapsed int64
 	nextSectionAt  int64
 	oboeOn         *bool
+
+	violinPhrase []int
 }
 
 // classicalChord is one bar of harmony.
@@ -104,7 +106,10 @@ func (a *SF2Markov) Seed(seedVal int64) {
 	a.oboeOn = &oboeStart
 	a.scheduleNextSection()
 
-	core, err := newSF2Core(a.sf, 2.6, seedVal)
+	// Master gain reduced (2.6 → 2.2) — classical was the loudest of the
+	// genres (RMS 0.23). Dial it down so it sits with the others in a
+	// playlist.
+	core, err := newSF2Core(a.sf, 2.2, seedVal)
 	if err != nil {
 		a.core = nil
 		return
@@ -164,36 +169,40 @@ func (a *SF2Markov) Seed(seedVal int64) {
 		VelocityJitter: 8, TimingJitterSec: 0.008,
 	})
 
-	// --- Harpsichord continuo: 4 stabs per bar, 3-note triad. Use 3 tracks
-	// for the 3 chord-tone voices (root, 3rd, 5th) all on channel 2 — so each
-	// beat sounds the whole triad simultaneously.
+	// --- Harpsichord continuo: 2 stabs per bar (beats 1 and 3 — half-time
+	// continuo). The previous "stab on every beat" was too dense — real
+	// Baroque continuo breathes between accents.
 	for voiceIdx := 0; voiceIdx < 3; voiceIdx++ {
 		voice := voiceIdx
-		stabs := make([]int, 4*numBars)
+		stabs := make([]int, 2*numBars)
 		for i := range stabs {
-			stabs[i] = a.harpsichordTone(i, voice)
+			// slot i maps to beat 1 or 3 of bar i/2
+			stabs[i] = a.harpsichordTone(i*2, voice) // i*2 because we're firing on every other beat
 		}
 		core.addTrack(SF2Track{
 			Channel: 2, Velocity: 48, Notes: stabs,
 			PeriodSec: cycleSec, Phase01: 0,
 			MutationRate: 0.05,
-			MutateOne:    func(slot int, _ int) int { return a.harpsichordTone(slot, voice) },
+			MutateOne: func(slot int, _ int) int {
+				return a.harpsichordTone(slot*2, voice)
+			},
 			VelocityJitter: 8, TimingJitterSec: 0.006,
 		})
 	}
 
-	// --- Violin melody: 2 notes per bar (half-note phrasing) — first on
-	// beat 1, second on beat 3.
-	violinNotes := make([]int, 2*numBars)
-	for i := range violinNotes {
-		violinNotes[i] = a.violinNote(i)
-	}
+	// --- Violin melody: a coherent 8-note phrase spread across the 8-bar
+	// form (2 notes/bar). Pre-computed so the melody has a recognizable
+	// arc — antecedent half rises, consequent half resolves — instead of
+	// each note being chosen independently.
+	a.violinPhrase = a.makeViolinPhrase(2 * numBars)
 	core.addTrack(SF2Track{
-		Channel: 0, Velocity: 82, Notes: violinNotes,
+		Channel: 0, Velocity: 82, Notes: a.violinPhrase,
 		PeriodSec: cycleSec, Phase01: 0,
-		MutationRate: 0.30,
-		MutateOne:    func(slot int, _ int) int { return a.violinNote(slot) },
-		VelocityJitter: 12, TimingJitterSec: 0.018,
+		MutationRate: 0.08, // very light mutation — keep the phrase shape
+		MutateOne: func(slot int, _ int) int {
+			return a.violinPhrase[slot%len(a.violinPhrase)]
+		},
+		VelocityJitter: 12, TimingJitterSec: 0.020,
 	})
 
 	// --- String pad: holds the chord for the entire bar. 3 voices for the
@@ -284,6 +293,36 @@ func (a *SF2Markov) harpsichordTone(slot, voice int) int {
 		key -= 12
 	}
 	return key
+}
+
+// makeViolinPhrase builds the violin melody for the entire 8-bar form
+// (numSlots = 2 * numBars). Uses a peak-and-fall contour on the major scale
+// — every classical period closes with a downward resolution to the tonic.
+// Pentatonic-major gives consonance against every chord in the progression.
+func (a *SF2Markov) makeViolinPhrase(numSlots int) []int {
+	// Pick contour: bias toward "peak-and-fall" or "wave" — both have the
+	// classical-feeling antecedent/consequent shape.
+	contour := melodicPhrases[2+a.rng.Intn(2)] // {2,3} = peak-fall, wave
+	if len(contour) != numSlots {
+		extended := make([]int, numSlots)
+		for i := range extended {
+			extended[i] = contour[i%len(contour)]
+		}
+		contour = extended
+	}
+	// Violin register: G4–E6 (67–88). Start at +24 semitones above currentRoot.
+	root := a.currentRoot() + 24
+	notes := applyPhraseToScale(contour, majorPentatonic, root, 2, 0)
+	for i, k := range notes {
+		for k < 67 {
+			k += 12
+		}
+		for k > 88 {
+			k -= 12
+		}
+		notes[i] = k
+	}
+	return notes
 }
 
 // violinNote returns one of the 2 melody notes for the i-th half-bar slot.

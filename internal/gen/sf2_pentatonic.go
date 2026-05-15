@@ -38,6 +38,8 @@ type SF2Pentatonic struct {
 	samplesElapsed int64
 	nextSectionAt  int64
 	glockOn        *bool
+
+	melodyPhrase []int
 }
 
 // lullabyChord is one bar of harmony in 3/4. tones are semitone offsets from
@@ -106,7 +108,9 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 	a.glockOn = &glockStart
 	a.scheduleNextSection()
 
-	core, err := newSF2Core(a.sf, 2.4, seedVal)
+	// Master gain raised (2.4 → 3.0) — lullaby was significantly quieter
+	// than the others, made it disappear in a mixed playlist.
+	core, err := newSF2Core(a.sf, 3.0, seedVal)
 	if err != nil {
 		a.core = nil
 		return
@@ -148,9 +152,9 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 	core.setChorusSend(1, 24)
 	core.setChorusSend(2, 24)
 
-	// Tempo: 56–72 BPM. Each "beat" is a quarter note (1 beat) — 3 beats per
-	// bar at this tempo gives ~2.5–3.2 seconds per bar.
-	bpm := 56.0 + 16.0*a.rng.Float64()
+	// Tempo: 48–62 BPM. True cradle-rocking tempo — slower than the previous
+	// 56-72 range, which was sitting closer to "slow song" than "lullaby".
+	bpm := 48.0 + 14.0*a.rng.Float64()
 	beatSec := 60.0 / bpm
 	barSec := beatSec * 3 // 3/4 time
 	numBars := len(a.progression)
@@ -191,17 +195,14 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 		})
 	}
 
-	// --- Music box melody: 1 note per bar in the high register. Phrased so
-	// the melody outlines the chord then ornaments with a scale tone.
-	melodyNotes := make([]int, numBars)
-	for i := range melodyNotes {
-		melodyNotes[i] = a.melodyNote(i)
-	}
+	// --- Music box melody: pre-computed coherent 8-note phrase in
+	// pentatonic major. Cycles through the 8 bars deterministically — the
+	// same melody every loop is what makes a lullaby memorable. NO mutation
+	// (a music box plays the same tune; that's its charm).
+	a.melodyPhrase = a.makeMelodyPhrase(numBars)
 	core.addTrack(SF2Track{
-		Channel: 1, Velocity: 76, Notes: melodyNotes,
+		Channel: 1, Velocity: 76, Notes: a.melodyPhrase,
 		PeriodSec: cycleSec, Phase01: 0,
-		MutationRate: 0.40,
-		MutateOne:    func(slot int, _ int) int { return a.melodyNote(slot) },
 		VelocityJitter: 12, TimingJitterSec: 0.018,
 	})
 
@@ -272,6 +273,36 @@ func (a *SF2Pentatonic) compTone(slot, idx int) int {
 		key -= 12
 	}
 	return key
+}
+
+// makeMelodyPhrase builds the music-box's coherent melodic contour for the
+// entire 8-bar form. Pentatonic major guarantees consonance with every chord
+// in the progression. Picks one of the stylized contours so the listener
+// hears an antecedent → consequent → resolution shape rather than random
+// notes.
+func (a *SF2Pentatonic) makeMelodyPhrase(numBars int) []int {
+	contour := pickMelodicPhrase(a.rng)
+	// Resize to match the bar count by repeating or trimming the contour.
+	if len(contour) != numBars {
+		extended := make([]int, numBars)
+		for i := range extended {
+			extended[i] = contour[i%len(contour)]
+		}
+		contour = extended
+	}
+	// Music box sweet spot is C5–C6 (60..72). Start in mid register.
+	root := a.currentRoot() + 24
+	notes := applyPhraseToScale(contour, majorPentatonic, root, 2, 0)
+	for i, k := range notes {
+		for k < 72 {
+			k += 12
+		}
+		for k > 88 {
+			k -= 12
+		}
+		notes[i] = k
+	}
+	return notes
 }
 
 // melodyNote returns the music-box melody note for the i-th bar. Mostly

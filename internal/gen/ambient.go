@@ -48,6 +48,10 @@ type Ambient struct {
 
 	bellsOn   *bool
 	celestaOn *bool
+
+	// Coherent 8-note bell phrase, pre-computed at Seed time so the bell
+	// motif reads as a tune rather than a random sequence of strikes.
+	bellPhrase []int
 }
 
 // ambientChord is one harmonic center: a root offset from the key center,
@@ -167,10 +171,10 @@ func (a *Ambient) Seed(seedVal int64) {
 	core.setChorusSend(1, 48)
 	core.setChorusSend(2, 32)
 
-	// --- String pad: a 3-voice spread of the current chord, recomputed via
-	// the per-slot mutator using the live chord state. Periods are
-	// incommensurate so the loop never quite repeats.
-	for ti, period := range []float64{19.7, 23.3, 28.9} {
+	// --- String pad: 2-voice spread of the current chord — fewer voices than
+	// the previous 3 per layer to reduce mud. Periods are incommensurate so
+	// the loop never quite repeats.
+	for ti, period := range []float64{23.7, 31.1} {
 		voice := ti
 		core.addTrack(SF2Track{
 			Channel: 0, Velocity: 56, Notes: []int{a.padNote(voice, 0)},
@@ -181,7 +185,7 @@ func (a *Ambient) Seed(seedVal int64) {
 		})
 	}
 	// Warm pad layered in parallel — same notes, different timbre.
-	for ti, period := range []float64{17.3, 25.7, 31.1} {
+	for ti, period := range []float64{27.3, 39.1} {
 		voice := ti
 		core.addTrack(SF2Track{
 			Channel: 1, Velocity: 50, Notes: []int{a.padNote(voice, 0)},
@@ -192,37 +196,37 @@ func (a *Ambient) Seed(seedVal int64) {
 		})
 	}
 
-	// --- Choir aahs: upper chord-tone voices in the soprano register
-	// (around C5-G5). Slower trigger rate than strings.
-	for ti, period := range []float64{29.1, 37.7} {
-		voice := ti
-		core.addTrack(SF2Track{
-			Channel: 2, Velocity: 48, Notes: []int{a.choirNote(voice)},
-			PeriodSec: period, Phase01: a.rng.Float64(),
-			MutationRate: 0.35,
-			MutateOne:    func(_ int, _ int) int { return a.choirNote(voice) },
-			VelocityJitter: 8, TimingJitterSec: 0.06,
-		})
-	}
+	// --- Choir aahs: single upper-register voice. One voice not two — the
+	// "vocal in the pad" effect is most striking when it's lonely.
+	core.addTrack(SF2Track{
+		Channel: 2, Velocity: 48, Notes: []int{a.choirNote(0)},
+		PeriodSec: 41.3, Phase01: a.rng.Float64(),
+		MutationRate: 0.35,
+		MutateOne:    func(_ int, _ int) int { return a.choirNote(0) },
+		VelocityJitter: 8, TimingJitterSec: 0.06,
+	})
 
-	// --- Tubular bell motif: sparse pentatonic chord-tone triggers on long
-	// incommensurate loops. The signature Eno "tape-loop bell" — strikes
-	// land at unpredictable times, drenched in reverb, fading slowly.
-	for _, period := range []float64{11.3, 17.7, 23.1} {
-		core.addTrack(SF2Track{
-			Channel: 3, Velocity: 64, Notes: []int{a.bellNote()},
-			PeriodSec: period, Phase01: a.rng.Float64(),
-			MutationRate: 0.55,
-			MutateOne:    func(_ int, _ int) int { return a.bellNote() },
-			VelocityJitter: 14, TimingJitterSec: 0.08,
-			Enabled: a.bellsOn,
-		})
-	}
+	// --- Tubular bell motif: a single coherent melodic phrase from the
+	// chord-tone palette, looped on a long period. Replaces the previous 3
+	// random-pick bell tracks — what listeners recognize as "bell motif" is
+	// a tune, not an unpredictable string of strikes.
+	a.bellPhrase = a.makeBellPhrase()
+	core.addTrack(SF2Track{
+		Channel: 3, Velocity: 64, Notes: a.bellPhrase,
+		PeriodSec: 47.3, Phase01: a.rng.Float64(),
+		MutationRate: 0.15,
+		MutateOne: func(slot int, _ int) int {
+			return a.bellPhrase[slot%len(a.bellPhrase)]
+		},
+		VelocityJitter: 14, TimingJitterSec: 0.08,
+		Enabled: a.bellsOn,
+	})
 
-	// --- Celesta sparkle: very high register, sparse.
+	// --- Celesta sparkle: very high register, very sparse — single voice on
+	// a long period.
 	core.addTrack(SF2Track{
 		Channel: 4, Velocity: 44, Notes: []int{a.celestaNote()},
-		PeriodSec: 33.3, Phase01: a.rng.Float64(),
+		PeriodSec: 53.7, Phase01: a.rng.Float64(),
 		MutationRate: 0.40,
 		MutateOne:    func(_ int, _ int) int { return a.celestaNote() },
 		VelocityJitter: 12, TimingJitterSec: 0.10,
@@ -285,22 +289,35 @@ func (a *Ambient) choirNote(voice int) int {
 	return key
 }
 
-// bellNote returns a high-register pentatonic-flavored key (C5–C7) for the
-// tubular bell motif. Always a chord tone so it never clashes.
-func (a *Ambient) bellNote() int {
+// makeBellPhrase builds the bell-motif's coherent 8-note melodic contour
+// using the current chord's tones, transposed into the bell register
+// (C5–C7). Picks a stylized contour (peak-and-fall by default for the Eno
+// 2/1 vibe) and uses chord-tone scale degrees so every note resolves.
+func (a *Ambient) makeBellPhrase() []int {
 	if len(a.chords) == 0 {
-		return 72
+		return []int{72}
 	}
+	// Pentatonic of the chord: root, 3rd (or 4th if no 3rd), 5th, 7th (or 9th).
 	c := a.chords[a.currentChordIdx]
-	idx := a.rng.Intn(len(c.tones))
-	key := a.currentRoot() + c.rootSemi + c.tones[idx] + 36 + 12*a.rng.Intn(2)
-	for key < 72 {
-		key += 12
+	scale := make([]int, 0, len(c.tones))
+	for _, t := range c.tones {
+		scale = append(scale, t)
 	}
-	for key > 96 {
-		key -= 12
+	// Peak-and-fall contour — Music for Airports "2/1" feel.
+	phrase := melodicPhrases[2] // {0, 2, 4, 6, 4, 2, 0, -2}
+	root := a.currentRoot() + c.rootSemi + 36
+	notes := applyPhraseToScale(phrase, scale, root, 0, 0)
+	// Clamp into the bell register.
+	for i, k := range notes {
+		for k < 72 {
+			k += 12
+		}
+		for k > 96 {
+			k -= 12
+		}
+		notes[i] = k
 	}
-	return key
+	return notes
 }
 
 // celestaNote returns a very high chord-tone key (C6–C7).

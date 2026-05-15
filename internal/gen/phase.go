@@ -146,30 +146,27 @@ func (a *Phase) Seed(seedVal int64) {
 		VelocityJitter: 6,
 	})
 
-	// --- Choir aahs pad: 3 chord-tone voices held very long. Pad mutator
-	// reads the current chord so notes follow the harmonic cycle.
-	for voice := 0; voice < 3; voice++ {
+	// --- Choir aahs pad: 2 chord-tone voices (thinned from 3 — the mallet
+	// patterns are the focus, the pad just provides a tonal ground).
+	for voice := 0; voice < 2; voice++ {
 		v := voice
 		core.addTrack(SF2Track{
 			Channel: 2, Velocity: 38, Notes: []int{a.padTone(v)},
-			PeriodSec: 17.3 + 6*float64(v), Phase01: a.rng.Float64(),
+			PeriodSec: 19.3 + 9*float64(v), Phase01: a.rng.Float64(),
 			MutationRate: 0.40,
 			MutateOne:    func(_ int, _ int) int { return a.padTone(v) },
 			VelocityJitter: 4, TimingJitterSec: 0.05,
 		})
 	}
 
-	// --- FM-EP harmonic backing: 2 voices in upper register, slow retrigger.
-	for voice := 0; voice < 2; voice++ {
-		v := voice
-		core.addTrack(SF2Track{
-			Channel: 3, Velocity: 36, Notes: []int{a.padTone(v) + 12},
-			PeriodSec: 23.7 + 4*float64(v), Phase01: a.rng.Float64(),
-			MutationRate: 0.30,
-			MutateOne:    func(_ int, _ int) int { return a.padTone(v) + 12 },
-			VelocityJitter: 4, TimingJitterSec: 0.06,
-		})
-	}
+	// --- FM-EP harmonic backing: 1 voice in upper register (thinned from 2).
+	core.addTrack(SF2Track{
+		Channel: 3, Velocity: 36, Notes: []int{a.padTone(1) + 12},
+		PeriodSec: 27.3, Phase01: a.rng.Float64(),
+		MutationRate: 0.30,
+		MutateOne:    func(_ int, _ int) int { return a.padTone(1) + 12 },
+		VelocityJitter: 4, TimingJitterSec: 0.06,
+	})
 
 	// --- Sub-bass pedal: chord root, very slow retrigger.
 	core.addTrack(SF2Track{

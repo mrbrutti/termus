@@ -131,42 +131,39 @@ func (a *SF2Drone) Seed(seedVal int64) {
 	core.setChorusSend(1, 48)
 	core.setChorusSend(2, 32)
 
-	// --- Bowed glass drone bed: 3 voices on incommensurate long periods.
-	for ti, period := range []float64{37.3, 53.7, 71.1} {
+	// --- Bowed glass drone bed: 2 voices on long incommensurate periods.
+	// Fewer voices, longer periods = more space + clearer harmonic identity.
+	for ti, period := range []float64{53.3, 79.1} {
 		voice := ti
 		core.addTrack(SF2Track{
 			Channel: 0, Velocity: 52, Notes: []int{a.droneTone(voice, 0)},
 			PeriodSec: period, Phase01: a.rng.Float64(),
-			MutationRate: 0.25,
+			MutationRate: 0.20,
 			MutateOne:    func(_ int, _ int) int { return a.droneTone(voice, 0) },
 			VelocityJitter: 8, TimingJitterSec: 0.15,
 		})
 	}
 
-	// --- Synth strings parallel layer: same chord tones, slightly higher
-	// register, different periods.
-	for ti, period := range []float64{41.1, 59.3, 83.9} {
+	// --- Synth strings parallel layer: 2 voices, slightly higher register.
+	for ti, period := range []float64{61.7, 89.3} {
 		voice := ti
 		core.addTrack(SF2Track{
 			Channel: 1, Velocity: 46, Notes: []int{a.droneTone(voice, 12)},
 			PeriodSec: period, Phase01: a.rng.Float64(),
-			MutationRate: 0.25,
+			MutationRate: 0.20,
 			MutateOne:    func(_ int, _ int) int { return a.droneTone(voice, 12) },
 			VelocityJitter: 6, TimingJitterSec: 0.18,
 		})
 	}
 
-	// --- Choir aahs: 2 voices in the upper register, sparse.
-	for ti, period := range []float64{47.7, 67.3} {
-		voice := ti
-		core.addTrack(SF2Track{
-			Channel: 2, Velocity: 44, Notes: []int{a.droneTone(voice, 24)},
-			PeriodSec: period, Phase01: a.rng.Float64(),
-			MutationRate: 0.30,
-			MutateOne:    func(_ int, _ int) int { return a.droneTone(voice, 24) },
-			VelocityJitter: 8, TimingJitterSec: 0.20,
-		})
-	}
+	// --- Choir aahs: 1 voice in the upper register, very sparse.
+	core.addTrack(SF2Track{
+		Channel: 2, Velocity: 44, Notes: []int{a.droneTone(1, 24)},
+		PeriodSec: 71.7, Phase01: a.rng.Float64(),
+		MutationRate: 0.30,
+		MutateOne:    func(_ int, _ int) int { return a.droneTone(1, 24) },
+		VelocityJitter: 8, TimingJitterSec: 0.20,
+	})
 
 	// --- FM EP shimmer: a single high voice that catches upper partials of
 	// the chord. Very long period, infrequent retrigger.
