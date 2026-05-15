@@ -68,7 +68,9 @@
       }
 
       var W = 0;    // cells wide
-      var H = 12;   // cells tall
+      var H = 7;    // cells tall — keeps the wave thin like the real TUI scope
+                    // shows during normal-volume playback (the wave only
+                    // occupies a narrow band around the middle of the screen)
       var t = 0;
 
       // Row span elements, created once and updated per-frame via
@@ -108,17 +110,21 @@
         var dotsX = W * 2;
         var dotsY = H * 4;
         var mid = dotsY / 2;
-        var amp = dotsY * 0.42;
-        // Sample the wave's y-coordinate (in sub-pixel rows) at each
-        // sub-pixel column. Three incommensurate sine components + faster
-        // phase drift than the prior smooth-line version — feels alive
-        // instead of meditative.
+        // Amplitude tuned to ~60% of half-height — keeps the wave inside the
+        // middle ~3 cell rows like the real TUI shows. Matches the recorded
+        // termus output where the wave is a thin band of dots, not a
+        // full-screen pad of glyphs.
+        var amp = dotsY * 0.55;
+        // Four incommensurate sine components. The first two carry the
+        // slow shape; the third + fourth add the higher-frequency micro-
+        // wiggle that gives the dots their "audio waveform" character.
         var dotYs = new Array(dotsX);
         for (var x = 0; x < dotsX; x++) {
           var v =
-              0.62 * Math.sin(0.045 * x + t * 0.085)
-            + 0.28 * Math.sin(0.130 * x + t * 0.140)
-            + 0.16 * Math.sin(0.270 * x + t * 0.062);
+              0.48 * Math.sin(0.022 * x + t * 0.040)
+            + 0.24 * Math.sin(0.058 * x + t * 0.090)
+            + 0.16 * Math.sin(0.135 * x + t * 0.060)
+            + 0.10 * Math.sin(0.310 * x + t * 0.130);
           var y = mid + amp * v;
           if (y < 0) y = 0;
           if (y > dotsY - 1) y = dotsY - 1;
