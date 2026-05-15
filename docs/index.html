@@ -11,13 +11,15 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body class="landing">
-  <main>
+  <header class="hero">
     <h1 class="logo">termus</h1>
     <p class="tagline">terminal music, generated from scratch</p>
+  </header>
 
-    <svg class="wave" viewBox="0 0 1200 280" role="img"
+  <div class="wave-wrap">
+    <svg id="waveSvg" class="wave" role="img"
          aria-label="An animated wave illustrating termus's oscilloscope output"
-         preserveAspectRatio="xMidYMid meet">
+         preserveAspectRatio="none">
       <defs>
         <linearGradient id="waveGrad" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%"   stop-color="#5b4bff"/>
@@ -34,47 +36,16 @@
       </defs>
       <path id="wavePath"
             stroke="url(#waveGrad)"
-            stroke-width="2"
+            stroke-width="1.8"
             stroke-linecap="round"
-            stroke-dasharray="0 6"
+            stroke-linejoin="round"
             fill="none"
-            filter="url(#waveGlow)"/>
+            filter="url(#waveGlow)"
+            vector-effect="non-scaling-stroke"/>
     </svg>
-    <script>
-      (function () {
-        var path = document.getElementById('wavePath');
-        var t = 0;
-        var mid = 140;
-        function frame() {
-          // Three sine components at incommensurate frequencies + slow phase
-          // drift produces an audio-like wave that never quite repeats.
-          var d = 'M 0 ' + mid.toFixed(1);
-          for (var x = 0; x <= 1200; x += 4) {
-            var y = mid
-              + 70 * Math.sin(0.018 * x + t * 0.0140)
-              + 28 * Math.sin(0.047 * x + t * 0.0260)
-              + 12 * Math.sin(0.103 * x + t * 0.0090);
-            d += ' L ' + x + ' ' + y.toFixed(1);
-          }
-          path.setAttribute('d', d);
-          t += 1;
-          requestAnimationFrame(frame);
-        }
-        // Respect users who prefer reduced motion — show a still wave instead
-        // of animating.
-        if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-          var still = 'M 0 ' + mid;
-          for (var x = 0; x <= 1200; x += 4) {
-            var y = mid + 70 * Math.sin(0.018 * x) + 28 * Math.sin(0.047 * x) + 12 * Math.sin(0.103 * x);
-            still += ' L ' + x + ' ' + y.toFixed(1);
-          }
-          path.setAttribute('d', still);
-        } else {
-          frame();
-        }
-      })();
-    </script>
+  </div>
 
+  <main>
     <pre class="install"><code>brew tap mrbrutti/termus &amp;&amp; brew install termus</code></pre>
 
     <nav class="links">
@@ -85,5 +56,47 @@
       <a href="https://github.com/mrbrutti/termus/releases">v0.1.0</a>
     </nav>
   </main>
+
+  <script>
+    (function () {
+      var svg  = document.getElementById('waveSvg');
+      var path = document.getElementById('wavePath');
+      var H    = 260;
+      var t    = 0;
+
+      function renderAt(width, time) {
+        var mid = H / 2;
+        var d   = 'M 0 ' + mid.toFixed(1);
+        for (var x = 0; x <= width; x += 3) {
+          var y = mid
+            + 70 * Math.sin(0.018 * x + time * 0.0140)
+            + 28 * Math.sin(0.047 * x + time * 0.0260)
+            + 12 * Math.sin(0.103 * x + time * 0.0090);
+          d += ' L ' + x + ' ' + y.toFixed(1);
+        }
+        path.setAttribute('d', d);
+      }
+
+      function fit() {
+        var w = Math.max(320, svg.clientWidth | 0);
+        svg.setAttribute('viewBox', '0 0 ' + w + ' ' + H);
+      }
+
+      function frame() {
+        var w = Math.max(320, svg.clientWidth | 0);
+        renderAt(w, t);
+        t += 1;
+        requestAnimationFrame(frame);
+      }
+
+      fit();
+      window.addEventListener('resize', fit);
+      if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        renderAt(Math.max(320, svg.clientWidth | 0), 0);
+      } else {
+        frame();
+      }
+    })();
+  </script>
 </body>
 </html>

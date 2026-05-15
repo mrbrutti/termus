@@ -39,17 +39,19 @@ html, body {
 
 /* ============================================================
    LANDING PAGE
+   The landing flows vertically: hero (centered text) → wave (full
+   viewport width, edge to edge) → main (install + links, centered).
    ============================================================ */
 
-body.landing main {
+body.landing {
   min-height: 100vh;
-  max-width: 760px;
-  margin: 0 auto;
-  padding: 8vh 2rem 4vh;
   display: flex;
   flex-direction: column;
-  align-items: center;
+}
+
+body.landing .hero {
   text-align: center;
+  padding: 8vh 2rem 2rem;
 }
 
 body.landing .logo {
@@ -61,18 +63,37 @@ body.landing .logo {
 body.landing .tagline {
   color: var(--fg-dim);
   font-size: 0.95rem;
-  margin: 0.8rem 0 3.5rem;
+  margin: 0.8rem 0 0;
   letter-spacing: 0.02em;
 }
 
-body.landing .wave {
+/* The wave-wrap goes wall-to-wall regardless of any parent constraints.
+   The SVG inside fills its container; the JS computes path coordinates
+   based on actual rendered width, so the wave always extends edge-to-edge
+   without distortion or stretching. */
+body.landing .wave-wrap {
   width: 100%;
-  max-width: 720px;
-  height: auto;
+  margin: 2.5rem 0;
+  overflow: hidden;
+}
+
+body.landing .wave {
   display: block;
-  margin: 1rem auto 3rem;
-  background: transparent;
-  /* The wave is the visual identity — let it breathe; no box, no border. */
+  width: 100%;
+  height: 28vh;
+  min-height: 180px;
+  max-height: 320px;
+}
+
+body.landing main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 2rem 4vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  flex: 1;
 }
 
 body.landing .install {
@@ -294,10 +315,11 @@ body.docs footer a:hover {
    ============================================================ */
 
 @media (max-width: 600px) {
-  body.landing main { padding: 5vh 1.2rem 3vh; }
+  body.landing .hero { padding: 5vh 1.2rem 1rem; }
   body.landing .logo { font-size: 3rem; }
-  body.landing .tagline { margin-bottom: 2.5rem; }
-  body.landing .wave { margin-bottom: 2rem; }
+  body.landing .wave-wrap { margin: 1.5rem 0; }
+  body.landing .wave { height: 22vh; min-height: 140px; }
+  body.landing main { padding: 0 1.2rem 3vh; }
   body.landing .install { font-size: 0.82rem; }
 
   .docs-header { padding: 1.2rem 1.2rem; }
