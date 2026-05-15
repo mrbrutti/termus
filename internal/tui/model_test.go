@@ -304,16 +304,22 @@ func TestReducedChromeBottomBarShowsReturnHint(t *testing.T) {
 		themes:        []ColorTheme{DefaultTheme()},
 	}
 	bar := bottomBar(m, 90, DefaultTheme(), false)
-	if !strings.Contains(bar, "[z] full") {
-		t.Fatalf("reduced chrome bar missing return hint: %q", bar)
+	if !strings.Contains(bar, "Ambient") || !strings.Contains(bar, "?") {
+		t.Fatalf("reduced chrome bar missing minimal chrome: %q", bar)
+	}
+	if strings.Contains(bar, "[q]") || strings.Contains(bar, "[z]") || strings.Contains(bar, "70%") {
+		t.Fatalf("reduced chrome bar should stay minimal: %q", bar)
 	}
 }
 
 func TestRenderVolumeLineShowsCenteredFeedback(t *testing.T) {
 	m := Model{volume: 70}
 	line := renderVolumeLine(m, 40, DefaultTheme())
-	if !strings.Contains(line, "70%") {
-		t.Fatalf("volume line missing label: %q", line)
+	if strings.Contains(line, "%") {
+		t.Fatalf("volume line should not show numeric label: %q", line)
+	}
+	if !strings.Contains(line, "─") {
+		t.Fatalf("volume line should render as a line: %q", line)
 	}
 }
 

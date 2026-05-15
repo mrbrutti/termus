@@ -919,12 +919,10 @@ func (m Model) volumeOverlayVisible(now time.Time) bool {
 }
 
 func renderVolumeLine(m Model, w int, theme ColorTheme) string {
-	if w < 12 {
-		return fmt.Sprintf("%d%%", m.volume)
+	if w < 2 {
+		return ""
 	}
-	label := fmt.Sprintf(" %d%% ", m.volume)
-	labelW := lipgloss.Width(label)
-	side := maxInt(0, (w-labelW)/2)
+	side := w / 2
 	activeSide := int(float64(side) * float64(m.volume) / 100.0)
 	if m.volume > 0 && activeSide == 0 {
 		activeSide = 1
@@ -935,15 +933,13 @@ func renderVolumeLine(m Model, w int, theme ColorTheme) string {
 	idleSide := side - activeSide
 	left := lipgloss.NewStyle().Faint(true).Render(strings.Repeat("─", idleSide)) +
 		lipgloss.NewStyle().Foreground(theme.BarHi).Render(strings.Repeat("─", activeSide))
-	center := lipgloss.NewStyle().Foreground(theme.BarHi).Render(label)
+	center := ""
+	if w%2 != 0 {
+		center = lipgloss.NewStyle().Foreground(theme.BarHi).Render("─")
+	}
 	right := lipgloss.NewStyle().Foreground(theme.BarHi).Render(strings.Repeat("─", activeSide)) +
 		lipgloss.NewStyle().Faint(true).Render(strings.Repeat("─", idleSide))
-	line := left + center + right
-	pad := w - (side*2 + labelW)
-	if pad > 0 {
-		line += spaces(pad)
-	}
-	return line
+	return left + center + right
 }
 
 func slotSeedLabel(mark *seedBookmark) string {
@@ -962,6 +958,15 @@ func inspectorDebugLabel(status gen.DebugStatus) string {
 }
 
 func bottomBar(m Model, w int, theme ColorTheme, compact bool) string {
+	if m.reducedChrome {
+		left := lipgloss.NewStyle().Foreground(theme.BarFg).Render(m.algo)
+		right := lipgloss.NewStyle().Faint(true).Render("?")
+		pad := w - lipgloss.Width(left) - lipgloss.Width(right)
+		if pad < 1 {
+			pad = 1
+		}
+		return left + spaces(pad) + right
+	}
 	state := "play"
 	if m.paused {
 		state = "PAUSED"
@@ -1012,8 +1017,6 @@ func bottomBar(m Model, w int, theme ColorTheme, compact bool) string {
 		hintParts = []string{"[i] close", "[e] export", "[r] record", "[q] quit"}
 	} else if m.exportVisible {
 		hintParts = []string{"[w] wav", "[m] midi", "[t] stems", "[r] record", "[e] close", "[q] quit"}
-	} else if m.reducedChrome {
-		hintParts = []string{fmt.Sprintf("%s · %d%%", m.algo, m.volume), "[z] full", "[?] help", "[q] quit"}
 	}
 	hint := strings.Join(hintParts, "   ")
 
