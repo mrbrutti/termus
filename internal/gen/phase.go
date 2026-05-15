@@ -11,214 +11,290 @@ import (
 var _ Algorithm = (*Phase)(nil)
 var _ SF2Reverberator = (*Phase)(nil)
 
-// Phase is a Reich-style phase-shift algorithm tuned for ambient listening.
-// Two vibraphone voices play the same 4-note pentatonic-minor figure at
-// slightly different tempos; the long sustain of the vibraphone fills the
-// space between attacks so the music feels like a continuous shimmer rather
-// than a sequence of struck notes. A choir-aahs pad and acoustic bass move
-// underneath at a much slower chord cycle (~60 s per chord).
+// Phase is a Steve-Reich-style phase-shift algorithm. Two mallet voices
+// (Marimba + Vibraphone) play the same 8-note pentatonic pattern at slightly
+// different tempos; over minutes they drift in and out of unison, creating
+// shifting polyrhythms — the canonical Music-for-18-Musicians effect.
 //
-// For hours-long listening, the algorithm performs two kinds of mutation:
-//   - per-slot: at each note trigger, with ~10% probability one of the
-//     figure slots is re-rolled (handled by sf2Core).
-//   - macro key-drift: every 4–7 minutes a transposition of ±1..±2 semitones
-//     is rolled in. The drift takes effect gradually as notes mutate over
-//     the next minute, so the key change feels like Eno-style "obvious but
-//     gradual" modulation rather than a jump cut.
+// Underneath:
+//   - A slow harmonic bed of choir + FM-EP pad on long held chord tones.
+//   - A sub-bass pedal that drones the chord root for the entire chord cycle.
+//   - A high "crotales" track that triggers very occasionally for a glint of
+//     metallic upper-partial on top of the interlocking mallets.
 //
-// The algorithm auto-installs the SyntheticHallIR reverb on the master bus
-// unless --ir is provided. Phase-shift especially benefits from a long
-// reverb tail since the dense interlocking patterns blur into a wash.
+// The harmonic field shifts every ~60 s across 4 chord centers, so the same
+// phasing pattern is reheard against different tonal contexts.
+//
+// Preferred SF: fm-dx (DX-style metallic mallets + sustained FM textures —
+// closer to Reich's vibe/marimba ensemble + Yamaha electric-piano cluster).
 type Phase struct {
 	sf   *meltysynth.SoundFont
 	core *sf2Core
 	rng  *rand.Rand
 
-	rootMidi  int // base tonic
-	keyOffset int // current macro-transposition (semitones)
+	rootMidi  int
+	keyOffset int
 
-	samplesElapsed int64 // since Seed
-	nextDriftAt    int64 // absolute sample index for next macro key drift
-	nextSwapAt     int64 // absolute sample index for next instrument swap
+	chordRoots      []int // 4 chord-root offsets from key center
+	currentChordIdx int
+
+	samplesElapsed int64
+	nextChordAt    int64
+	nextDriftAt    int64
 }
 
 func NewPhase(sf *meltysynth.SoundFont) *Phase { return &Phase{sf: sf} }
 
-func (a *Phase) Name() string { return "phase-shift" }
+func (a *Phase) Name() string { return "phase" }
 
-// currentRoot returns the effective root MIDI accounting for any macro
-// key-drift that has happened. Mutator closures read this through the
-// *Phase pointer so they always pick notes in the current key, not the
-// initial one.
 func (a *Phase) currentRoot() int { return a.rootMidi + a.keyOffset }
 
 func (a *Phase) Seed(seedVal int64) {
 	a.rng = rand.New(rand.NewSource(seedVal)) //nolint:gosec
-	a.rootMidi = 45 + a.rng.Intn(7)            // A2..D#3
+	a.rootMidi = 48 + a.rng.Intn(7) // C3..F#3
 	a.keyOffset = 0
 	a.samplesElapsed = 0
 	a.scheduleNextDrift()
-	a.scheduleNextSwap()
 
-	core, err := newSF2Core(a.sf, 3.0, seedVal)
+	// 4-chord harmonic bed cycling slowly — chord roots are scale degrees
+	// from pentatonic minor (so all melodic notes always fit).
+	a.chordRoots = []int{
+		0,
+		scalePentatonicMinor[2],
+		scalePentatonicMinor[3],
+		scalePentatonicMinor[1],
+	}
+	a.currentChordIdx = 0
+	a.scheduleNextChord()
+
+	core, err := newSF2Core(a.sf, 2.8, seedVal)
 	if err != nil {
 		a.core = nil
 		return
 	}
+
 	// Channel layout:
-	//   0 — Vibraphone (#11)    voice A — long sustain, ambient hover
-	//   1 — Vibraphone (#11)    voice B — slightly slower tempo
-	//   2 — Choir Aahs (#52)    sustained pad
-	//   3 — Acoustic Bass (#32) chord roots, soft
+	//   0 — Vibraphone     (program 11)  phase voice A
+	//   1 — Marimba        (program 12)  phase voice B (slightly faster)
+	//   2 — Choir Aahs     (program 52)  pad bed
+	//   3 — Electric Piano (program 4)   FM-EP harmonic backing
+	//   4 — Synth Bass 1   (program 38)  sub-bass pedal
+	//   5 — Glockenspiel   (program 9)   high crotales accent
 	core.setProgram(0, 11)
-	core.setProgram(1, 11)
+	core.setProgram(1, 12)
 	core.setProgram(2, 52)
-	core.setProgram(3, 32)
+	core.setProgram(3, 4)
+	core.setProgram(4, 38)
+	core.setProgram(5, 9)
+	core.setPan(0, 44) // vibes left
+	core.setPan(1, 84) // marimba right
+	core.setPan(2, 64)
+	core.setPan(3, 56)
+	core.setPan(4, 64)
+	core.setPan(5, 100)
 
-	// Filter LFO on the choir pad — sustained, benefits from breathing.
-	// Vibraphones get no LFO (would mask the phase-shift rhythmic effect).
-	core.addFilterLFO(2, 1.0/18.0, 60, 32)
+	// Mallets bright (attack transients carry the phase effect); pad darker.
+	core.setChannelCutoff(0, 100)
+	core.setChannelCutoff(1, 100)
+	core.setChannelCutoff(2, 64)
+	core.setChannelCutoff(3, 72)
+	core.setChannelCutoff(4, 50)
+	core.setChannelCutoff(5, 120)
 
-	// Per-channel base cutoffs. Vibraphones bright so attack transients
-	// stay defined (essential for hearing the rhythmic interference);
-	// choir and bass darker for atmosphere.
-	core.setChannelCutoff(0, 92) // vibe A
-	core.setChannelCutoff(1, 92) // vibe B
-	core.setChannelCutoff(2, 50) // choir pad
-	core.setChannelCutoff(3, 60) // bass
+	// Slow pad LFO for breathing.
+	core.addFilterLFO(2, 1.0/18.0, 64, 24)
+	core.addFilterLFO(3, 1.0/23.0, 76, 18)
 
-	// Phase wants HEAVY reverb on the vibraphones — the long tail is what
-	// blurs the two voices' interlocking patterns into a continuous wash.
+	// Heavy reverb on mallets — the long tail is what blurs the two voices'
+	// interlocking patterns into one continuous shimmer.
 	core.setReverbSend(0, 115)
 	core.setReverbSend(1, 115)
-	core.setReverbSend(2, 100) // choir pad
-	core.setReverbSend(3, 50)  // bass dry
-	core.setChorusSend(2, 48)
+	core.setReverbSend(2, 96)
+	core.setReverbSend(3, 80)
+	core.setReverbSend(4, 30)
+	core.setReverbSend(5, 120)
+	core.setChorusSend(2, 32)
 
-	// 4-note figure, drawn from pentatonic-minor. Fewer notes than the v1
-	// 6-note figure → each note rings longer, more ambient.
-	figure := make([]int, 4)
-	for i := range figure {
-		figure[i] = a.pickFigureNote()
+	// Pre-install hall reverb if the user hasn't installed one — phase loves
+	// space.
+	if core.convL == nil {
+		ir := synth.SyntheticHallIR(seedVal)
+		core.setConvolutionIR(ir, 0.45)
 	}
-	figMutate := func(_ int, _ int) int { return a.pickFigureNote() }
 
-	// Cycle ~7.5–10 s — slightly slower than before to give each note even
-	// more room to ring. Phase is already the most ambient algorithm; just
-	// a gentle adjustment to align with the broader "slower across the
-	// board" pass.
-	basePeriod := 7.5 + 2.5*a.rng.Float64()
-	driftRatio := 1.004 // even gentler tempo offset — patterns drift more slowly
+	// --- The phase pattern: 8 pentatonic notes (descending then ascending).
+	// Same pattern on both vibe and marimba.
+	figure := a.makePhaseFigure()
 
-	// Vibraphone voices get small velocity jitter for "real player" feel but
-	// NO timing jitter — the entire phase-shift technique depends on each
-	// voice's tempo being precisely defined. Randomizing timing here would
-	// erase the rhythmic-interference effect the algorithm exists to produce.
+	// Cycle period: 6.5–8.5 s for the 8-note pattern → ~1 note per second-ish.
+	basePeriod := 6.5 + 2.0*a.rng.Float64()
+	// Drift ratio: voice B's period is 0.7% shorter than voice A's, so each
+	// pass voice B "gains" ~0.05 s. After many minutes they fully wrap around.
+	const driftRatio = 0.993
+
+	// --- Vibraphone voice A: fixed tempo. NO timing jitter — phase technique
+	// depends on each voice's tempo being precisely defined.
 	core.addTrack(SF2Track{
-		Channel: 0, Velocity: 76, Notes: figure,
+		Channel: 0, Velocity: 78, Notes: append([]int{}, figure...),
 		PeriodSec: basePeriod, Phase01: 0,
-		MutationRate: 0.10, MutateOne: figMutate,
-		VelocityJitter: 8,
+		VelocityJitter: 6,
 	})
+	// --- Marimba voice B: slightly faster.
 	core.addTrack(SF2Track{
-		Channel: 1, Velocity: 70, Notes: figure,
+		Channel: 1, Velocity: 72, Notes: append([]int{}, figure...),
 		PeriodSec: basePeriod * driftRatio, Phase01: 0,
-		VelocityJitter: 8,
-	})
-
-	// Chord progression: 4 chords, ~60 s each (was 30 s) — the harmonic bed
-	// barely moves so the listener's attention rests on the interlocking
-	// vibraphone patterns. Pad and bass share the same chord roots.
-	progDegs := [][]int{
-		{0, 5, 2, 6},
-		{0, 3, 5, 6},
-		{0, 6, 5, 3},
-		{0, 2, 3, 6},
-	}[a.rng.Intn(4)]
-
-	// Recompute chord notes from currentRoot() on every cycle by mutating
-	// the slots. The chord cycle itself is 240 s, so this isn't a hot path.
-	chordRoots := make([]int, len(progDegs))
-	bassRoots := make([]int, len(progDegs))
-	for i, deg := range progDegs {
-		chordRoots[i] = a.currentRoot() + scaleMinor[deg]
-		bassRoots[i] = a.currentRoot() + scaleMinor[deg] - 12
-		if bassRoots[i] < 24 {
-			bassRoots[i] += 12
-		}
-	}
-	// Mutators for pad/bass: re-roll uses the CURRENT key, so over time the
-	// progression itself drifts along with macro key shifts. Stays in the
-	// same scale degrees, just shifted.
-	padMutate := func(slot int, _ int) int {
-		return a.currentRoot() + scaleMinor[progDegs[slot%len(progDegs)]]
-	}
-	bassMutate := func(slot int, _ int) int {
-		k := a.currentRoot() + scaleMinor[progDegs[slot%len(progDegs)]] - 12
-		if k < 24 {
-			k += 12
-		}
-		return k
-	}
-	const chordCycleSec = 240.0
-	// Pad and bass have very slow change rate (one chord per minute), so
-	// timing jitter is meaningless — kept on velocity only for breathing feel.
-	core.addTrack(SF2Track{
-		Channel: 2, Velocity: 50, Notes: chordRoots,
-		PeriodSec: chordCycleSec, Phase01: 0,
-		MutationRate: 1.0, MutateOne: padMutate,
-		VelocityJitter: 4,
-	})
-	core.addTrack(SF2Track{
-		Channel: 3, Velocity: 70, Notes: bassRoots,
-		PeriodSec: chordCycleSec, Phase01: 0,
-		MutationRate: 1.0, MutateOne: bassMutate,
 		VelocityJitter: 6,
 	})
 
-	// Auto-install a long synthetic hall reverb — phase-shift sounds dramatic
-	// in a big space and lifeless dry. Overridden if the user passes --ir.
-	core.setConvolutionIR(synth.SyntheticHallIR(seedVal), 0.55)
+	// --- Choir aahs pad: 3 chord-tone voices held very long. Pad mutator
+	// reads the current chord so notes follow the harmonic cycle.
+	for voice := 0; voice < 3; voice++ {
+		v := voice
+		core.addTrack(SF2Track{
+			Channel: 2, Velocity: 38, Notes: []int{a.padTone(v)},
+			PeriodSec: 17.3 + 6*float64(v), Phase01: a.rng.Float64(),
+			MutationRate: 0.40,
+			MutateOne:    func(_ int, _ int) int { return a.padTone(v) },
+			VelocityJitter: 4, TimingJitterSec: 0.05,
+		})
+	}
+
+	// --- FM-EP harmonic backing: 2 voices in upper register, slow retrigger.
+	for voice := 0; voice < 2; voice++ {
+		v := voice
+		core.addTrack(SF2Track{
+			Channel: 3, Velocity: 36, Notes: []int{a.padTone(v) + 12},
+			PeriodSec: 23.7 + 4*float64(v), Phase01: a.rng.Float64(),
+			MutationRate: 0.30,
+			MutateOne:    func(_ int, _ int) int { return a.padTone(v) + 12 },
+			VelocityJitter: 4, TimingJitterSec: 0.06,
+		})
+	}
+
+	// --- Sub-bass pedal: chord root, very slow retrigger.
+	core.addTrack(SF2Track{
+		Channel: 4, Velocity: 60, Notes: []int{a.bassRoot()},
+		PeriodSec: 41.7, Phase01: 0,
+		MutationRate: 0.50,
+		MutateOne:    func(_ int, _ int) int { return a.bassRoot() },
+		VelocityJitter: 4, TimingJitterSec: 0.03,
+	})
+
+	// --- Glockenspiel crotales: very rare high accents — 1 hit every ~45 s.
+	core.addTrack(SF2Track{
+		Channel: 5, Velocity: 40, Notes: []int{a.crotalesNote()},
+		PeriodSec: 47.3, Phase01: a.rng.Float64(),
+		MutationRate: 0.50,
+		MutateOne:    func(_ int, _ int) int { return a.crotalesNote() },
+		VelocityJitter: 14, TimingJitterSec: 0.10,
+	})
 
 	a.core = core
 }
 
-// pickFigureNote returns a random pentatonic-minor note in the figure's
-// register, using the current (possibly key-drifted) root.
-func (a *Phase) pickFigureNote() int {
-	deg := scalePentatonicMinor[a.rng.Intn(len(scalePentatonicMinor))]
-	oct := 24
-	if a.rng.Float64() < 0.35 {
-		oct = 36
+// makePhaseFigure builds the 8-note phasing pattern: descending then
+// ascending pentatonic-minor scale tones, in a single 1-octave register
+// (around C5–C6 so the mallet attacks are bright and distinct).
+func (a *Phase) makePhaseFigure() []int {
+	root := a.currentRoot() + 24 // around C5
+	// Pattern: scale degrees [0, 2, 4, 3, 1, 2, 0, 4] — a balanced contour
+	// that reads as melodic but interlocks well in phase shift.
+	pattern := []int{0, 2, 4, 3, 1, 2, 0, 4}
+	out := make([]int, len(pattern))
+	for i, deg := range pattern {
+		key := root + scalePentatonicMinor[deg]
+		for key < 72 {
+			key += 12
+		}
+		for key > 88 {
+			key -= 12
+		}
+		out[i] = key
 	}
-	return a.currentRoot() + deg + oct
+	return out
+}
+
+// padTone returns one chord-tone in the mid register for the pad bed.
+func (a *Phase) padTone(voice int) int {
+	if len(a.chordRoots) == 0 {
+		return 60
+	}
+	cr := a.chordRoots[a.currentChordIdx]
+	// Add octave bump per voice so 3 voices spread across the register.
+	key := a.currentRoot() + cr + scalePentatonicMinor[voice%len(scalePentatonicMinor)] + 12 + 12*voice
+	for key < 60 {
+		key += 12
+	}
+	for key > 84 {
+		key -= 12
+	}
+	return key
+}
+
+// bassRoot returns the chord root in the bass register.
+func (a *Phase) bassRoot() int {
+	if len(a.chordRoots) == 0 {
+		return 36
+	}
+	cr := a.chordRoots[a.currentChordIdx]
+	key := a.currentRoot() + cr - 24
+	for key > 48 {
+		key -= 12
+	}
+	for key < 24 {
+		key += 12
+	}
+	return key
+}
+
+// crotalesNote returns a very-high chord-tone for the glockenspiel accents
+// (C6–C7).
+func (a *Phase) crotalesNote() int {
+	if len(a.chordRoots) == 0 {
+		return 84
+	}
+	cr := a.chordRoots[a.currentChordIdx]
+	deg := scalePentatonicMinor[a.rng.Intn(len(scalePentatonicMinor))]
+	key := a.currentRoot() + cr + deg + 36
+	for key < 84 {
+		key += 12
+	}
+	for key > 96 {
+		key -= 12
+	}
+	return key
+}
+
+func (a *Phase) scheduleNextChord() {
+	// 50-80 s per chord — slow enough to feel static, fast enough to feel
+	// motion over a few minutes.
+	secs := 50.0 + 30.0*a.rng.Float64()
+	a.nextChordAt = a.samplesElapsed + int64(secs*44100)
 }
 
 func (a *Phase) scheduleNextDrift() {
-	// 4–7 minutes between key drifts.
-	secs := 240.0 + 180.0*a.rng.Float64()
-	a.nextDriftAt = a.samplesElapsed + int64(secs*float64(synth.SampleRate))
+	mins := 4.0 + 3.0*a.rng.Float64()
+	a.nextDriftAt = a.samplesElapsed + int64(mins*60*44100)
 }
 
-// shiftKey rolls a ±1..±2 semitone macro transposition. Drifts are
-// clamped to ±5 semitones from the original key to keep the long-term
-// listening centered around the seed's chosen tonic.
-func (a *Phase) shiftKey() {
-	shift := a.rng.Intn(5) - 2 // -2..+2
-	if shift == 0 {
-		shift = 1
+func (a *Phase) advance() {
+	if a.samplesElapsed >= a.nextChordAt {
+		a.currentChordIdx = (a.currentChordIdx + 1) % len(a.chordRoots)
+		a.scheduleNextChord()
 	}
-	a.keyOffset += shift
-	if a.keyOffset > 5 {
-		a.keyOffset = 5 - a.rng.Intn(3)
-	}
-	if a.keyOffset < -5 {
-		a.keyOffset = -5 + a.rng.Intn(3)
+	if a.samplesElapsed >= a.nextDriftAt {
+		drift := []int{-2, -1, 1, 2}[a.rng.Intn(4)]
+		a.keyOffset += drift
+		if a.keyOffset > 5 {
+			a.keyOffset -= 12
+		}
+		if a.keyOffset < -5 {
+			a.keyOffset += 12
+		}
+		a.scheduleNextDrift()
 	}
 }
 
-// SetReverbIR installs a convolution reverb on the master bus. Phase auto-
-// installs a hall by default; --ir overrides.
 func (a *Phase) SetReverbIR(ir []float64, wet float64) {
 	if a.core != nil {
 		a.core.setConvolutionIR(ir, wet)
@@ -233,47 +309,7 @@ func (a *Phase) Next(left, right []float64) {
 		}
 		return
 	}
+	a.advance()
 	a.core.renderInto(left, right)
 	a.samplesElapsed += int64(len(left))
-	if a.samplesElapsed >= a.nextDriftAt {
-		a.shiftKey()
-		a.scheduleNextDrift()
-	}
-	if a.samplesElapsed >= a.nextSwapAt {
-		a.swapOneInstrument()
-		a.scheduleNextSwap()
-	}
-}
-
-// phaseChannelAlternatives — vibraphone is the genre-defining choice; swaps
-// happen between mallet-percussion variants that preserve the rhythmic
-// shimmer character.
-var phaseChannelAlternatives = map[int32][]int32{
-	0: {11, 9, 12, 13, 14}, // Vibraphone (default), Glockenspiel, Marimba, Xylophone, Tubular Bells
-	1: {11, 9, 12, 13, 14}, // (voice B must match voice A's instrument — see below)
-	2: {52, 53, 91, 89},    // Choir Aahs (default), Choir Oohs, Choir Pad, Warm Pad
-	3: {32, 33, 38, 60},    // Acoustic Bass (default), Electric Bass, Synth Bass, French Horn
-}
-
-func (a *Phase) scheduleNextSwap() {
-	secs := 300.0 + 240.0*a.rng.Float64() // 5–9 min — phase wants slow change
-	a.nextSwapAt = a.samplesElapsed + int64(secs*44100)
-}
-
-// swapOneInstrument: phase is special — channels 0 and 1 MUST share the same
-// program so the phase-shift effect works (two voices of the SAME instrument
-// drifting against each other). When swapping the marimba family, swap
-// both 0 and 1 to the same program.
-func (a *Phase) swapOneInstrument() {
-	// Roll: 60% swap mallet pair, 40% swap pad/bass.
-	if a.rng.Float64() < 0.60 {
-		alts := phaseChannelAlternatives[0]
-		newProg := alts[a.rng.Intn(len(alts))]
-		a.core.setProgram(0, newProg)
-		a.core.setProgram(1, newProg)
-		return
-	}
-	channels := []int32{2, 3}
-	ch := channels[a.rng.Intn(len(channels))]
-	a.core.programSwap(ch, phaseChannelAlternatives[ch], a.rng)
 }

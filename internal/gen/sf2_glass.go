@@ -7,124 +7,279 @@ import (
 )
 
 var _ Algorithm = (*SF2Glass)(nil)
+var _ SF2Reverberator = (*SF2Glass)(nil)
 
-// SF2Glass is the glass-fm algorithm rendered through a SoundFont. The FM
-// bells are replaced by Tubular Bells (GM #14), which sound like real bells
-// played by a real player — sweeter and warmer than synthesis. Plus a Glass
-// Harmonica (GM #98) layer for higher partials.
+// SF2Glass is the bells algorithm — Boards of Canada / Music for Airports
+// style sparse bell phrases. Tubular bells lead the texture; celesta and
+// glockenspiel add upper-register sparkle; a music-box layer adds occasional
+// nostalgic ornaments; a soft choir/strings pad and sub-bass pedal hold the
+// harmony underneath.
+//
+// All melodic content is pentatonic so notes never clash, and trigger rates
+// are long + incommensurate so the bell phrases never quite repeat.
+//
+// Preferred SF: fairy-tale (celesta, music box, tubular bells, glockenspiel
+// all in one bank).
 type SF2Glass struct {
 	sf   *meltysynth.SoundFont
 	core *sf2Core
 	rng  *rand.Rand
 
+	rootMidi  int
+	keyOffset int
+
+	// Pentatonic scale used by every melodic track. Major or minor pentatonic
+	// is seed-chosen.
+	scale []int
+
+	// 2 chord centers cycled slowly — same pentatonic but transposed up a 5th
+	// or down a 4th for a "second key area" feeling.
+	chordOffsets    []int
+	currentChordIdx int
+
 	samplesElapsed int64
-	nextSwapAt     int64
+	nextChordAt    int64
+	nextSectionAt  int64
+	musicBoxOn     *bool
 }
 
-func NewSF2Glass(sf *meltysynth.SoundFont) *SF2Glass {
-	return &SF2Glass{sf: sf}
-}
+// majorPentatonic: 0, 2, 4, 7, 9 (the "happy" pentatonic).
+// minorPentatonic: 0, 3, 5, 7, 10 (the "sad" pentatonic).
+var (
+	majorPentatonic = []int{0, 2, 4, 7, 9}
+	minorPentatonic = []int{0, 3, 5, 7, 10}
+)
 
-func (a *SF2Glass) Name() string { return "glass-sf2" }
+func NewSF2Glass(sf *meltysynth.SoundFont) *SF2Glass { return &SF2Glass{sf: sf} }
+
+func (a *SF2Glass) Name() string { return "bells" }
+
+func (a *SF2Glass) currentRoot() int { return a.rootMidi + a.keyOffset }
 
 func (a *SF2Glass) Seed(seedVal int64) {
-	rng := rand.New(rand.NewSource(seedVal)) //nolint:gosec
-	a.rng = rng
-	rootMidi := 48 + rng.Intn(7) // C3..F#3
+	a.rng = rand.New(rand.NewSource(seedVal)) //nolint:gosec
+	a.rootMidi = 48 + a.rng.Intn(7) // C3..F#3
+	a.keyOffset = 0
+	if a.rng.Float64() < 0.55 {
+		a.scale = majorPentatonic
+	} else {
+		a.scale = minorPentatonic
+	}
+	// Two harmonic centers — tonic and either +7 (dominant) or +5 (subdom).
+	if a.rng.Float64() < 0.5 {
+		a.chordOffsets = []int{0, 7}
+	} else {
+		a.chordOffsets = []int{0, 5}
+	}
+	a.currentChordIdx = 0
 	a.samplesElapsed = 0
-	a.scheduleNextSwap()
+	a.scheduleNextChord()
 
-	core, err := newSF2Core(a.sf, 3.2, seedVal)
+	musicBoxStart := true
+	a.musicBoxOn = &musicBoxStart
+	a.scheduleNextSection()
+
+	core, err := newSF2Core(a.sf, 3.0, seedVal)
 	if err != nil {
 		a.core = nil
 		return
 	}
-	core.setProgram(0, 14) // Tubular Bells           (left)
-	core.setProgram(1, 98) // Crystal (FX 3)          (right)
-	core.setProgram(2, 92) // Pad 5 (Bowed Glass)     (low pad, center)
-	core.setProgram(3, 12) // Marimba                 (sub-octave reinforcement)
-	core.setPan(0, 40)
-	core.setPan(1, 88)
-	core.setPan(2, 64)
-	core.setPan(3, 64)
 
-	// Glass-family base cutoffs: bells and crystal kept bright for their
-	// shimmer; pad and marimba darker to provide body underneath.
-	core.setChannelCutoff(0, 96)  // tubular bells
-	core.setChannelCutoff(1, 100) // crystal
-	core.setChannelCutoff(2, 52)  // bowed glass pad (dark body)
-	core.setChannelCutoff(3, 60)  // marimba
+	// Channel layout:
+	//   0 — Tubular Bells   (program 14)  main bell motif
+	//   1 — Celesta         (program 8)   upper-mid sparkle
+	//   2 — Glockenspiel    (program 9)   high register
+	//   3 — Music Box       (program 10)  occasional ornament
+	//   4 — Warm Pad        (program 89)  soft bed
+	//   5 — Choir Aahs      (program 52)  vocal bed
+	//   6 — Synth Bass 2    (program 39)  sub-bass pedal
+	core.setProgram(0, 14)
+	core.setProgram(1, 8)
+	core.setProgram(2, 9)
+	core.setProgram(3, 10)
+	core.setProgram(4, 89)
+	core.setProgram(5, 52)
+	core.setProgram(6, 39)
+	core.setPan(0, 64)
+	core.setPan(1, 80)
+	core.setPan(2, 96)
+	core.setPan(3, 32)
+	core.setPan(4, 72)
+	core.setPan(5, 56)
+	core.setPan(6, 64)
 
-	// Filter LFO on the bowed-glass pad — bells/crystal already shimmer
-	// from their natural envelopes, but the pad below benefits from a slow
-	// breathing sweep.
-	core.addFilterLFO(2, 1.0/15.0, 64, 28)
+	// Bells/celesta/glock kept very bright for sparkle; pad darkened.
+	core.setChannelCutoff(0, 120)
+	core.setChannelCutoff(1, 120)
+	core.setChannelCutoff(2, 120)
+	core.setChannelCutoff(3, 110)
+	core.setChannelCutoff(4, 60)
+	core.setChannelCutoff(5, 76)
+	core.setChannelCutoff(6, 50)
 
-	// Glass family wants lots of reverb for that "ringing in a chamber" feel.
-	core.setReverbSend(0, 110) // bells
-	core.setReverbSend(1, 110) // crystal
-	core.setReverbSend(2, 90)  // pad
-	core.setReverbSend(3, 60)  // marimba (drier for transient definition)
-	core.setChorusSend(2, 40)
+	// Slow pad LFO so the bed breathes underneath the bells.
+	core.addFilterLFO(4, 1.0/16.0, 60, 24)
+	core.addFilterLFO(5, 1.0/23.0, 72, 20)
 
-	pentMutate := func(_ int, _ int) int {
-		degree := scalePentatonicMinor[rng.Intn(len(scalePentatonicMinor))]
-		octave := 12 * (1 + rng.Intn(3))
-		return rootMidi + degree + octave
-	}
-	for _, period := range glassLoopPeriods {
-		notes := make([]int, 1+rng.Intn(2))
-		for j := range notes {
-			notes[j] = pentMutate(0, 0)
-		}
-		phase := rng.Float64()
+	// Reverb: everyone in halo except bass.
+	core.setReverbSend(0, 120)
+	core.setReverbSend(1, 120)
+	core.setReverbSend(2, 120)
+	core.setReverbSend(3, 110)
+	core.setReverbSend(4, 96)
+	core.setReverbSend(5, 100)
+	core.setReverbSend(6, 30)
+	core.setChorusSend(4, 32)
+	core.setChorusSend(5, 28)
+
+	// --- Tubular bells: 3 voices on incommensurate periods (13 s, 19 s, 29 s).
+	// Each one strikes one pentatonic note per period, with frequent mutation
+	// so the bell phrases never quite repeat. Heavy reverb.
+	for ti, period := range []float64{13.1, 19.7, 29.3} {
+		voice := ti
 		core.addTrack(SF2Track{
-			Channel: 0, Velocity: 84, Notes: notes,
-			PeriodSec: period, Phase01: phase,
-			MutationRate: 0.20, MutateOne: pentMutate,
-			VelocityJitter: 10, TimingJitterSec: 0.022,
-		})
-		core.addTrack(SF2Track{
-			Channel: 1, Velocity: 52, Notes: notes,
-			PeriodSec: period, Phase01: phase + 0.03,
-			VelocityJitter: 6, TimingJitterSec: 0.022,
+			Channel: 0, Velocity: 72, Notes: []int{a.bellNote(voice, 0)},
+			PeriodSec: period, Phase01: a.rng.Float64(),
+			MutationRate: 0.50,
+			MutateOne:    func(_ int, _ int) int { return a.bellNote(voice, 0) },
+			VelocityJitter: 16, TimingJitterSec: 0.10,
 		})
 	}
 
-	// Bowed glass pad in low register — sustained tones for body underneath
-	// the bell shimmer. Long period, low velocity so it's atmospheric, not
-	// the focus.
-	padMutate := func(_ int, _ int) int {
-		degree := scalePentatonicMinor[rng.Intn(len(scalePentatonicMinor))]
-		return rootMidi + degree // base octave
+	// --- Celesta sparkle: 2 voices in upper-mid register, sparser.
+	for ti, period := range []float64{17.3, 25.1} {
+		voice := ti
+		core.addTrack(SF2Track{
+			Channel: 1, Velocity: 58, Notes: []int{a.bellNote(voice, 12)},
+			PeriodSec: period, Phase01: a.rng.Float64(),
+			MutationRate: 0.55,
+			MutateOne:    func(_ int, _ int) int { return a.bellNote(voice, 12) },
+			VelocityJitter: 14, TimingJitterSec: 0.10,
+		})
 	}
-	padNotes := make([]int, 4)
-	for j := range padNotes {
-		padNotes[j] = padMutate(0, 0)
-	}
+
+	// --- Glockenspiel: 1 voice, very high, very sparse — only the brightest
+	// chord tones.
 	core.addTrack(SF2Track{
-		Channel: 2, Velocity: 50, Notes: padNotes,
-		PeriodSec: 33.0, Phase01: 0,
-		MutationRate: 0.15, MutateOne: padMutate,
-		VelocityJitter: 4, TimingJitterSec: 0.025,
+		Channel: 2, Velocity: 48, Notes: []int{a.bellNote(0, 24)},
+		PeriodSec: 33.7, Phase01: a.rng.Float64(),
+		MutationRate: 0.60,
+		MutateOne:    func(_ int, _ int) int { return a.bellNote(0, 24) },
+		VelocityJitter: 12, TimingJitterSec: 0.12,
 	})
 
-	// Marimba reinforcement: occasional low strikes echoing the bell tones.
-	marimNotes := make([]int, 4)
-	for j := range marimNotes {
-		marimNotes[j] = padMutate(0, 0) // same scale, low register
-	}
+	// --- Music box ornament: occasional, on its own toggleable layer for
+	// section dynamics.
 	core.addTrack(SF2Track{
-		Channel: 3, Velocity: 56, Notes: marimNotes,
-		PeriodSec: 19.0, Phase01: rng.Float64(),
-		MutationRate: 0.15, MutateOne: padMutate,
-		VelocityJitter: 12, TimingJitterSec: 0.030,
+		Channel: 3, Velocity: 54, Notes: []int{a.bellNote(1, 12)},
+		PeriodSec: 41.7, Phase01: a.rng.Float64(),
+		MutationRate: 0.60,
+		MutateOne:    func(_ int, _ int) int { return a.bellNote(1, 12) },
+		VelocityJitter: 12, TimingJitterSec: 0.15,
+		Enabled: a.musicBoxOn,
+	})
+
+	// --- Warm pad bed: 2 voices spread, sustained, slow retrigger.
+	for ti, period := range []float64{31.3, 43.7} {
+		voice := ti
+		core.addTrack(SF2Track{
+			Channel: 4, Velocity: 44, Notes: []int{a.padNote(voice)},
+			PeriodSec: period, Phase01: a.rng.Float64(),
+			MutationRate: 0.30,
+			MutateOne:    func(_ int, _ int) int { return a.padNote(voice) },
+			VelocityJitter: 6, TimingJitterSec: 0.08,
+		})
+	}
+
+	// --- Choir aahs: 1 voice in upper register, very slow.
+	core.addTrack(SF2Track{
+		Channel: 5, Velocity: 40, Notes: []int{a.padNote(1) + 12},
+		PeriodSec: 53.9, Phase01: a.rng.Float64(),
+		MutationRate: 0.35,
+		MutateOne:    func(_ int, _ int) int { return a.padNote(1) + 12 },
+		VelocityJitter: 6, TimingJitterSec: 0.10,
+	})
+
+	// --- Sub-bass pedal: holds the chord root.
+	core.addTrack(SF2Track{
+		Channel: 6, Velocity: 60, Notes: []int{a.bassRoot()},
+		PeriodSec: 51.3, Phase01: 0,
+		MutationRate: 0.50,
+		MutateOne:    func(_ int, _ int) int { return a.bassRoot() },
+		VelocityJitter: 4, TimingJitterSec: 0.05,
 	})
 
 	a.core = core
 }
 
-// SetReverbIR installs a convolution reverb on the master bus.
+// bellNote returns a pentatonic-scale MIDI key for a bell voice. voice picks
+// which scale degree (cycled), bumpSemis adds an octave-shift offset for
+// register placement.
+func (a *SF2Glass) bellNote(voice, bumpSemis int) int {
+	deg := a.scale[a.rng.Intn(len(a.scale))]
+	chordOff := a.chordOffsets[a.currentChordIdx]
+	key := a.currentRoot() + chordOff + deg + 12 + bumpSemis
+	// Spread voices across octaves.
+	key += 12 * voice
+	for key < 60 {
+		key += 12
+	}
+	for key > 96 {
+		key -= 12
+	}
+	return key
+}
+
+// padNote returns a pentatonic chord-tone key in the pad register (around
+// C4–C5).
+func (a *SF2Glass) padNote(voice int) int {
+	deg := a.scale[voice%len(a.scale)]
+	chordOff := a.chordOffsets[a.currentChordIdx]
+	key := a.currentRoot() + chordOff + deg + 12
+	for key < 60 {
+		key += 12
+	}
+	for key > 76 {
+		key -= 12
+	}
+	return key
+}
+
+// bassRoot returns the chord root in the bass register.
+func (a *SF2Glass) bassRoot() int {
+	chordOff := a.chordOffsets[a.currentChordIdx]
+	key := a.currentRoot() + chordOff
+	for key > 48 {
+		key -= 12
+	}
+	for key < 30 {
+		key += 12
+	}
+	return key
+}
+
+func (a *SF2Glass) scheduleNextChord() {
+	// 40-70 s per chord — slow but noticeable harmonic shifts.
+	secs := 40.0 + 30.0*a.rng.Float64()
+	a.nextChordAt = a.samplesElapsed + int64(secs*44100)
+}
+
+func (a *SF2Glass) scheduleNextSection() {
+	secs := 90.0 + 90.0*a.rng.Float64()
+	a.nextSectionAt = a.samplesElapsed + int64(secs*44100)
+}
+
+func (a *SF2Glass) advance() {
+	if a.samplesElapsed >= a.nextChordAt {
+		a.currentChordIdx = (a.currentChordIdx + 1) % len(a.chordOffsets)
+		a.scheduleNextChord()
+	}
+	if a.samplesElapsed >= a.nextSectionAt {
+		*a.musicBoxOn = !*a.musicBoxOn
+		a.scheduleNextSection()
+	}
+}
+
 func (a *SF2Glass) SetReverbIR(ir []float64, wet float64) {
 	if a.core != nil {
 		a.core.setConvolutionIR(ir, wet)
@@ -139,31 +294,7 @@ func (a *SF2Glass) Next(left, right []float64) {
 		}
 		return
 	}
+	a.advance()
 	a.core.renderInto(left, right)
 	a.samplesElapsed += int64(len(left))
-	if a.samplesElapsed >= a.nextSwapAt {
-		a.swapOneInstrument()
-		a.scheduleNextSwap()
-	}
-}
-
-// glassChannelAlternatives — broadened with Steel Drum (#114) for metallic
-// resonance variety, Kalimba (#108) for similar plucked-glass character,
-// and additional FX/Pad swaps.
-var glassChannelAlternatives = map[int32][]int32{
-	0: {14, 8, 9, 11, 108},      // Tubular Bells → Celesta, Glockenspiel, Vibraphone, Kalimba
-	1: {98, 99, 100, 101, 96},   // Crystal → Atmosphere, Brightness, Goblins, FX 1
-	2: {92, 88, 91, 95, 89},     // Bowed Glass → New Age, Choir Pad, Sweep, Warm Pad
-	3: {12, 11, 13, 114},        // Marimba → Vibraphone, Xylophone, Steel Drum
-}
-
-func (a *SF2Glass) scheduleNextSwap() {
-	secs := 200.0 + 180.0*a.rng.Float64()
-	a.nextSwapAt = a.samplesElapsed + int64(secs*44100)
-}
-
-func (a *SF2Glass) swapOneInstrument() {
-	channels := []int32{0, 1, 2, 3}
-	ch := channels[a.rng.Intn(len(channels))]
-	a.core.programSwap(ch, glassChannelAlternatives[ch], a.rng)
 }

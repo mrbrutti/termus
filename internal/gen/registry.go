@@ -30,8 +30,8 @@ type AlgoSpec struct {
 var registry = map[string]AlgoSpec{
 	"ambient": {
 		Name: "ambient", Display: "Ambient", RequiresSF2: true, PreferredSF2: "arachno",
-		Tagline: "Music for Airports — pad-bell on incommensurate loops, sampled",
-		Build:   func(sf *meltysynth.SoundFont) Algorithm { return NewSF2Eno(sf) },
+		Tagline: "Music for Airports — modal chord drift, choir + tubular-bell motif, no rhythm",
+		Build:   func(sf *meltysynth.SoundFont) Algorithm { return NewAmbient(sf) },
 	},
 	"ambient-synth": {
 		Name: "ambient-synth", Display: "Ambient (pure synth)", RequiresSF2: false,

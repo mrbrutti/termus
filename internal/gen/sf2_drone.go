@@ -7,156 +7,233 @@ import (
 )
 
 var _ Algorithm = (*SF2Drone)(nil)
+var _ SF2Reverberator = (*SF2Drone)(nil)
 
-// SF2Drone is the drone-bed algorithm rendered through a SoundFont. Long
-// sustained notes on string ensemble and slow strings, with a high-register
-// flute shimmer voice — close in feel to the Eno-meets-Stars-of-the-Lid
-// orchestrations.
+// SF2Drone is a Stars-of-the-Lid / William Basinski style algorithm: long,
+// slow, evolving textures with very minimal harmonic motion. There's no
+// rhythm and no melodic line — just sustained voices that swell, drift, and
+// gradually shift their relationship to each other.
+//
+//   - A sub-bass pedal that holds the chord root for the entire chord cycle
+//     (90–150 s before the chord changes).
+//   - Two bowed-glass / synth-string layers in the middle register, on long
+//     incommensurate periods (37 s, 53 s, 71 s) so swells overlap unevenly.
+//   - A choir aahs layer in the upper register, sparse.
+//   - A "shimmer" FM-EP overtone layer that catches the upper partials.
+//   - Filter LFOs on each pad at very slow rates (15–35 s per cycle) so the
+//     texture breathes.
+//
+// Harmony moves through 3 chord centers built from quartal voicings (stacked
+// 4ths) — broader and more "open" than triadic voicings.
+//
+// Preferred SF: fm-dx (DX-style EPs / metallic bells + sustained FM textures).
 type SF2Drone struct {
 	sf   *meltysynth.SoundFont
 	core *sf2Core
 	rng  *rand.Rand
 
+	rootMidi  int
+	keyOffset int
+
+	chords          []droneChord
+	currentChordIdx int
+
 	samplesElapsed int64
-	nextSwapAt     int64
+	nextChordAt    int64
 }
 
-func NewSF2Drone(sf *meltysynth.SoundFont) *SF2Drone {
-	return &SF2Drone{sf: sf}
+// droneChord is one harmonic center as a set of semitone offsets from the
+// key center. Voicings are quartal (stacked 4ths) for the broad, open feel.
+type droneChord struct {
+	tones []int
+	label string
 }
 
-func (a *SF2Drone) Name() string { return "drone-sf2" }
+// droneCycles: 3 chord centers each, quartal-voiced. Slow modal drift.
+var droneCycles = [][]droneChord{
+	// Quartal triad on tonic / on 4th / on 5th — classic minimalist drift.
+	{
+		{tones: []int{0, 5, 10, 14}, label: "Q(i)"},
+		{tones: []int{5, 10, 14, 19}, label: "Q(iv)"},
+		{tones: []int{7, 12, 16, 21}, label: "Q(v)"},
+	},
+	// Modal: tonic / Mixolydian VII / sub-mediant
+	{
+		{tones: []int{0, 4, 7, 11}, label: "Imaj7"},
+		{tones: []int{10, 14, 17, 21}, label: "bVII"},
+		{tones: []int{8, 12, 15, 19}, label: "VImaj"},
+	},
+	// Two-chord cycle (very Stars-of-the-Lid): i / bVI alternating.
+	{
+		{tones: []int{0, 3, 7, 10}, label: "i"},
+		{tones: []int{8, 12, 15, 19}, label: "bVI"},
+	},
+}
+
+func NewSF2Drone(sf *meltysynth.SoundFont) *SF2Drone { return &SF2Drone{sf: sf} }
+
+func (a *SF2Drone) Name() string { return "drone" }
+
+func (a *SF2Drone) currentRoot() int { return a.rootMidi + a.keyOffset }
 
 func (a *SF2Drone) Seed(seedVal int64) {
-	rng := rand.New(rand.NewSource(seedVal)) //nolint:gosec
-	a.rng = rng
-	rootMidi := 24 + rng.Intn(7) // C1..F#1
+	a.rng = rand.New(rand.NewSource(seedVal)) //nolint:gosec
+	a.rootMidi = 30 + a.rng.Intn(7) // Bb1..E2 — very low pedal
+	a.keyOffset = 0
 	a.samplesElapsed = 0
-	a.scheduleNextSwap()
+	a.currentChordIdx = 0
+	a.chords = droneCycles[a.rng.Intn(len(droneCycles))]
+	a.scheduleNextChord()
 
-	core, err := newSF2Core(a.sf, 3.0, seedVal)
+	core, err := newSF2Core(a.sf, 3.6, seedVal)
 	if err != nil {
 		a.core = nil
 		return
 	}
-	core.setProgram(0, 48) // String Ensemble 1 (left)
-	core.setProgram(1, 49) // String Ensemble 2 slow (right)
-	core.setProgram(2, 73) // Flute (shimmer, high right)
-	core.setProgram(3, 53) // Choir Voice "Oohs" (warmth, center)
-	core.setProgram(4, 32) // Acoustic Bass (foundation, center)
-	core.setPan(0, 38)
-	core.setPan(1, 90)
-	core.setPan(2, 100)
-	core.setPan(3, 64)
+
+	// Channel layout:
+	//   0 — Bowed Glass     (program 92)  primary drone bed (mid)
+	//   1 — Synth Strings 1 (program 50)  pad layer (mid)
+	//   2 — Choir Aahs      (program 52)  vocal bed (upper)
+	//   3 — Electric Piano 1(program 4)   FM shimmer overtones
+	//   4 — Synth Bass 1    (program 38)  sub-bass pedal
+	core.setProgram(0, 92)
+	core.setProgram(1, 50)
+	core.setProgram(2, 52)
+	core.setProgram(3, 4)
+	core.setProgram(4, 38)
+	core.setPan(0, 48)
+	core.setPan(1, 80)
+	core.setPan(2, 64)
+	core.setPan(3, 96)
 	core.setPan(4, 64)
 
-	// Per-channel base cutoffs. Drone wants smooth sustained tones — slight
-	// darkening on the strings/choir helps remove brittleness on long held
-	// notes. Flute kept bright since it's the high-register shimmer.
-	core.setChannelCutoff(0, 72)  // string ensemble 1
-	core.setChannelCutoff(1, 68)  // string ensemble 2 slow
-	core.setChannelCutoff(2, 88)  // flute shimmer
-	core.setChannelCutoff(3, 64)  // choir warmth
-	core.setChannelCutoff(4, 76)  // bass
+	// All darkened — drone aesthetic is "muted, foggy" not bright.
+	core.setChannelCutoff(0, 70)
+	core.setChannelCutoff(1, 64)
+	core.setChannelCutoff(2, 76)
+	core.setChannelCutoff(3, 88) // FM shimmer brighter than the others
+	core.setChannelCutoff(4, 50)
 
-	// Filter LFOs on the sustained string and choir layers. Different rates
-	// per channel so they breathe out of phase with each other.
-	core.addFilterLFO(0, 1.0/14.0, 62, 28)
-	core.addFilterLFO(1, 1.0/19.0, 60, 26)
-	core.addFilterLFO(3, 1.0/11.0, 70, 30)
+	// Very slow filter LFOs — 22 s, 28 s, 37 s. Different on each so they
+	// never sync up and the texture has a constantly-moving spectral profile.
+	core.addFilterLFO(0, 1.0/22.0, 70, 24)
+	core.addFilterLFO(1, 1.0/28.0, 60, 28)
+	core.addFilterLFO(2, 1.0/37.0, 72, 22)
 
-	// Drone is the wettest algorithm — everything except the bass sits deep
-	// in a cathedral. Strings + choir get full wet; flute shimmer drenched
-	// for the "from far away" halo; bass kept drier so the low end has body.
-	core.setReverbSend(0, 110)
+	// Massive reverb sends — drones live in the reverb.
+	core.setReverbSend(0, 120)
 	core.setReverbSend(1, 110)
-	core.setReverbSend(2, 120) // flute shimmer
-	core.setReverbSend(3, 100) // choir
-	core.setReverbSend(4, 40)  // bass — drier
-	core.setChorusSend(0, 50)
-	core.setChorusSend(1, 50)
-	core.setChorusSend(3, 56)
+	core.setReverbSend(2, 120)
+	core.setReverbSend(3, 100)
+	core.setReverbSend(4, 40) // bass stays present
+	core.setChorusSend(0, 56)
+	core.setChorusSend(1, 48)
+	core.setChorusSend(2, 32)
 
-	// Bed voices on long periods. Mutation is gentle here — drone wants
-	// to feel stable; abrupt note changes would betray the aesthetic.
-	bedMutate := func(_ int, _ int) int {
-		degree := scaleMinor[rng.Intn(len(scaleMinor))]
-		octave := 12 * (1 + rng.Intn(3))
-		return rootMidi + degree + octave
-	}
-	for _, period := range droneLoopPeriods {
-		notes := make([]int, 3+rng.Intn(3))
-		for j := range notes {
-			notes[j] = bedMutate(0, 0)
-		}
-		phase := rng.Float64()
+	// --- Bowed glass drone bed: 3 voices on incommensurate long periods.
+	for ti, period := range []float64{37.3, 53.7, 71.1} {
+		voice := ti
 		core.addTrack(SF2Track{
-			Channel: 0, Velocity: 64, Notes: notes,
-			PeriodSec: period, Phase01: phase,
-			MutationRate: 0.05, MutateOne: bedMutate,
-			VelocityJitter: 4, TimingJitterSec: 0.020,
-		})
-		core.addTrack(SF2Track{
-			Channel: 1, Velocity: 48, Notes: notes,
-			PeriodSec: period, Phase01: phase,
-			VelocityJitter: 4, TimingJitterSec: 0.020,
+			Channel: 0, Velocity: 52, Notes: []int{a.droneTone(voice, 0)},
+			PeriodSec: period, Phase01: a.rng.Float64(),
+			MutationRate: 0.25,
+			MutateOne:    func(_ int, _ int) int { return a.droneTone(voice, 0) },
+			VelocityJitter: 8, TimingJitterSec: 0.15,
 		})
 	}
 
-	// Shimmer voice on a 19s period — flute in the high register.
-	shimmerMutate := func(_ int, _ int) int {
-		degree := scaleMinor[rng.Intn(len(scaleMinor))]
-		octave := 12 * (3 + rng.Intn(2))
-		return rootMidi + degree + octave
+	// --- Synth strings parallel layer: same chord tones, slightly higher
+	// register, different periods.
+	for ti, period := range []float64{41.1, 59.3, 83.9} {
+		voice := ti
+		core.addTrack(SF2Track{
+			Channel: 1, Velocity: 46, Notes: []int{a.droneTone(voice, 12)},
+			PeriodSec: period, Phase01: a.rng.Float64(),
+			MutationRate: 0.25,
+			MutateOne:    func(_ int, _ int) int { return a.droneTone(voice, 12) },
+			VelocityJitter: 6, TimingJitterSec: 0.18,
+		})
 	}
-	shimmerNotes := make([]int, 4+rng.Intn(3))
-	for j := range shimmerNotes {
-		shimmerNotes[j] = shimmerMutate(0, 0)
+
+	// --- Choir aahs: 2 voices in the upper register, sparse.
+	for ti, period := range []float64{47.7, 67.3} {
+		voice := ti
+		core.addTrack(SF2Track{
+			Channel: 2, Velocity: 44, Notes: []int{a.droneTone(voice, 24)},
+			PeriodSec: period, Phase01: a.rng.Float64(),
+			MutationRate: 0.30,
+			MutateOne:    func(_ int, _ int) int { return a.droneTone(voice, 24) },
+			VelocityJitter: 8, TimingJitterSec: 0.20,
+		})
 	}
+
+	// --- FM EP shimmer: a single high voice that catches upper partials of
+	// the chord. Very long period, infrequent retrigger.
 	core.addTrack(SF2Track{
-		Channel: 2, Velocity: 70, Notes: shimmerNotes,
-		PeriodSec: shimmerPeriod, Phase01: rng.Float64(),
-		MutationRate: 0.15, MutateOne: shimmerMutate,
-		VelocityJitter: 10, TimingJitterSec: 0.025,
+		Channel: 3, Velocity: 38, Notes: []int{a.droneTone(2, 36)},
+		PeriodSec: 91.1, Phase01: a.rng.Float64(),
+		MutationRate: 0.40,
+		MutateOne:    func(_ int, _ int) int { return a.droneTone(2, 36) },
+		VelocityJitter: 10, TimingJitterSec: 0.25,
 	})
 
-	// Choir voice "oohs" in mid-register for human warmth. Slow cycle so
-	// the same chord-tone-ish notes hold for a long time.
-	choirMutate := func(_ int, _ int) int {
-		degree := scaleMinor[rng.Intn(len(scaleMinor))]
-		return rootMidi + degree + 12 // one octave above root
-	}
-	choirNotes := make([]int, 3)
-	for j := range choirNotes {
-		choirNotes[j] = choirMutate(0, 0)
-	}
+	// --- Sub-bass pedal: holds the chord root the entire chord cycle.
 	core.addTrack(SF2Track{
-		Channel: 3, Velocity: 54, Notes: choirNotes,
-		PeriodSec: 37.0, Phase01: rng.Float64(),
-		MutationRate: 0.08, MutateOne: choirMutate,
-		VelocityJitter: 4, TimingJitterSec: 0.020,
-	})
-
-	// Acoustic bass: very slow walk through scale tones at the root register.
-	bassMutate := func(_ int, _ int) int {
-		degree := scaleMinor[rng.Intn(len(scaleMinor))]
-		return rootMidi + degree // base octave (rootMidi is already low C1-F#1)
-	}
-	bassNotes := make([]int, 3)
-	for j := range bassNotes {
-		bassNotes[j] = bassMutate(0, 0)
-	}
-	core.addTrack(SF2Track{
-		Channel: 4, Velocity: 76, Notes: bassNotes,
-		PeriodSec: 41.0, Phase01: rng.Float64(),
-		MutationRate: 0.06, MutateOne: bassMutate,
-		VelocityJitter: 4, TimingJitterSec: 0.020,
+		Channel: 4, Velocity: 56, Notes: []int{a.bassRoot()},
+		PeriodSec: 60.0, Phase01: 0,
+		MutationRate: 0.60,
+		MutateOne:    func(_ int, _ int) int { return a.bassRoot() },
+		VelocityJitter: 4, TimingJitterSec: 0.05,
 	})
 
 	a.core = core
 }
 
-// SetReverbIR installs a convolution reverb on the master bus.
+func (a *SF2Drone) droneTone(voice, bumpSemis int) int {
+	if len(a.chords) == 0 {
+		return 60
+	}
+	c := a.chords[a.currentChordIdx]
+	idx := voice % len(c.tones)
+	key := a.currentRoot() + c.tones[idx] + 24 + bumpSemis
+	for key < 36 {
+		key += 12
+	}
+	for key > 96 {
+		key -= 12
+	}
+	return key
+}
+
+func (a *SF2Drone) bassRoot() int {
+	if len(a.chords) == 0 {
+		return 36
+	}
+	c := a.chords[a.currentChordIdx]
+	key := a.currentRoot() + c.tones[0]
+	for key > 42 {
+		key -= 12
+	}
+	for key < 24 {
+		key += 12
+	}
+	return key
+}
+
+func (a *SF2Drone) scheduleNextChord() {
+	// 90–150 s per chord — even slower than ambient.
+	secs := 90.0 + 60.0*a.rng.Float64()
+	a.nextChordAt = a.samplesElapsed + int64(secs*44100)
+}
+
+func (a *SF2Drone) advance() {
+	if a.samplesElapsed >= a.nextChordAt {
+		a.currentChordIdx = (a.currentChordIdx + 1) % len(a.chords)
+		a.scheduleNextChord()
+	}
+}
+
 func (a *SF2Drone) SetReverbIR(ir []float64, wet float64) {
 	if a.core != nil {
 		a.core.setConvolutionIR(ir, wet)
@@ -171,34 +248,7 @@ func (a *SF2Drone) Next(left, right []float64) {
 		}
 		return
 	}
+	a.advance()
 	a.core.renderInto(left, right)
 	a.samplesElapsed += int64(len(left))
-	if a.samplesElapsed >= a.nextSwapAt {
-		a.swapOneInstrument()
-		a.scheduleNextSwap()
-	}
-}
-
-// droneChannelAlternatives — expanded with Tremolo Strings (#44) which
-// adds shimmer and tremulant character great for sustained drones, plus
-// more pad variants. Drone-sf2 benefits MOST from sustained-instrument
-// variety because the algorithm holds each note for tens of seconds; a
-// new timbre per swap is genuinely noticeable.
-var droneChannelAlternatives = map[int32][]int32{
-	0: {48, 49, 50, 51, 91, 44}, // Strings 1 → 2, Synth Strings 1/2, Choir, Tremolo Strings
-	1: {49, 48, 50, 91, 44},     // Slow Strings → Strings 1, Synth Strings, Choir, Tremolo
-	2: {73, 74, 75, 76, 88, 95}, // Flute → Recorder, Pan Flute, Blown Bottle, New Age, Sweep Pad
-	3: {53, 52, 54, 91, 95},     // Choir Oohs → Aahs, Synth Voice, Choir Pad, Sweep Pad
-	4: {32, 33, 38, 87, 43},     // Acoustic Bass → Electric, Synth Bass 1, Lead Bass, Contrabass
-}
-
-func (a *SF2Drone) scheduleNextSwap() {
-	secs := 240.0 + 180.0*a.rng.Float64()
-	a.nextSwapAt = a.samplesElapsed + int64(secs*44100)
-}
-
-func (a *SF2Drone) swapOneInstrument() {
-	channels := []int32{0, 1, 2, 3, 4}
-	ch := channels[a.rng.Intn(len(channels))]
-	a.core.programSwap(ch, droneChannelAlternatives[ch], a.rng)
 }

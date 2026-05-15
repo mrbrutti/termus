@@ -358,15 +358,18 @@ func (a *Chill) Seed(seedVal int64) {
 		})
 	}
 
-	// --- Walking bass: root on beat 1, 5th on beat 3 (half-note feel).
-	bassNotes := make([]int, 2*numBars)
+	// --- Walking bass: 4 quarter notes per bar — root, 3rd, 5th, chromatic
+	// approach to the next chord's root. Jazz-influenced lofi bass — more
+	// melodic than half-note root-fifth, but still tight enough to read as
+	// rhythm-section. Same idea as the jazz algorithm's walking bass.
+	bassNotes := make([]int, 4*numBars)
 	for i := range bassNotes {
 		bassNotes[i] = a.bassNoteAt(i)
 	}
 	core.addTrack(SF2Track{
 		Channel: 1, Velocity: 88, Notes: bassNotes,
 		PeriodSec: cycleSec, Phase01: 0,
-		MutationRate: 1.0,
+		MutationRate: 0.4,
 		MutateOne:    func(slot int, _ int) int { return a.bassNoteAt(slot) },
 		VelocityJitter: 6, TimingJitterSec: 0.005, // bass — tight
 	})
@@ -480,19 +483,33 @@ func (a *Chill) epChordToneAt(slot, toneIdx int) int {
 	return a.currentRoot() + c.tones[toneIdx] + 24
 }
 
-// bassNoteAt returns the bass note for half-note-feel beat `slot`. Pattern
-// per chord: chord root (beat 1) → chord fifth (beat 3) → next chord →
-// root → fifth → etc. Always in the low register one octave below the
-// chord root.
+// bassNoteAt returns the bass note for 4-per-bar walking-bass beat `slot`.
+// Pattern per chord: root → 3rd → 5th → chromatic approach to next chord's
+// root. Always in the low register one octave below the chord root.
 func (a *Chill) bassNoteAt(slot int) int {
-	chordIdx := (slot / 2) % len(a.progression)
-	half := slot % 2 // 0 = beat 1, 1 = beat 3
+	totalBeats := 4 * len(a.progression)
+	slot = ((slot % totalBeats) + totalBeats) % totalBeats
+	chordIdx := slot / 4
+	beat := slot % 4
 	c := a.progression[chordIdx]
-	tone := c.tones[0] // root
-	if half == 1 {
-		tone = c.tones[2] // 5th
+	root := a.currentRoot() + c.tones[0] - 12
+	switch beat {
+	case 0:
+		return root
+	case 1:
+		return a.currentRoot() + c.tones[1] - 12 // 3rd
+	case 2:
+		return a.currentRoot() + c.tones[2] - 12 // 5th
+	case 3:
+		// Chromatic approach: ±1 semitone leading into the next chord's root.
+		nextIdx := (chordIdx + 1) % len(a.progression)
+		nextRoot := a.currentRoot() + a.progression[nextIdx].tones[0] - 12
+		if a.rng.Float64() < 0.6 {
+			return nextRoot - 1
+		}
+		return nextRoot + 1
 	}
-	return a.currentRoot() + tone - 12
+	return root
 }
 
 // guitarNoteAt returns a single nylon-guitar comp note per bar. Plays a
