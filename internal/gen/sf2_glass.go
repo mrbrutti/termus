@@ -147,11 +147,14 @@ func (a *SF2Glass) Next(left, right []float64) {
 	}
 }
 
+// glassChannelAlternatives — broadened with Steel Drum (#114) for metallic
+// resonance variety, Kalimba (#108) for similar plucked-glass character,
+// and additional FX/Pad swaps.
 var glassChannelAlternatives = map[int32][]int32{
-	0: {14, 8, 9, 11}, // Tubular Bells (default), Celesta, Glockenspiel, Vibraphone
-	1: {98, 99, 100},  // Crystal (default), Atmosphere, Brightness
-	2: {92, 88, 91},   // Bowed Glass (default), New Age, Choir Pad
-	3: {12, 11, 13},   // Marimba (default), Vibraphone, Xylophone
+	0: {14, 8, 9, 11, 108},      // Tubular Bells → Celesta, Glockenspiel, Vibraphone, Kalimba
+	1: {98, 99, 100, 101, 96},   // Crystal → Atmosphere, Brightness, Goblins, FX 1
+	2: {92, 88, 91, 95, 89},     // Bowed Glass → New Age, Choir Pad, Sweep, Warm Pad
+	3: {12, 11, 13, 114},        // Marimba → Vibraphone, Xylophone, Steel Drum
 }
 
 func (a *SF2Glass) scheduleNextSwap() {

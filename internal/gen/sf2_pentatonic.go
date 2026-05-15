@@ -225,11 +225,15 @@ func (a *SF2Pentatonic) Next(left, right []float64) {
 	}
 }
 
+// pentaChannelAlternatives — includes Kalimba (#108) and Koto (#107) which
+// are PENTATONIC-NATIVE instruments. They sound spectacular over a pentatonic
+// random walk because they were literally designed for this scale system.
+// GeneralUser-GS samples them well.
 var pentaChannelAlternatives = map[int32][]int32{
-	0: {0, 1, 4, 5},        // Acoustic Grand (default), Bright Piano, EP1, EP2
-	1: {46, 24, 25, 105},   // Orchestral Harp (default), Nylon, Steel, Banjo
-	2: {10, 8, 9},          // Music Box (default), Celesta, Glockenspiel
-	3: {32, 33, 87},        // Acoustic Bass (default), Electric Bass, Lead Bass
+	0: {0, 1, 4, 5, 108},      // Piano (default) → Bright Piano, EP1, EP2, Kalimba
+	1: {46, 24, 25, 105, 107}, // Orchestral Harp → Nylon, Steel String, Banjo, Koto
+	2: {10, 8, 9, 14},         // Music Box → Celesta, Glockenspiel, Tubular Bells
+	3: {32, 33, 87},           // Acoustic Bass → Electric Bass, Lead Bass
 }
 
 func (a *SF2Pentatonic) scheduleNextSwap() {

@@ -182,11 +182,15 @@ func (a *SF2Markov) Next(left, right []float64) {
 	}
 }
 
+// markovChannelAlternatives — expanded with real solo string voices (Violin,
+// Viola, Cello) which suit the "composed" Markov-melody character much better
+// than the SoundFont default options alone. GeneralUser-GS samples these
+// individually rather than relying on the ensemble patches.
 var markovChannelAlternatives = map[int32][]int32{
-	0: {0, 1, 4, 5},        // Acoustic Grand (default), Bright, EP1, EP2
-	1: {49, 48, 50, 51},    // Slow Strings (default), Strings 1, Synth Strings 1, 2
-	2: {71, 68, 69, 64},    // Clarinet (default), Oboe, English Horn, Soprano Sax
-	3: {32, 33, 87, 38},    // Acoustic Bass (default), Electric Bass, Lead Bass, Synth Bass 1
+	0: {0, 1, 4, 5},          // Piano → Bright, EP1, EP2
+	1: {49, 48, 50, 51, 44},  // Slow Strings → Strings 1, Synth Strings 1/2, Tremolo Strings
+	2: {71, 68, 69, 64, 40, 41, 42}, // Clarinet → Oboe, English Horn, Sax, Violin, Viola, Cello
+	3: {32, 33, 87, 38, 43},  // Acoustic Bass → Electric Bass, Lead Bass, Synth Bass 1, Contrabass
 }
 
 func (a *SF2Markov) scheduleNextSwap() {

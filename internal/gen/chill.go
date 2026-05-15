@@ -243,12 +243,14 @@ func (a *Chill) Seed(seedVal int64) {
 	core.setPan(3, 40)
 	core.setPan(4, 90)
 
-	// Channel 9 = standard MIDI drum channel. Select bank 128 (drum kit) and
-	// program 0 (standard kit). Most SF2 files including TimGM6mb honor
-	// channel 9 as percussion automatically, but explicitly setting the
-	// bank+program is the robust path.
+	// Channel 9 = standard MIDI drum channel. Bank 128 selects the drum
+	// bank; the PROGRAM within that bank picks WHICH kit. GeneralUser-GS
+	// has 13 different drum kits at GM standard slots. For chill, the
+	// JAZZ KIT (program 32) is the right starting point — softer cymbals,
+	// brushed snare, warm kick — exactly the "lofi study beat" sound.
 	core.syn.ProcessMidiMessage(drumChannel, ccBankSelect, drumBankMSB, 0)
-	core.setProgram(drumChannel, progStandardKit)
+	const drumKitJazz = 32
+	core.setProgram(drumChannel, drumKitJazz)
 	core.setPan(drumChannel, 64)
 
 	// Per-channel base cutoffs — the lofi-engine trick. Set each
@@ -613,14 +615,20 @@ func (a *Chill) scheduleNextSection() {
 	a.nextSectionAt = a.samplesElapsed + int64(secs*44100)
 }
 
-// chillChannelAlternatives — staying inside the lofi soundscape. Drums (ch 9)
-// are deliberately excluded; swapping the kit mid-track would feel jarring.
+// chillChannelAlternatives — staying inside the lofi soundscape. Now
+// including the drum channel (9) so the kit itself rotates: Jazz Kit
+// (default) → Brush Kit (40) → Standard Kit (0) → Room Kit (8). Each
+// kit gives the same drum pattern a noticeably different feel — Jazz
+// is warmest, Brush is softest, Standard is more "produced," Room is
+// roomier. Going from one to another every few minutes is the closest
+// our generator gets to "a different drummer walked in."
 var chillChannelAlternatives = map[int32][]int32{
-	0: {5, 4, 88, 89}, // EP2 (default), EP1, New Age Pad, Warm Pad
-	1: {32, 33, 36, 38}, // Acoustic Bass (default), Electric Bass Finger, Slap Bass, Synth Bass 1
-	2: {11, 9, 13},    // Vibraphone (default), Glockenspiel, Xylophone
-	3: {64, 65, 66, 67}, // Soprano Sax (default), Alto Sax, Tenor Sax, Baritone Sax
-	4: {24, 25, 26, 27}, // Nylon Guitar (default), Steel String, Jazz Guitar, Electric Clean
+	0: {5, 4, 88, 89},   // EP2 (default), EP1, New Age Pad, Warm Pad
+	1: {32, 33, 36, 38}, // Acoustic Bass, Electric Bass Finger, Slap Bass, Synth Bass 1
+	2: {11, 9, 13},      // Vibraphone, Glockenspiel, Xylophone
+	3: {64, 65, 66, 67}, // Soprano Sax, Alto Sax, Tenor Sax, Baritone Sax
+	4: {24, 25, 26, 27}, // Nylon Guitar, Steel String, Jazz Guitar, Electric Clean
+	9: {32, 40, 0, 8},   // Jazz Kit (default), Brush Kit, Standard Kit, Room Kit
 }
 
 func (a *Chill) scheduleNextSwap() {
@@ -629,7 +637,9 @@ func (a *Chill) scheduleNextSwap() {
 }
 
 func (a *Chill) swapOneInstrument() {
-	channels := []int32{0, 1, 2, 3, 4}
+	// Drum kit rotation included now — different feel each time, real
+	// "different drummer" texture change vs the prior "same kit every bar."
+	channels := []int32{0, 1, 2, 3, 4, 9}
 	ch := channels[a.rng.Intn(len(channels))]
 	a.core.programSwap(ch, chillChannelAlternatives[ch], a.rng)
 }

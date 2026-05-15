@@ -226,12 +226,16 @@ func (a *SF2Eno) scheduleNextSection() {
 // enoChannelAlternatives lists GM programs that are musically compatible
 // substitutes for each instrument role in the algorithm. Picked so swapping
 // at any time stays inside the "Music for Airports" character.
+// enoChannelAlternatives — expanded variety for Music for Airports feel.
+// Tremolo Strings (#44) on the bed adds the canonical Eno "bowed
+// sustain with shimmer" character; solo Violin/Cello can take the
+// french-horn slot for an Eno-on-Discreet-Music feel.
 var enoChannelAlternatives = map[int32][]int32{
-	0: {48, 49, 50, 51, 92},      // String Ensemble 1 (default), 2, Synth Strings 1, 2, Bowed Glass
-	1: {89, 88, 91, 95},          // Warm Pad (default), New Age, Choir, Sweep Pad
-	2: {0, 1, 4, 5, 8},           // Acoustic Grand (default), Bright, EP1, EP2, Celesta
-	3: {8, 9, 10, 14},            // Celesta (default), Glockenspiel, Music Box, Tubular Bells
-	4: {60, 61, 68, 71},          // French Horn (default), Brass Section, Oboe, Clarinet
+	0: {48, 49, 50, 51, 92, 44},  // Strings 1 → 2, Synth Strings 1/2, Bowed Glass, Tremolo
+	1: {89, 88, 91, 95, 92},      // Warm Pad → New Age, Choir, Sweep, Bowed Glass
+	2: {0, 1, 4, 5, 8, 7},        // Piano → Bright, EP1, EP2, Celesta, Clavinet
+	3: {8, 9, 10, 14, 11},        // Celesta → Glockenspiel, Music Box, Tubular Bells, Vibraphone
+	4: {60, 61, 68, 71, 42, 40},  // French Horn → Brass, Oboe, Clarinet, Cello, Violin
 }
 
 func (a *SF2Eno) scheduleNextSwap() {

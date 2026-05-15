@@ -179,12 +179,17 @@ func (a *SF2Drone) Next(left, right []float64) {
 	}
 }
 
+// droneChannelAlternatives — expanded with Tremolo Strings (#44) which
+// adds shimmer and tremulant character great for sustained drones, plus
+// more pad variants. Drone-sf2 benefits MOST from sustained-instrument
+// variety because the algorithm holds each note for tens of seconds; a
+// new timbre per swap is genuinely noticeable.
 var droneChannelAlternatives = map[int32][]int32{
-	0: {48, 49, 50, 51, 91}, // String Ensemble 1 (default), 2, Synth Strings 1, 2, Choir
-	1: {49, 48, 50, 91},     // Slow Strings (default), String Ens 1, Synth Strings, Choir
-	2: {73, 74, 75, 76, 88}, // Flute (default), Recorder, Pan Flute, Blown Bottle, New Age Pad
-	3: {53, 52, 54, 91},     // Choir Voice "Oohs" (default), Aahs, Synth Voice, Choir Pad
-	4: {32, 33, 38, 87},     // Acoustic Bass (default), Electric Bass, Synth Bass 1, Lead Bass
+	0: {48, 49, 50, 51, 91, 44}, // Strings 1 → 2, Synth Strings 1/2, Choir, Tremolo Strings
+	1: {49, 48, 50, 91, 44},     // Slow Strings → Strings 1, Synth Strings, Choir, Tremolo
+	2: {73, 74, 75, 76, 88, 95}, // Flute → Recorder, Pan Flute, Blown Bottle, New Age, Sweep Pad
+	3: {53, 52, 54, 91, 95},     // Choir Oohs → Aahs, Synth Voice, Choir Pad, Sweep Pad
+	4: {32, 33, 38, 87, 43},     // Acoustic Bass → Electric, Synth Bass 1, Lead Bass, Contrabass
 }
 
 func (a *SF2Drone) scheduleNextSwap() {
