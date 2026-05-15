@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -40,6 +41,7 @@ func main() {
 	playlistDur := flag.Duration("playlist-duration", 5*time.Minute,
 		"how long each playlist track plays before the crossfade")
 	outPath := flag.String("out", "", "render directly to a WAV file instead of launching live playback")
+	playlistOut := flag.String("playlist-out", "", "render a playlist to a directory of WAVs plus manifest.json")
 	renderSeconds := flag.Float64("seconds", 180, "render duration in seconds when --out is provided")
 	flag.Parse()
 
@@ -51,8 +53,20 @@ func main() {
 		fmt.Fprintf(os.Stderr, "--seconds must be > 0 when --out is used, got %.3f\n", *renderSeconds)
 		os.Exit(2)
 	}
+	if *outPath != "" && *playlistOut != "" {
+		fmt.Fprintln(os.Stderr, "--out and --playlist-out are mutually exclusive")
+		os.Exit(2)
+	}
 	if *outPath != "" && *playlistMode != "" {
-		fmt.Fprintln(os.Stderr, "--out does not yet support --playlist; render one track at a time")
+		fmt.Fprintln(os.Stderr, "--out does not support --playlist; use --playlist-out for batch rendering")
+		os.Exit(2)
+	}
+	if *playlistOut != "" && *playlistMode == "" {
+		fmt.Fprintln(os.Stderr, "--playlist-out requires --playlist same|mixed")
+		os.Exit(2)
+	}
+	if *playlistMode != "" && *playlistDur <= 0 {
+		fmt.Fprintf(os.Stderr, "--playlist-duration must be > 0, got %s\n", *playlistDur)
 		os.Exit(2)
 	}
 
@@ -100,20 +114,24 @@ func main() {
 	algo := spec.Build(sf)
 	algo.Seed(*seed)
 
+	var ir []float64
+	var irLabel string
 	// Optional convolution IR.
 	if *irPath != "" {
 		rev, ok := algo.(gen.SF2Reverberator)
 		if !ok {
 			fmt.Fprintf(os.Stderr, "--ir requires an sf2-mode algorithm; ignoring\n")
 		} else {
-			ir, label, err := loadIR(*irPath, *seed)
+			loadedIR, label, err := loadIR(*irPath, *seed)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "ir load failed:", err)
 				os.Exit(1)
 			}
+			ir = loadedIR
+			irLabel = label
 			rev.SetReverbIR(ir, *irWet)
 			fmt.Fprintf(os.Stderr, "IR %s: %d samples (%.1f ms) at wet=%.2f\n",
-				label, len(ir), float64(len(ir))*1000.0/44100.0, *irWet)
+				irLabel, len(ir), float64(len(ir))*1000.0/44100.0, *irWet)
 		}
 	}
 	if *outPath != "" {
@@ -139,20 +157,40 @@ func main() {
 	// Closure used by the TUI to build a fresh algorithm on swap. We
 	// re-seed with the original --seed so the same key stays deterministic
 	// across switches.
-	buildFn := func(s gen.AlgoSpec) gen.Algorithm {
+	buildAlgo := func(s gen.AlgoSpec, algoSeed int64) gen.Algorithm {
 		chosen := pickSF(sfByPreset, s, *sf2Preset)
 		a := s.Build(chosen)
-		a.Seed(*seed)
+		a.Seed(algoSeed)
 		// If we had an IR loaded, propagate it onto the new algorithm so
 		// the room/hall/etc. carries across the switch.
-		if *irPath != "" {
+		if len(ir) > 0 {
 			if rev, ok := a.(gen.SF2Reverberator); ok {
-				if ir, _, err := loadIR(*irPath, *seed); err == nil {
-					rev.SetReverbIR(ir, *irWet)
-				}
+				rev.SetReverbIR(ir, *irWet)
 			}
 		}
 		return a
+	}
+	if *playlistOut != "" {
+		pl, err := buildPlaylist(*playlistMode, spec, genres, *playlistTracks, *seed, *playlistDur)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "playlist:", err)
+			os.Exit(2)
+		}
+		manifest, err := renderPlaylistOut(*playlistOut, pl, *initialVol, buildAlgo)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "playlist render failed:", err)
+			os.Exit(1)
+		}
+		for _, track := range manifest.Tracks {
+			fmt.Fprintf(os.Stderr, "rendered %02d/%02d %s -> %s\n",
+				track.Index, manifest.TrackCount, track.Algo, track.Path)
+		}
+		fmt.Fprintf(os.Stderr, "wrote %s (%d tracks, %.1fs total)\n",
+			filepath.Join(*playlistOut, "manifest.json"), manifest.TrackCount, manifest.TotalDurationS)
+		return
+	}
+	buildFn := func(s gen.AlgoSpec) gen.Algorithm {
+		return buildAlgo(s, *seed)
 	}
 
 	model := tui.New(ring, root, algo.Name(), "Cmin", *seed, *initialVol).

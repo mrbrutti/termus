@@ -18,6 +18,6 @@
 
 - [x] Add a proper audio backend state layer so startup can report `starting`, `ready`, `no default device`, `backend hung`, and `render-only` instead of failing opaquely on bad CoreAudio state.
 - [x] Add single-track WAV export to `./termus` via `--out` and `--seconds` so music generation works without live playback.
-- [ ] Extend export workflow with `--playlist-out` and batch rendering from the main binary.
+- [x] Extend export workflow with `--playlist-out` and batch rendering from the main binary.
 - [ ] Tighten cross-algorithm intros, outros, cadence handling, and loudness normalization so switching genres feels cohesive.
 - [ ] Surface chord, section, bar, and SF2 preset state in the TUI for debugging and tuning.
