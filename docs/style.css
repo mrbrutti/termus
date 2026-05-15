@@ -1,0 +1,196 @@
+/* termus / minimalist, monospace, indigo→cyan accents matching the app theme */
+
+:root {
+  --bg: #0a0a0f;
+  --bg-elev: #14141c;
+  --fg: #d8d8e8;
+  --fg-dim: #7e7e92;
+  --rule: #1f1f2e;
+  --indigo: #5b4bff;
+  --cyan: #5bfaff;
+  --bar-fg: #a0a0ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  font-size: 15px;
+  line-height: 1.6;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 6rem 2rem 4rem;
+}
+
+header {
+  margin-bottom: 3rem;
+}
+
+h1 {
+  font-size: 3.4rem;
+  font-weight: 400;
+  letter-spacing: -0.03em;
+  margin: 0 0 0.4rem;
+  line-height: 1;
+}
+
+h1 .accent {
+  background: linear-gradient(90deg, var(--indigo), var(--cyan));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+.tagline {
+  color: var(--fg-dim);
+  font-size: 1rem;
+  margin: 0;
+}
+
+section {
+  margin: 3.5rem 0;
+}
+
+h2 {
+  font-size: 0.85rem;
+  font-weight: 400;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cyan);
+  margin: 0 0 1.2rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+p {
+  margin: 0 0 1rem;
+}
+
+p code, td code {
+  color: var(--bar-fg);
+  background: var(--bg-elev);
+  padding: 0.05rem 0.4rem;
+  border-radius: 3px;
+  font-size: 0.92em;
+}
+
+pre {
+  background: var(--bg-elev);
+  border-left: 2px solid var(--indigo);
+  margin: 1rem 0 1.4rem;
+  padding: 1rem 1.2rem;
+  overflow-x: auto;
+  font-size: 0.92rem;
+}
+
+pre code {
+  background: transparent;
+  padding: 0;
+  color: var(--fg);
+}
+
+.hero {
+  margin: 2rem 0 3rem;
+  text-align: center;
+}
+
+.screenshot {
+  width: 100%;
+  max-width: 720px;
+  display: block;
+  margin: 0 auto;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--rule);
+  background: #000;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.4rem 0 1.2rem;
+}
+
+table td {
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+}
+
+table.genres td:first-child,
+table.controls td:first-child {
+  width: 30%;
+  color: var(--bar-fg);
+  white-space: nowrap;
+  padding-right: 1rem;
+}
+
+table.controls td:first-child {
+  width: 20%;
+}
+
+table tr:last-child td {
+  border-bottom: none;
+}
+
+kbd {
+  background: var(--bg-elev);
+  border: 1px solid var(--rule);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.85em;
+  font-family: inherit;
+  color: var(--bar-fg);
+}
+
+em {
+  font-style: italic;
+  color: var(--fg-dim);
+}
+
+a {
+  color: var(--cyan);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.15s;
+}
+
+a:hover {
+  border-bottom-color: var(--cyan);
+}
+
+footer {
+  margin-top: 5rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--rule);
+  color: var(--fg-dim);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+footer a {
+  color: var(--fg-dim);
+}
+
+footer a:hover {
+  color: var(--cyan);
+  border-bottom-color: var(--cyan);
+}
+
+@media (max-width: 600px) {
+  main { padding: 3rem 1.2rem 2.5rem; }
+  h1 { font-size: 2.4rem; }
+  section { margin: 2.5rem 0; }
+}
