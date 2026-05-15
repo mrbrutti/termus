@@ -42,7 +42,7 @@ func TestBottomBarLeavesRoomForStatus(t *testing.T) {
 	}
 }
 
-func TestTopBarShowsDebugStatus(t *testing.T) {
+func TestTopBarShowsTitle(t *testing.T) {
 	m := Model{
 		algo:   "Jazz",
 		seed:   42,
@@ -50,7 +50,19 @@ func TestTopBarShowsDebugStatus(t *testing.T) {
 		themes: []ColorTheme{DefaultTheme()},
 	}
 	bar := topBar(m, 120, DefaultTheme())
-	if !strings.Contains(bar, "bar 5") || !strings.Contains(bar, "G7") || !strings.Contains(bar, "sf2 tyros4") {
-		t.Fatalf("top bar missing debug info: %q", bar)
+	if !strings.Contains(bar, "termus · Jazz") || !strings.Contains(bar, "seed=42") {
+		t.Fatalf("top bar missing title info: %q", bar)
+	}
+}
+
+func TestDebugBarShowsDedicatedInspector(t *testing.T) {
+	m := Model{
+		debugVisible: true,
+		debug:        gen.DebugStatus{Bar: 3, Section: "cadence", Chord: "Dm7", Preset: "sgm"},
+		themes:       []ColorTheme{DefaultTheme()},
+	}
+	bar := debugBar(m, 100, DefaultTheme())
+	if !strings.Contains(bar, "DEBUG") || !strings.Contains(bar, "bar 3") || !strings.Contains(bar, "Dm7") {
+		t.Fatalf("debug bar missing inspector fields: %q", bar)
 	}
 }

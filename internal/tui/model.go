@@ -30,6 +30,7 @@ type Model struct {
 	volume       int
 	paused       bool
 	recording    bool
+	debugVisible bool
 	status       string
 	statusTTL    time.Time
 	stickyStatus string
@@ -75,6 +76,12 @@ func (m Model) WithSwitcher(genres []gen.AlgoSpec, startIdx int, buildFn BuildAl
 	m.genres = genres
 	m.genreIdx = startIdx
 	m.buildFn = buildFn
+	return m
+}
+
+// WithDebug controls whether the dedicated debug inspector starts visible.
+func (m Model) WithDebug(visible bool) Model {
+	m.debugVisible = visible
 	return m
 }
 
@@ -188,6 +195,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case actionVisual:
 			m.visualIdx = (m.visualIdx + 1) % len(Visuals)
 			m.flashStatus("visual: "+Visuals[m.visualIdx].Name, 2*time.Second)
+		case actionDebug:
+			m.debugVisible = !m.debugVisible
+			if m.debugVisible {
+				m.flashStatus("debug: on", 2*time.Second)
+			} else {
+				m.flashStatus("debug: off", 2*time.Second)
+			}
 		case actionNextAlgo:
 			m.switchAlgo(1)
 		case actionPrevAlgo:
@@ -212,7 +226,11 @@ func (m Model) View() string {
 	if m.width < 40 || m.height < 10 {
 		return centerBox(m.width, m.height, "terminal too small — resize to ≥ 40 × 10")
 	}
-	innerH := m.height - 2 // minus top + bottom bars
+	chromeH := 2 // top + bottom bars
+	if m.debugVisible {
+		chromeH++
+	}
+	innerH := m.height - chromeH
 	innerW := m.width
 
 	// Snapshot scope and render with the active visual + theme.
@@ -226,6 +244,10 @@ func (m Model) View() string {
 
 	top := topBar(m, innerW, theme)
 	bottom := bottomBar(m, innerW, theme)
+	if m.debugVisible {
+		debug := debugBar(m, innerW, theme)
+		return lipgloss.JoinVertical(lipgloss.Left, top, debug, scopeStr, bottom)
+	}
 	return lipgloss.JoinVertical(lipgloss.Left, top, scopeStr, bottom)
 }
 
@@ -278,11 +300,7 @@ func topBar(m Model, w int, theme ColorTheme) string {
 		label = fmt.Sprintf("termus · %s · %s · seed=%d",
 			m.algo, m.keyName, m.seed)
 	}
-	debug := trimToWidth(gen.FormatDebugStatus(m.debug), maxInt(0, w/2))
 	right := ""
-	if debug != "" {
-		right = lipgloss.NewStyle().Foreground(theme.BarHi).Render(debug)
-	}
 	if m.recording {
 		rec := lipgloss.NewStyle().Foreground(lipgloss.Color("#ff5b5b")).Render("● REC")
 		if right == "" {
@@ -295,6 +313,24 @@ func topBar(m Model, w int, theme ColorTheme) string {
 		label = trimToWidth(label, maxInt(0, w-lipgloss.Width(right)-1))
 	}
 	left := lipgloss.NewStyle().Foreground(theme.BarFg).Render(label)
+	pad := w - lipgloss.Width(left) - lipgloss.Width(right)
+	if pad < 1 {
+		pad = 1
+	}
+	return left + spaces(pad) + right
+}
+
+func debugBar(m Model, w int, theme ColorTheme) string {
+	status := gen.FormatDebugStatus(m.debug)
+	if status == "" {
+		status = "debug unavailable"
+	}
+	left := lipgloss.NewStyle().
+		Foreground(theme.BarHi).
+		Render("DEBUG")
+	right := lipgloss.NewStyle().
+		Faint(true).
+		Render(trimToWidth(status, maxInt(0, w-lipgloss.Width(left)-3)))
 	pad := w - lipgloss.Width(left) - lipgloss.Width(right)
 	if pad < 1 {
 		pad = 1
@@ -318,6 +354,7 @@ func bottomBar(m Model, w int, theme ColorTheme) string {
 	if len(m.genres) > 1 {
 		hint += "   [n/p] algo"
 	}
+	hint += "   [d] debug"
 	if m.playlist != nil {
 		hint += "   [s] skip"
 	}

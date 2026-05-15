@@ -42,6 +42,7 @@ func main() {
 		"how long each playlist track plays before the crossfade")
 	outPath := flag.String("out", "", "render directly to a WAV file instead of launching live playback")
 	playlistOut := flag.String("playlist-out", "", "render a playlist to a directory of WAVs plus manifest.json")
+	debugView := flag.Bool("debug", false, "show the musical debug inspector in the TUI")
 	renderSeconds := flag.Float64("seconds", 180, "render duration in seconds when --out is provided")
 	flag.Parse()
 
@@ -204,6 +205,7 @@ func main() {
 	}
 
 	model := tui.New(ring, root, liveAlgo.Name(), "Cmin", *seed, *initialVol).
+		WithDebug(*debugView).
 		WithSwitcher(genres, startIdx, buildFn)
 
 	// Optional playlist. When set, the TUI auto-advances tracks with a

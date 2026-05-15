@@ -16,6 +16,7 @@ const (
 	actionPrevAlgo
 	actionNextTrack
 	actionVisual
+	actionDebug
 )
 
 func matchKey(msg tea.KeyMsg) keyAction {
@@ -40,6 +41,8 @@ func matchKey(msg tea.KeyMsg) keyAction {
 		return actionPrevAlgo
 	case "s":
 		return actionNextTrack
+	case "d":
+		return actionDebug
 	}
 	return actionNone
 }
