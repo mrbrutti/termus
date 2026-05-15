@@ -297,7 +297,7 @@ func (a *Chill) Seed(seedVal int64) {
 	// has 13 different drum kits at GM standard slots. For chill, the
 	// JAZZ KIT (program 32) is the right starting point — softer cymbals,
 	// brushed snare, warm kick — exactly the "lofi study beat" sound.
-	core.syn.ProcessMidiMessage(drumChannel, ccBankSelect, drumBankMSB, 0)
+	core.processMIDI(drumChannel, ccBankSelect, drumBankMSB, 0)
 	const drumKitJazz = 32
 	core.setProgram(drumChannel, drumKitJazz)
 	core.setPan(drumChannel, 64)

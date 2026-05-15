@@ -30,4 +30,4 @@
 - [x] Expand harmonic language in `jazz` and `chill` with reharmonization, borrowed changes, secondary dominants, and deceptive turns.
 - [x] Replace coarse section energy shifts with per-instrument section scenes for lead, comp, bass, drums, and texture layers.
 - [x] Add explicit call-response / dialogue behavior between lead and accompaniment parts so phrases stop competing for the same space.
-- [ ] Improve the tuning workflow with stem and MIDI export support alongside the existing listencheck renders.
+- [x] Improve the tuning workflow with stem and MIDI export support alongside the existing listencheck renders.

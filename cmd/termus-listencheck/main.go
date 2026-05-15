@@ -27,6 +27,9 @@ type corpusResult struct {
 	Algo      string                `json:"algo"`
 	Seed      int64                 `json:"seed"`
 	Path      string                `json:"path,omitempty"`
+	MIDIPath  string                `json:"midi_path,omitempty"`
+	StemDir   string                `json:"stem_dir,omitempty"`
+	StemFiles []string              `json:"stem_files,omitempty"`
 	Skipped   string                `json:"skipped,omitempty"`
 	Markers   []gen.ListeningMarker `json:"markers,omitempty"`
 	Frames    int                   `json:"frames"`
@@ -38,6 +41,8 @@ func main() {
 	sf2Path := flag.String("sf2", "", "optional SoundFont path for SF2-backed corpus cases")
 	sf2Preset := flag.String("sf2-preset", "general", "SoundFont preset to auto-fetch for SF2 corpus cases")
 	includeSF2 := flag.Bool("include-sf2", false, "include SF2-backed lofi and jazz renders in the corpus")
+	exportStems := flag.Bool("stems", false, "also export per-stem WAVs for SF2-backed corpus cases")
+	exportMIDI := flag.Bool("midi", false, "also export captured MIDI files for SF2-backed corpus cases")
 	flag.Parse()
 
 	if err := os.MkdirAll(*outDir, 0o755); err != nil {
@@ -106,6 +111,30 @@ func main() {
 		}
 		if inspectable, ok := algo.(gen.ListeningInspectable); ok {
 			result.Markers = trimMarkers(inspectable.ListeningMarkers(), frames)
+		}
+		if *exportMIDI && spec.RequiresSF2 {
+			midiAlgo := spec.Build(sharedSF)
+			midiAlgo.Seed(item.Seed)
+			if exporter, ok := midiAlgo.(gen.TuningExporter); ok {
+				result.MIDIPath = filepath.Join(*outDir, item.Name+".mid")
+				if err := exporter.ExportMIDI(result.MIDIPath, item.Seconds); err != nil {
+					fmt.Fprintf(os.Stderr, "midi %s: %v\n", item.Name, err)
+					os.Exit(1)
+				}
+			}
+		}
+		if *exportStems && spec.RequiresSF2 {
+			stemAlgo := spec.Build(sharedSF)
+			stemAlgo.Seed(item.Seed)
+			if exporter, ok := stemAlgo.(gen.TuningExporter); ok {
+				result.StemDir = filepath.Join(*outDir, item.Name+"-stems")
+				files, err := exporter.ExportStems(result.StemDir, item.Seconds, 100)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "stems %s: %v\n", item.Name, err)
+					os.Exit(1)
+				}
+				result.StemFiles = files
+			}
 		}
 		results = append(results, result)
 		fmt.Fprintf(os.Stderr, "rendered %s -> %s\n", item.Name, outPath)

@@ -210,6 +210,9 @@ type sf2Core struct {
 
 	bufF32L []float32
 	bufF32R []float32
+
+	capture       *midiCapture
+	bootstrapMIDI []capturedMIDIMessage
 }
 
 // configureSidechain installs a duck envelope. floorDB is the depth of the
@@ -286,10 +289,76 @@ func newSF2Core(sf *meltysynth.SoundFont, masterGain float64, mutationSeed int64
 	}, nil
 }
 
+type sf2SynthSink struct {
+	core *sf2Core
+}
+
+func (s sf2SynthSink) NoteOn(channel int32, key int32, velocity int32) {
+	s.core.noteOn(channel, key, velocity)
+}
+
+func (s sf2SynthSink) NoteOff(channel int32, key int32) {
+	s.core.noteOff(channel, key)
+}
+
+func (s sf2SynthSink) ProcessMidiMessage(channel int32, command int32, data1 int32, data2 int32) {
+	s.core.processMIDI(channel, command, data1, data2)
+}
+
+func (e *sf2Core) startMIDICapture() {
+	e.capture = &midiCapture{
+		events: append([]capturedMIDIMessage(nil), e.bootstrapMIDI...),
+	}
+}
+
+func (e *sf2Core) finishMIDICapture() []capturedMIDIMessage {
+	if e.capture == nil {
+		return nil
+	}
+	events := e.capture.events
+	e.capture = nil
+	return events
+}
+
+func (e *sf2Core) recordMIDI(sample int64, status, data1, data2 byte) {
+	msg := capturedMIDIMessage{
+		Sample: sample,
+		Status: status,
+		Data1:  data1,
+		Data2:  data2,
+	}
+	if e.capture != nil {
+		e.capture.events = append(e.capture.events, msg)
+		return
+	}
+	if e.t == 0 {
+		e.bootstrapMIDI = append(e.bootstrapMIDI, msg)
+	}
+}
+
+func (e *sf2Core) processMIDIAt(sample int64, channel int32, command int32, data1 int32, data2 int32) {
+	e.syn.ProcessMidiMessage(channel, command, data1, data2)
+	e.recordMIDI(sample, byte(command)|byte(channel&0x0F), byte(data1), byte(data2))
+}
+
+func (e *sf2Core) processMIDI(channel int32, command int32, data1 int32, data2 int32) {
+	e.processMIDIAt(e.t, channel, command, data1, data2)
+}
+
+func (e *sf2Core) noteOn(channel int32, key int32, velocity int32) {
+	e.syn.NoteOn(channel, key, velocity)
+	e.recordMIDI(e.t, 0x90|byte(channel&0x0F), byte(key), byte(velocity))
+}
+
+func (e *sf2Core) noteOff(channel int32, key int32) {
+	e.syn.NoteOff(channel, key)
+	e.recordMIDI(e.t, 0x80|byte(channel&0x0F), byte(key), 0)
+}
+
 // setProgram changes the GM program on a MIDI channel.
 func (e *sf2Core) setProgram(channel int32, program int32) {
 	const ccProgramChange = 0xC0
-	e.syn.ProcessMidiMessage(channel, ccProgramChange, program, 0)
+	e.processMIDI(channel, ccProgramChange, program, 0)
 }
 
 // programSwap rotates the channel to a different GM program, chosen from
@@ -315,7 +384,7 @@ func (e *sf2Core) setReverbSend(channel, level int32) {
 	if level > 127 {
 		level = 127
 	}
-	e.syn.ProcessMidiMessage(channel, ccControlChange, ccReverbSend, level)
+	e.processMIDI(channel, ccControlChange, ccReverbSend, level)
 }
 
 // setChorusSend sets the channel's send to the internal chorus (CC 93).
@@ -330,7 +399,7 @@ func (e *sf2Core) setChorusSend(channel, level int32) {
 	if level > 127 {
 		level = 127
 	}
-	e.syn.ProcessMidiMessage(channel, ccControlChange, ccChorusSend, level)
+	e.processMIDI(channel, ccControlChange, ccChorusSend, level)
 }
 
 // filterLFO holds the state for a slow CC-74 (filter cutoff) LFO on one
@@ -391,7 +460,7 @@ func (e *sf2Core) updateLFOs(samples int64) {
 		if cc > 127 {
 			cc = 127
 		}
-		e.syn.ProcessMidiMessage(l.channel, ccControlChange, ccBrightness, cc)
+		e.processMIDIAt(e.t, l.channel, ccControlChange, ccBrightness, cc)
 	}
 }
 
@@ -413,7 +482,7 @@ func (e *sf2Core) setChannelCutoff(channel, value int32) {
 	if value > 127 {
 		value = 127
 	}
-	e.syn.ProcessMidiMessage(channel, ccControlChange, ccBrightness, value)
+	e.processMIDI(channel, ccControlChange, ccBrightness, value)
 }
 
 // setPan positions a MIDI channel in the stereo field. pan is 0..127 where
@@ -427,7 +496,7 @@ func (e *sf2Core) setPan(channel int32, pan int32) {
 	if pan > 127 {
 		pan = 127
 	}
-	e.syn.ProcessMidiMessage(channel, ccControlChange, ccPan, pan)
+	e.processMIDI(channel, ccControlChange, ccPan, pan)
 }
 
 func (e *sf2Core) setChannelExpression(channel, value int32) {
@@ -439,7 +508,7 @@ func (e *sf2Core) setChannelExpression(channel, value int32) {
 	if value > 127 {
 		value = 127
 	}
-	e.syn.ProcessMidiMessage(channel, ccControlChange, ccExpression, value)
+	e.processMIDI(channel, ccControlChange, ccExpression, value)
 }
 
 // setMasterEQ overrides the default master-bus shelf EQ. The engine builds
@@ -938,6 +1007,7 @@ func (e *sf2Core) renderInto(left, right []float64) {
 	e.bufF32R = e.bufF32R[:n]
 
 	pos := 0
+	sink := sf2SynthSink{core: e}
 	for pos < n {
 		// Find the smallest number of samples until the next event across
 		// all tracks. Render that many samples, fire events, repeat.
@@ -959,7 +1029,7 @@ func (e *sf2Core) renderInto(left, right []float64) {
 		if pos < n {
 			for _, s := range e.tracks {
 				if s.samplesUntilNextEvent(e.t) == 0 {
-					s.handleDueEvents(e.t, e.syn, e.rng)
+					s.handleDueEvents(e.t, sink, e.rng)
 				}
 			}
 		}

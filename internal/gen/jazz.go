@@ -229,7 +229,7 @@ func (a *Jazz) Seed(seedVal int64) {
 	core.setPan(2, 72) // sax slightly right (classic stage placement)
 
 	// Jazz drum kit on the standard drum channel.
-	core.syn.ProcessMidiMessage(drumChannel, ccBankSelect, drumBankMSB, 0)
+	core.processMIDI(drumChannel, ccBankSelect, drumBankMSB, 0)
 	const drumKitJazz = 32
 	core.setProgram(drumChannel, drumKitJazz)
 	core.setPan(drumChannel, 64)
