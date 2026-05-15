@@ -50,7 +50,7 @@ type Chill struct {
 	progression []chillChord
 
 	barSamples int64
-	form       FormPlan
+	form       EpisodePlan
 	section    FormSection
 
 	samplesElapsed int64
@@ -417,7 +417,7 @@ func (a *Chill) Seed(seedVal int64) {
 	beatSec := 60.0 / bpm
 	barSec := beatSec * 4
 	a.barSamples = secondsToSamples(barSec)
-	a.form = NewFormPlan(a.rng, a.barSamples, "lofi")
+	a.form = NewEpisodePlan(a.rng, a.barSamples, "lofi")
 	a.section = a.form.SectionAt(0)
 	a.scheduleNextDrift()
 	cycleSec := barSec * float64(len(a.progression))
@@ -1188,5 +1188,5 @@ func maxInt(a, b int) int {
 }
 
 func (a *Chill) ListeningMarkers() []ListeningMarker {
-	return a.form.ListeningMarkers(2)
+	return a.form.ListeningMarkers(4)
 }

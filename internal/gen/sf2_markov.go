@@ -42,7 +42,7 @@ type SF2Markov struct {
 
 	progression []classicalChord
 	barSamples  int64
-	form        FormPlan
+	form        EpisodePlan
 	section     FormSection
 
 	samplesElapsed int64
@@ -165,7 +165,7 @@ func (a *SF2Markov) Seed(seedVal int64) {
 	beatSec := 60.0 / bpm
 	barSec := beatSec * 4
 	a.barSamples = secondsToSamples(barSec)
-	a.form = NewFormPlan(a.rng, a.barSamples, "classical")
+	a.form = NewEpisodePlan(a.rng, a.barSamples, "classical")
 	a.section = a.form.SectionAt(0)
 	numBars := len(a.progression)
 	cycleSec := barSec * float64(numBars)
@@ -477,5 +477,5 @@ func (a *SF2Markov) DebugStatus() DebugStatus {
 }
 
 func (a *SF2Markov) ListeningMarkers() []ListeningMarker {
-	return a.form.ListeningMarkers(2)
+	return a.form.ListeningMarkers(4)
 }

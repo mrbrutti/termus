@@ -74,7 +74,7 @@
 ## Long-Form Listening
 
 ### Episode Structure
-- [ ] Replace fixed looping forms with a streaming episode planner so `jazz`, `lofi`, and `classical` stop wrapping on one short bar cycle.
+- [x] Replace fixed looping forms with a streaming episode planner so `jazz`, `lofi`, and `classical` stop wrapping on one short bar cycle.
 
 ### Long Horizon State
 - [ ] Add a long-horizon conductor state that carries harmony family, motif family, texture scene, density bias, and movement identity across episodes.

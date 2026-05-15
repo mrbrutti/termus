@@ -43,7 +43,7 @@ type Jazz struct {
 	progression []jazzChord
 
 	barSamples int64
-	form       FormPlan
+	form       EpisodePlan
 	section    FormSection
 
 	samplesElapsed int64
@@ -287,7 +287,7 @@ func (a *Jazz) Seed(seedVal int64) {
 	beatSec := 60.0 / bpm
 	barSec := beatSec * 4
 	a.barSamples = secondsToSamples(barSec)
-	a.form = NewFormPlan(a.rng, a.barSamples, "jazz")
+	a.form = NewEpisodePlan(a.rng, a.barSamples, "jazz")
 	a.section = a.form.SectionAt(0)
 	a.scheduleNextDrift()
 	numBars := len(a.progression)
@@ -1076,5 +1076,5 @@ func (a *Jazz) brushFillNoteAt(slot int) int {
 }
 
 func (a *Jazz) ListeningMarkers() []ListeningMarker {
-	return a.form.ListeningMarkers(2)
+	return a.form.ListeningMarkers(4)
 }

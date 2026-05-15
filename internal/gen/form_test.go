@@ -34,3 +34,19 @@ func TestClassicalFormEndsWithOutro(t *testing.T) {
 		t.Fatalf("last section = %s, want %s", got, FormOutro)
 	}
 }
+
+func TestEpisodePlanDoesNotWrapBackToIntro(t *testing.T) {
+	plan := NewEpisodePlan(nil, 100, "jazz")
+	first := plan.SectionAt(0)
+	if first.Kind != FormIntro {
+		t.Fatalf("first section = %s, want %s", first.Kind, FormIntro)
+	}
+	secondEpisodeStart := int64(plan.episodes[0].TotalBars * 100)
+	next := plan.SectionAt(secondEpisodeStart)
+	if next.Kind == FormIntro {
+		t.Fatalf("second episode should not restart at intro, got %s", next.Kind)
+	}
+	if got := plan.MovementAt(secondEpisodeStart); got == MovementEstablish {
+		t.Fatalf("second episode movement = %s, want non-establish", got)
+	}
+}
