@@ -680,10 +680,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		action := matchKey(msg)
-		if m.helpVisible && action != actionHelp && action != actionQuit && action != actionZen && action != actionControls {
+		if m.helpVisible && action != actionHelp && action != actionQuit && action != actionControls {
 			return m, nil
 		}
-		if m.inspectorVisible && action != actionInspector && action != actionQuit && action != actionExport && action != actionZen && action != actionControls {
+		if m.inspectorVisible && action != actionInspector && action != actionQuit && action != actionExport && action != actionControls {
+			return m, nil
+		}
+		if actionLivesInControlCenter(action) {
+			m.flashStatus("open control center: [m]", 2*time.Second)
 			return m, nil
 		}
 		switch action {
@@ -706,35 +710,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.cmd.SetVolume(m.volume)
 			m.showVolumeOverlay()
-		case actionRecord:
-			path, err := m.cmd.ToggleRecord()
-			if err != nil {
-				m.flashStatus("rec error: "+err.Error(), 3*time.Second)
-				m.recording = false
-			} else if path != "" {
-				m.recording = true
-				m.recordStartedAt = time.Now()
-				m.flashStatus("rec → "+path, 3*time.Second)
-			} else {
-				m.recording = false
-				m.recordStartedAt = time.Time{}
-				m.flashStatus("rec stopped", 3*time.Second)
-			}
-		case actionTheme:
-			if len(m.themes) > 1 {
-				m.themeIdx = (m.themeIdx + 1) % len(m.themes)
-				m.flashStatus("theme: "+m.themes[m.themeIdx].Name, 2*time.Second)
-			}
-		case actionVisual:
-			m.visualIdx = (m.visualIdx + 1) % len(Visuals)
-			m.flashStatus("visual: "+Visuals[m.visualIdx].Name, 2*time.Second)
-		case actionDebug:
-			m.debugVisible = !m.debugVisible
-			if m.debugVisible {
-				m.flashStatus("debug: on", 2*time.Second)
-			} else {
-				m.flashStatus("debug: off", 2*time.Second)
-			}
 		case actionHelp:
 			m.helpVisible = !m.helpVisible
 			if m.helpVisible {
@@ -745,38 +720,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.flashStatus("help: off", 2*time.Second)
 			}
-		case actionLibrary:
-			m.toggleLibrary()
-		case actionInspector:
-			m.toggleInspector()
-		case actionExport:
-			m.toggleExportDrawer()
 		case actionControls:
 			m.toggleControls()
-		case actionZen:
-			m.toggleReducedChrome()
-		case actionNextAlgo:
-			m.switchAlgo(1)
-		case actionPrevAlgo:
-			m.switchAlgo(-1)
-		case actionNextTrack:
-			if m.playlist != nil {
-				m.advancePlaylist()
-			}
-		case actionPrevSeed:
-			m.browseSeed(-1)
-		case actionNextSeed:
-			m.browseSeed(1)
-		case actionStoreA:
-			m.storeSeed("A")
-		case actionStoreB:
-			m.storeSeed("B")
-		case actionToggleAB:
-			m.toggleSeedCompare()
-		case actionKeepSeed:
-			m.keepSeed()
-		case actionRejectSeed:
-			m.rejectSeed()
 		}
 		return m, nil
 	case tickMsg:
@@ -899,6 +844,18 @@ func (m *Model) applyAudioState(state audio.BackendState) {
 	case audio.BackendStateNoDefaultDevice, audio.BackendStateHung,
 		audio.BackendStateRenderOnly, audio.BackendStateInitFailed:
 		m.setStickyStatus(state.StatusText())
+	}
+}
+
+func actionLivesInControlCenter(action keyAction) bool {
+	switch action {
+	case actionRecord, actionTheme, actionNextAlgo, actionPrevAlgo, actionNextTrack,
+		actionVisual, actionDebug, actionLibrary, actionInspector, actionExport,
+		actionZen, actionPrevSeed, actionNextSeed, actionStoreA, actionStoreB,
+		actionToggleAB, actionKeepSeed, actionRejectSeed:
+		return true
+	default:
+		return false
 	}
 }
 

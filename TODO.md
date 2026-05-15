@@ -69,4 +69,4 @@
 - [x] Rewrite the `?` help overlay so it teaches the two-layer model (`play view` + `control center`) instead of listing the full hotkey inventory.
 - [x] Expand the control center from the current tabbed overlay into a left-nav general menu with sections for now, look, music, seeds, library, export, audio, and debug.
 - [x] Move current overlay-first actions such as visual/theme switching, library browsing, export actions, debug toggles, and seed curation under the control center so the main interface stays minimal.
-- [ ] Reduce the visible global interaction model to the essential keys (`space`, `↑↓`, `m`, `?`, `q`) while keeping deeper actions discoverable inside the control center.
+- [x] Reduce the visible global interaction model to the essential keys (`space`, `↑↓`, `m`, `?`, `q`) while keeping deeper actions discoverable inside the control center.

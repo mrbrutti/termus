@@ -199,6 +199,24 @@ func TestHelpBlocksNonHelpKeys(t *testing.T) {
 	}
 }
 
+func TestNonEssentialGlobalKeysRedirectToControlCenter(t *testing.T) {
+	cmd := &tuiCommanderStub{}
+	m := Model{
+		cmd:      cmd,
+		themeIdx: 0,
+		themes:   []ColorTheme{DefaultTheme(), Themes[1]},
+		seed:     42,
+	}
+	next, _ := m.Update(keyMsg("c"))
+	got := next.(Model)
+	if got.themeIdx != 0 {
+		t.Fatalf("theme changed outside control center: %d", got.themeIdx)
+	}
+	if got.currentStatus(time.Now()) != "open control center: [m]" {
+		t.Fatalf("status = %q, want control center redirect", got.currentStatus(time.Now()))
+	}
+}
+
 func TestSeedBrowserStoresAndTogglesAB(t *testing.T) {
 	cmd := &tuiCommanderStub{}
 	specs := []gen.AlgoSpec{{Name: "ambient", Display: "Ambient"}}
