@@ -3,97 +3,29 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>termus — terminal music, generated</title>
-  <meta name="description" content="A terminal music player that algorithmically generates ambient, jazz, lofi, and classical music in real time. No tracks, no samples — every second is synthesized on the fly.">
+  <title>termus</title>
+  <meta name="description" content="Terminal music player that generates ambient, jazz, lofi, classical, and more in real time.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
-  <link rel="icon" type="image/svg+xml" href="favicon.svg">
 </head>
-<body>
+<body class="landing">
   <main>
-    <header>
-      <h1><span class="accent">termus</span></h1>
-      <p class="tagline">Terminal music, generated from scratch.</p>
-    </header>
+    <h1 class="logo">termus</h1>
+    <p class="tagline">terminal music, generated from scratch</p>
 
-    <section class="hero">
-      <img src="screenshot.png" alt="termus running in a terminal" class="screenshot">
-    </section>
+    <img src="screenshot.png" alt="termus running in a terminal" class="screenshot">
 
-    <section>
-      <h2>What it is</h2>
-      <p>
-        termus is a CLI music player that algorithmically generates ambient,
-        jazz, lo-fi, classical, drone, bells, lullaby, and phase music in real
-        time — no tracks, no samples on disk, no playlist files.
-        Every second of audio is synthesized or rendered through a SoundFont
-        on the fly. Run it in your terminal, hit space, and it produces music
-        that never repeats and can keep going for hours.
-      </p>
-      <p>
-        The interface is a colored Braille oscilloscope tracking the
-        synthesizer's own output — no UI chrome, no album art, no
-        notifications.
-      </p>
-    </section>
+    <pre class="install"><code>brew tap mrbrutti/termus &amp;&amp; brew install termus</code></pre>
 
-    <section>
-      <h2>Install</h2>
-      <p>Homebrew (macOS / Linux):</p>
-<pre><code>brew tap mrbrutti/termus
-brew install termus
-termus</code></pre>
-
-      <p>Or from source:</p>
-<pre><code>go install github.com/mrbrutti/termus/cmd/termus@latest
-termus</code></pre>
-
-      <p>
-        First run with a SoundFont-based algorithm auto-downloads a SoundFont
-        into your OS cache (<code>~/Library/Caches/termus/</code> on macOS).
-        12 SoundFonts are available — the default <code>general</code> (32 MB)
-        covers all genres reasonably; specialized presets (Tyros 4 for jazz,
-        Fairy Tale Bank for bells, Timbres of Heaven for classical) unlock the
-        best per-genre sound via <code>--sf2-strategy=optimal</code>.
-      </p>
-    </section>
-
-    <section>
-      <h2>Genres</h2>
-      <table class="genres">
-        <tr><td><code>ambient</code></td><td>Eno-style — chord drift, tape-loop bells, choir over pads</td></tr>
-        <tr><td><code>drone</code></td><td>Stars of the Lid — quartal swells, bowed glass, sub-bass pedal</td></tr>
-        <tr><td><code>bells</code></td><td>Boards of Canada — pentatonic bells in I-IV-I-V</td></tr>
-        <tr><td><code>lullaby</code></td><td>Brahms <em>Wiegenlied</em> — 3/4 music box at 72-84 BPM</td></tr>
-        <tr><td><code>classical</code></td><td>Mozart/Haydn — Alberti bass, antecedent + consequent periods</td></tr>
-        <tr><td><code>phase</code></td><td>Reich <em>Piano Phase</em> — two voices drift, 12-note pattern</td></tr>
-        <tr><td><code>lofi</code></td><td>J Dilla — boom-bap with snare 30 ms late, Rhodes EP, walking bass</td></tr>
-        <tr><td><code>jazz</code></td><td>Bill Evans — rootless 3-5-7-9 voicings, walking bass, swing ride</td></tr>
-      </table>
-    </section>
-
-    <section>
-      <h2>Controls</h2>
-      <table class="controls">
-        <tr><td><kbd>space</kbd></td><td>play / pause</td></tr>
-        <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>volume</td></tr>
-        <tr><td><kbd>r</kbd></td><td>record to WAV</td></tr>
-        <tr><td><kbd>c</kbd></td><td>cycle color theme</td></tr>
-        <tr><td><kbd>C</kbd></td><td>cycle visualization (scope / spectrum / bars / mirror)</td></tr>
-        <tr><td><kbd>n</kbd> <kbd>p</kbd></td><td>next / previous algorithm</td></tr>
-        <tr><td><kbd>s</kbd></td><td>skip playlist track</td></tr>
-        <tr><td><kbd>q</kbd></td><td>quit</td></tr>
-      </table>
-    </section>
-
-    <footer>
-      <p>
-        <a href="https://github.com/mrbrutti/termus">source on github</a>
-        &nbsp;·&nbsp;
-        <a href="https://github.com/mrbrutti/termus/releases">releases</a>
-        &nbsp;·&nbsp;
-        <a href="https://github.com/mrbrutti/termus/blob/main/LICENSE">MIT</a>
-      </p>
-    </footer>
+    <nav class="links">
+      <a href="docs.html">docs</a>
+      <span class="sep">·</span>
+      <a href="https://github.com/mrbrutti/termus">source</a>
+      <span class="sep">·</span>
+      <a href="https://github.com/mrbrutti/termus/releases">v0.1.0</a>
+    </nav>
   </main>
 </body>
 </html>

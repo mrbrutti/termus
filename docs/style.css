@@ -1,4 +1,4 @@
-/* termus / minimalist, monospace, indigo→cyan accents matching the app theme */
+/* termus / minimalist landing + docs, indigo→cyan, wave-defined */
 
 :root {
   --bg: #0a0a0f;
@@ -24,48 +24,163 @@ html, body {
   margin: 0;
   padding: 0;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-main {
-  max-width: 720px;
+/* The logo uses Space Grotesk Bold — modern geometric sans with personality,
+   contrasts with the monospace body text and stops the wordmark from looking
+   like just another line of code. */
+.logo {
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  color: var(--cyan);
+}
+
+/* ============================================================
+   LANDING PAGE
+   ============================================================ */
+
+body.landing main {
+  min-height: 100vh;
+  max-width: 760px;
   margin: 0 auto;
-  padding: 6rem 2rem 4rem;
+  padding: 8vh 2rem 4vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
 }
 
-header {
-  margin-bottom: 3rem;
-}
-
-h1 {
-  font-size: 3.4rem;
-  font-weight: 400;
-  letter-spacing: -0.03em;
-  margin: 0 0 0.4rem;
+body.landing .logo {
+  font-size: 4.5rem;
+  margin: 0;
   line-height: 1;
 }
 
-h1 .accent {
-  background: linear-gradient(90deg, var(--indigo), var(--cyan));
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
-}
-
-.tagline {
+body.landing .tagline {
   color: var(--fg-dim);
-  font-size: 1rem;
-  margin: 0;
+  font-size: 0.95rem;
+  margin: 0.8rem 0 3.5rem;
+  letter-spacing: 0.02em;
 }
 
-section {
-  margin: 3.5rem 0;
+body.landing .screenshot {
+  width: 100%;
+  max-width: 720px;
+  display: block;
+  border-radius: 8px;
+  border: 1px solid var(--rule);
+  background: #000;
+  margin-bottom: 3rem;
 }
 
-h2 {
-  font-size: 0.85rem;
-  font-weight: 400;
-  letter-spacing: 0.16em;
+body.landing .install {
+  background: var(--bg-elev);
+  border-left: 2px solid var(--cyan);
+  padding: 0.9rem 1.2rem;
+  font-size: 0.92rem;
+  margin: 0 0 3rem;
+  text-align: left;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+body.landing .install code {
+  color: var(--fg);
+}
+
+body.landing .links {
+  color: var(--fg-dim);
+  font-size: 0.9rem;
+  display: flex;
+  gap: 0.7rem;
+  align-items: center;
+  margin-top: auto;
+}
+
+body.landing .links .sep {
+  color: var(--rule);
+}
+
+body.landing .links a {
+  color: var(--fg-dim);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+body.landing .links a:hover {
+  color: var(--cyan);
+  border-bottom-color: var(--cyan);
+}
+
+/* ============================================================
+   DOCS PAGE
+   ============================================================ */
+
+body.docs {
+  padding: 0;
+}
+
+.docs-header {
+  border-bottom: 1px solid var(--rule);
+  padding: 1.5rem 2rem;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.back {
+  color: var(--fg-dim);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.95rem;
+  transition: color 0.15s;
+}
+
+.back:hover {
+  color: var(--cyan);
+}
+
+.back .back-arrow {
+  font-size: 1.1rem;
+}
+
+.logo.small {
+  font-size: 1.5rem;
+  color: inherit;
+}
+
+.back:hover .logo.small {
+  color: var(--cyan);
+}
+
+body.docs main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 3rem 2rem 4rem;
+}
+
+.page-title {
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-weight: 500;
+  font-size: 1.5rem;
+  color: var(--fg);
+  margin: 0 0 3rem;
+  letter-spacing: -0.01em;
+}
+
+body.docs section {
+  margin: 3rem 0;
+}
+
+body.docs h2 {
+  font-size: 0.8rem;
+  font-weight: 500;
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--cyan);
   margin: 0 0 1.2rem;
@@ -73,11 +188,12 @@ h2 {
   border-bottom: 1px solid var(--rule);
 }
 
-p {
+body.docs p {
   margin: 0 0 1rem;
 }
 
-p code, td code {
+body.docs p code,
+body.docs td code {
   color: var(--bar-fg);
   background: var(--bg-elev);
   padding: 0.05rem 0.4rem;
@@ -85,7 +201,7 @@ p code, td code {
   font-size: 0.92em;
 }
 
-pre {
+body.docs pre {
   background: var(--bg-elev);
   border-left: 2px solid var(--indigo);
   margin: 1rem 0 1.4rem;
@@ -94,53 +210,37 @@ pre {
   font-size: 0.92rem;
 }
 
-pre code {
+body.docs pre code {
   background: transparent;
   padding: 0;
   color: var(--fg);
 }
 
-.hero {
-  margin: 2rem 0 3rem;
-  text-align: center;
-}
-
-.screenshot {
-  width: 100%;
-  max-width: 720px;
-  display: block;
-  margin: 0 auto;
-  border-radius: 8px;
-  overflow: hidden;
-  border: 1px solid var(--rule);
-  background: #000;
-}
-
-table {
+body.docs table {
   width: 100%;
   border-collapse: collapse;
   margin: 0.4rem 0 1.2rem;
 }
 
-table td {
+body.docs table td {
   padding: 0.45rem 0;
   border-bottom: 1px solid var(--rule);
   vertical-align: top;
 }
 
-table.genres td:first-child,
-table.controls td:first-child {
+body.docs table.genres td:first-child,
+body.docs table.controls td:first-child {
   width: 30%;
   color: var(--bar-fg);
   white-space: nowrap;
   padding-right: 1rem;
 }
 
-table.controls td:first-child {
+body.docs table.controls td:first-child {
   width: 20%;
 }
 
-table tr:last-child td {
+body.docs table tr:last-child td {
   border-bottom: none;
 }
 
@@ -151,7 +251,7 @@ kbd {
   border-radius: 3px;
   padding: 0.1rem 0.4rem;
   font-size: 0.85em;
-  font-family: inherit;
+  font-family: ui-monospace, monospace;
   color: var(--bar-fg);
 }
 
@@ -160,18 +260,18 @@ em {
   color: var(--fg-dim);
 }
 
-a {
+body.docs a {
   color: var(--cyan);
   text-decoration: none;
   border-bottom: 1px solid transparent;
   transition: border-color 0.15s;
 }
 
-a:hover {
+body.docs a:hover {
   border-bottom-color: var(--cyan);
 }
 
-footer {
+body.docs footer {
   margin-top: 5rem;
   padding-top: 2rem;
   border-top: 1px solid var(--rule);
@@ -180,17 +280,27 @@ footer {
   text-align: center;
 }
 
-footer a {
+body.docs footer a {
   color: var(--fg-dim);
 }
 
-footer a:hover {
+body.docs footer a:hover {
   color: var(--cyan);
   border-bottom-color: var(--cyan);
 }
 
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+
 @media (max-width: 600px) {
-  main { padding: 3rem 1.2rem 2.5rem; }
-  h1 { font-size: 2.4rem; }
-  section { margin: 2.5rem 0; }
+  body.landing main { padding: 5vh 1.2rem 3vh; }
+  body.landing .logo { font-size: 3rem; }
+  body.landing .tagline { margin-bottom: 2.5rem; }
+  body.landing .screenshot { margin-bottom: 2rem; }
+  body.landing .install { font-size: 0.82rem; }
+
+  .docs-header { padding: 1.2rem 1.2rem; }
+  body.docs main { padding: 2rem 1.2rem 2.5rem; }
+  body.docs section { margin: 2.5rem 0; }
 }
