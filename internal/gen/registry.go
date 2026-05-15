@@ -29,7 +29,7 @@ type AlgoSpec struct {
 // for the older internal names.
 var registry = map[string]AlgoSpec{
 	"ambient": {
-		Name: "ambient", Display: "Ambient", RequiresSF2: true, PreferredSF2: "general",
+		Name: "ambient", Display: "Ambient", RequiresSF2: true, PreferredSF2: "roland-sc55-up",
 		Tagline: "Music for Airports — pad-bell on incommensurate loops, sampled",
 		Build:   func(sf *meltysynth.SoundFont) Algorithm { return NewSF2Eno(sf) },
 	},
@@ -39,7 +39,7 @@ var registry = map[string]AlgoSpec{
 		Build:   func(_ *meltysynth.SoundFont) Algorithm { return NewEno() },
 	},
 	"drone": {
-		Name: "drone", Display: "Drone", RequiresSF2: true, PreferredSF2: "general",
+		Name: "drone", Display: "Drone", RequiresSF2: true, PreferredSF2: "fm-dx",
 		Tagline: "Stars of the Lid — held strings + flute shimmer over deep bed",
 		Build:   func(sf *meltysynth.SoundFont) Algorithm { return NewSF2Drone(sf) },
 	},
@@ -49,7 +49,7 @@ var registry = map[string]AlgoSpec{
 		Build:   func(_ *meltysynth.SoundFont) Algorithm { return NewDrone() },
 	},
 	"bells": {
-		Name: "bells", Display: "Bells", RequiresSF2: true, PreferredSF2: "general",
+		Name: "bells", Display: "Bells", RequiresSF2: true, PreferredSF2: "fairy-tale",
 		Tagline: "Tubular bells + crystal pad — bright, late-night focus",
 		Build:   func(sf *meltysynth.SoundFont) Algorithm { return NewSF2Glass(sf) },
 	},
@@ -59,7 +59,7 @@ var registry = map[string]AlgoSpec{
 		Build:   func(_ *meltysynth.SoundFont) Algorithm { return NewGlass() },
 	},
 	"lullaby": {
-		Name: "lullaby", Display: "Lullaby", RequiresSF2: true, PreferredSF2: "sgm",
+		Name: "lullaby", Display: "Lullaby", RequiresSF2: true, PreferredSF2: "fairy-tale",
 		Tagline: "Pentatonic random walk — piano, harp, kalimba — never clashes",
 		Build:   func(sf *meltysynth.SoundFont) Algorithm { return NewSF2Pentatonic(sf) },
 	},
@@ -69,7 +69,7 @@ var registry = map[string]AlgoSpec{
 		Build:   func(_ *meltysynth.SoundFont) Algorithm { return NewPentatonic() },
 	},
 	"classical": {
-		Name: "classical", Display: "Classical", RequiresSF2: true, PreferredSF2: "sgm",
+		Name: "classical", Display: "Classical", RequiresSF2: true, PreferredSF2: "timbres-of-heaven",
 		Tagline: "Markov melody on piano + strings + clarinet — feels composed",
 		Build:   func(sf *meltysynth.SoundFont) Algorithm { return NewSF2Markov(sf) },
 	},
@@ -79,19 +79,19 @@ var registry = map[string]AlgoSpec{
 		Build:   func(_ *meltysynth.SoundFont) Algorithm { return NewMarkov() },
 	},
 	"phase": {
-		Name: "phase", Display: "Phase", RequiresSF2: true, PreferredSF2: "general",
+		Name: "phase", Display: "Phase", RequiresSF2: true, PreferredSF2: "fm-dx",
 		Tagline: "Reich-style — two vibraphones drift in tempo, ever-changing pattern",
 		Build:   func(sf *meltysynth.SoundFont) Algorithm { return NewPhase(sf) },
 	},
 	"lofi": {
-		Name: "lofi", Display: "Lo-fi", RequiresSF2: true, PreferredSF2: "sgm",
+		Name: "lofi", Display: "Lo-fi", RequiresSF2: true, PreferredSF2: "roland-sc55-up",
 		Tagline: "Hip-hop drums + Rhodes EP + walking bass + sax + nylon guitar",
 		Build:   func(sf *meltysynth.SoundFont) Algorithm { return NewChill(sf) },
 	},
 	"jazz": {
-		Name: "jazz", Display: "Jazz", RequiresSF2: true, PreferredSF2: "sgm",
-		Tagline: "Piano + strings + warm pad + bass + flute melody, A-B chord form",
-		Build:   func(sf *meltysynth.SoundFont) Algorithm { return NewSF2(sf) },
+		Name: "jazz", Display: "Jazz", RequiresSF2: true, PreferredSF2: "tyros4",
+		Tagline: "Swing — walking bass, ride cymbal, comping piano, brass/sax melody",
+		Build:   func(sf *meltysynth.SoundFont) Algorithm { return NewJazz(sf) },
 	},
 }
 

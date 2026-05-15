@@ -28,12 +28,24 @@ cd termus
 go run ./cmd/termus
 ```
 
-First run with a SoundFont-based algorithm (`--algo sf2`, `eno-sf2`, etc.) auto-downloads a SoundFont into `~/Library/Caches/termus/soundfonts/` (or the OS equivalent). Two curated presets:
+First run with a SoundFont-based algorithm (`--algo sf2`, `eno-sf2`, etc.) auto-downloads a SoundFont into `~/Library/Caches/termus/soundfonts/` (or the OS equivalent). The catalog:
 
-| Preset | Size | What it is |
+| Preset | Size | Best for |
 |-|-|-|
-| `general` (default) | 32 MB | **GeneralUser-GS** by S. Christian Collins. MIT. 261 instruments, 13 drum kits. Balanced. |
-| `sgm` | 325 MB | **SGM v2.01 NicePianosGuitarsBass** by Sergio Acuña. Substantially better piano/guitar/bass — best for `chill`, `pentatonic-sf2`, `markov-sf2`. ~10× the download. |
+| `general` (default) | 32 MB | Balanced GM — fallback for everything. MIT. |
+| `sgm` | 325 MB | Piano / guitar / bass focus. |
+| `tyros4` | 502 MB | **Jazz** — Tyros 4 brass, sax, walking bass, brushed kits. |
+| `dsound4` | 553 MB | Large balanced alt to `general`. |
+| `fatboy` | 315 MB | Loudness-matched GM. Good for clean lo-fi / baroque. MIT-ish. |
+| `roland-sc55-up` | 177 MB | '90s Roland GS pads / FM-EP — ambient, lo-fi authenticity. |
+| `timbres-of-heaven` | 377 MB | **Classical** — strings, brass, woodwinds. |
+| `merlin-symphony` | 163 MB | Alt orchestral. |
+| `fairy-tale` | 200 MB | **Bells / lullaby** — celesta, music-box, glockenspiel. CC-BY-NC-SA. |
+| `fm-dx` | 124 MB | **Drone / phase** — DX-style FM EPs, metallic bells. |
+| `musescore-general` | 208 MB | Polite, neutral GM. Safe legal status. |
+| `arachno` | 148 MB | D-50 / M1 / MU / Fairlight blend. CC-BY-NC-SA. |
+
+Use `--sf2-strategy optimal` to download each genre's preferred SoundFont automatically.
 
 ```bash
 termus --algo chill              # default: GeneralUser-GS (32 MB)
@@ -54,7 +66,7 @@ Termus ships eight genre-named algorithms, each with an SF2 sampled version (def
 | `classical` | Classical | Markov melody on piano + strings + clarinet — feels composed |
 | `phase` | Phase | Reich-style — two vibraphones drift in tempo, ever-changing pattern |
 | `lofi` | Lo-fi | Hip-hop drums + Rhodes EP + walking bass + sax + nylon guitar |
-| `jazz` | Jazz | Piano + strings + warm pad + bass + flute melody, A-B chord form |
+| `jazz` | Jazz | Medium-swing small group — walking bass, ride pattern, Charleston comp, brushed kit, alto-sax solo over ii-V-I cycles |
 
 Each genre name has a `-synth` variant (e.g. `ambient-synth`, `lofi-synth` (n/a — only ambient/drone/bells/lullaby/classical have synth variants)) that uses pure synthesis instead of a SoundFont — useful if you want to skip the SoundFont download.
 
