@@ -51,6 +51,14 @@ type SF2Track struct {
 	// applies to every odd slot.
 	SwingAmount float64
 
+	// FireProbability, if > 0, randomly skips firing the slot's NoteOn.
+	// 1.0 = always fire (default behavior when 0 — left unset acts as 1).
+	// 0.8 = fire 80% of the time (drum ghost-note variety).
+	// 0.5 = fire half the time (rhythmic sparsification).
+	// The track still advances its slot pointer + nextFireT, so the rhythm
+	// stays locked to the grid — only the audibility of each hit varies.
+	FireProbability float64
+
 	// Enabled, if non-nil, is checked by the engine on every slot
 	// transition. When *Enabled is false, the track silently advances
 	// through its slots without firing NoteOn — used by algorithms with
@@ -327,6 +335,27 @@ func (e *sf2Core) updateLFOs(samples int64) {
 	}
 }
 
+// setChannelCutoff sets a static value for MIDI CC 74 (filter cutoff /
+// brightness) on the given channel. Use this to darken specific instruments
+// down to genre-appropriate territory — lofi piano and Rhodes especially
+// benefit from a very low static cutoff (CC 74 ≈ 30–40) which dramatically
+// muffles the upper harmonics in the way that classic lofi recordings do.
+//
+// If you also installed a filter LFO on the same channel via addFilterLFO,
+// the LFO's emits will overwrite this static value — the LFO's center
+// parameter takes over the same role.
+func (e *sf2Core) setChannelCutoff(channel, value int32) {
+	const ccControlChange = 0xB0
+	const ccBrightness = 74
+	if value < 0 {
+		value = 0
+	}
+	if value > 127 {
+		value = 127
+	}
+	e.syn.ProcessMidiMessage(channel, ccControlChange, ccBrightness, value)
+}
+
 // setPan positions a MIDI channel in the stereo field. pan is 0..127 where
 // 0 is full-left, 64 is center, 127 is full-right (MIDI CC 10 standard).
 func (e *sf2Core) setPan(channel int32, pan int32) {
@@ -536,7 +565,19 @@ func (s *sf2TrackState) fireTransition(t int64, syn *meltysynth.Synthesizer, rng
 		syn.NoteOff(s.cfg.Channel, int32(s.curKey))
 		s.curKey = -1
 	}
+	// Skip firing this slot for either of:
+	//   • track is section-disabled
+	//   • FireProbability set and we rolled a skip (drum ghost-note variety)
+	skip := false
 	if s.cfg.Enabled != nil && !*s.cfg.Enabled {
+		skip = true
+	}
+	if !skip && s.cfg.FireProbability > 0 && s.cfg.FireProbability < 1 && rng != nil {
+		if rng.Float64() >= s.cfg.FireProbability {
+			skip = true
+		}
+	}
+	if skip {
 		s.curSlot = newSlot
 		// Fall through to schedule next fire normally; mutations still happen.
 	} else {

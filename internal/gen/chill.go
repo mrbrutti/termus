@@ -170,10 +170,22 @@ func (a *Chill) Seed(seedVal int64) {
 	core.setProgram(drumChannel, progStandardKit)
 	core.setPan(drumChannel, 64)
 
-	// Filter LFO on the Rhodes — classic lofi "wow" effect, like a slowly-
-	// detuning tape head. Slow rate, modest depth so the brightness gently
-	// rocks back and forth.
-	core.addFilterLFO(0, 1.0/8.0, 60, 22)
+	// Per-channel base cutoffs — the lofi-engine trick. Set each
+	// melodic instrument's CC 74 to a low static value so SF2 voices with
+	// filter mappings render dramatically darker (lofi-engine uses a
+	// 1 kHz hardware lowpass on its piano channel; CC 74 ≈ 32 is the
+	// MIDI equivalent in most SoundFonts including TimGM6mb).
+	core.setChannelCutoff(0, 32) // Rhodes EP — very darkened
+	core.setChannelCutoff(2, 56) // vibraphone — slight darkening only
+	core.setChannelCutoff(3, 70) // sax solo — left bright so it cuts through
+	core.setChannelCutoff(4, 42) // nylon guitar — moderately dark for comping
+	// Bass and drums left at full brightness — bass IS the low end, drums
+	// need transient definition.
+
+	// Filter LFO on the Rhodes — classic lofi "wow" effect. Now centered
+	// LOW (32 instead of 60) so the LFO modulates around the new darkened
+	// base cutoff rather than re-brightening past it.
+	core.addFilterLFO(0, 1.0/8.0, 32, 16)
 
 	// Chill master EQ override: the engine default boosts highs by +3 dB at
 	// 7.5 kHz, which fights against the tape lowpass and the "dark" lofi
@@ -320,7 +332,8 @@ func (a *Chill) Seed(seedVal int64) {
 		Channel: drumChannel, Velocity: 92, Notes: kickNotes,
 		PeriodSec: cycleSec, Phase01: 0,
 		VelocityJitter: 8, TimingJitterSec: 0.003, // kick — anchors the groove, must be tight
-		OnFire: core.triggerDuck,
+		FireProbability: 0.90, // occasional skip so the groove varies subtly
+		OnFire:          core.triggerDuck,
 	})
 	snareNotes := make([]int, 2*numBars)
 	for i := range snareNotes {
@@ -332,7 +345,8 @@ func (a *Chill) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: drumChannel, Velocity: 82, Notes: snareNotes,
 		PeriodSec: cycleSec, Phase01: 0.5 / float64(2*numBars),
-		VelocityJitter: 6, TimingJitterSec: 0.004, // snare — tight, slight behind-the-beat
+		VelocityJitter: 6, TimingJitterSec: 0.004,
+		FireProbability: 0.88, // snare almost always lands, with rare skips
 	})
 	hihatNotes := make([]int, 8*numBars) // 8 hits per bar
 	for i := range hihatNotes {
@@ -341,12 +355,13 @@ func (a *Chill) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: drumChannel, Velocity: 38, Notes: hihatNotes,
 		PeriodSec: cycleSec, Phase01: 0,
-		VelocityJitter:  10, // narrower so loud accents don't poke through
+		VelocityJitter:  10,
 		TimingJitterSec: 0.006,
-		// Swing! Lofi hi-hats shuffle — odd 8ths fire ~13% of a beat late.
-		// This is THE production-feel marker that turns "drum-machine
-		// quantized" into "actual lofi groove."
-		SwingAmount: 0.13,
+		SwingAmount:     0.13,
+		// Hi-hat fires only 78% of the time — gives the most rhythmic
+		// variety since the hi-hat plays so often (8 per bar). Missing
+		// hits read as "drummer holding back" rather than as glitches.
+		FireProbability: 0.78,
 	})
 
 	// Tape hiss — subtle white-noise floor at ~-50 dBFS.
