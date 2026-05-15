@@ -21,3 +21,13 @@
 - [x] Extend export workflow with `--playlist-out` and batch rendering from the main binary.
 - [x] Tighten cross-algorithm intros, outros, cadence handling, and loudness normalization so switching genres feels cohesive.
 - [x] Surface chord, section, bar, and SF2 preset state in the TUI for debugging and tuning.
+
+## Music Quality Backlog
+
+- [ ] Fix true legato, note ties, and controlled overlap in `internal/gen/sf2_engine.go` so repeated-pitch phrases can connect instead of always re-articulating.
+- [ ] Add deterministic groove templates for `jazz` and `chill` so timing feel comes from role-based pocket, not only jitter and swing offsets.
+- [ ] Add motif memory above the current form engine so A / A' / B / cadence sections can recall, sequence, and answer shared musical cells.
+- [ ] Expand harmonic language in `jazz` and `chill` with reharmonization, borrowed changes, secondary dominants, and deceptive turns.
+- [ ] Replace coarse section energy shifts with per-instrument section scenes for lead, comp, bass, drums, and texture layers.
+- [ ] Add explicit call-response / dialogue behavior between lead and accompaniment parts so phrases stop competing for the same space.
+- [ ] Improve the tuning workflow with stem and MIDI export support alongside the existing listencheck renders.
