@@ -37,7 +37,6 @@ First run with a SoundFont-based algorithm (`--algo sf2`, `eno-sf2`, etc.) auto-
 | `tyros4` | 502 MB | **Jazz** — Tyros 4 brass, sax, walking bass, brushed kits. |
 | `dsound4` | 553 MB | Large balanced alt to `general`. |
 | `fatboy` | 315 MB | Loudness-matched GM. Good for clean lo-fi / baroque. MIT-ish. |
-| `roland-sc55-up` | 177 MB | '90s Roland GS pads / FM-EP — ambient, lo-fi authenticity. |
 | `timbres-of-heaven` | 377 MB | **Classical** — strings, brass, woodwinds. |
 | `merlin-symphony` | 163 MB | Alt orchestral. |
 | `fairy-tale` | 200 MB | **Bells / lullaby** — celesta, music-box, glockenspiel. CC-BY-NC-SA. |

@@ -73,14 +73,11 @@ var Presets = map[string]Preset{
 		SizeMB:   315,
 		Summary:  "FatBoy v0.786 — every instrument hand-metered to equal loudness; clean, MIT-style license; good for clean lo-fi and baroque",
 	},
-	"roland-sc55-up": {
-		Name:     "roland-sc55-up",
-		URL:      "https://archive.org/download/free-soundfonts-sf2-2019-04/Roland%20SOUNDCanvas%20SC-55%20Up.sf2",
-		SHA256:   "ce26d477924b95da58b1b00bfd11c6f8580bf7ecf0b2c64db10dbfe4a9927714",
-		FileName: "Roland SOUNDCanvas SC-55 Up.sf2",
-		SizeMB:   177,
-		Summary:  "Roland SC-55 Sound Canvas — '90s GS character; classic pads, choirs, FM-EP, JV-style brass — perfect for ambient/lo-fi authenticity",
-	},
+	// roland-sc55-up was researched and downloaded but is incompatible with
+	// go-meltysynth — its "Halo Pad" preset has no zone, which makes the
+	// parser reject the entire file. Removed from the catalog. If a Roland-
+	// character alternative is wanted, `arachno` covers similar ground
+	// (D-50/M1/MU/Fairlight blend) and parses cleanly.
 	"timbres-of-heaven": {
 		Name:     "timbres-of-heaven",
 		URL:      "https://archive.org/download/free-soundfonts-sf2-2019-04/Timbres%20Of%20Heaven%20GM_GS_XG_SFX%20V%203.4%20Final.sf2",

@@ -29,7 +29,7 @@ type AlgoSpec struct {
 // for the older internal names.
 var registry = map[string]AlgoSpec{
 	"ambient": {
-		Name: "ambient", Display: "Ambient", RequiresSF2: true, PreferredSF2: "roland-sc55-up",
+		Name: "ambient", Display: "Ambient", RequiresSF2: true, PreferredSF2: "arachno",
 		Tagline: "Music for Airports — pad-bell on incommensurate loops, sampled",
 		Build:   func(sf *meltysynth.SoundFont) Algorithm { return NewSF2Eno(sf) },
 	},
@@ -84,7 +84,7 @@ var registry = map[string]AlgoSpec{
 		Build:   func(sf *meltysynth.SoundFont) Algorithm { return NewPhase(sf) },
 	},
 	"lofi": {
-		Name: "lofi", Display: "Lo-fi", RequiresSF2: true, PreferredSF2: "roland-sc55-up",
+		Name: "lofi", Display: "Lo-fi", RequiresSF2: true, PreferredSF2: "sgm",
 		Tagline: "Hip-hop drums + Rhodes EP + walking bass + sax + nylon guitar",
 		Build:   func(sf *meltysynth.SoundFont) Algorithm { return NewChill(sf) },
 	},
