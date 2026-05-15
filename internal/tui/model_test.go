@@ -309,6 +309,14 @@ func TestReducedChromeBottomBarShowsReturnHint(t *testing.T) {
 	}
 }
 
+func TestRenderVolumeLineShowsCenteredFeedback(t *testing.T) {
+	m := Model{volume: 70}
+	line := renderVolumeLine(m, 40, DefaultTheme())
+	if !strings.Contains(line, "70%") {
+		t.Fatalf("volume line missing label: %q", line)
+	}
+}
+
 func keyMsg(key string) tea.KeyMsg {
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)}
 }

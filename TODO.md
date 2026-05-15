@@ -12,7 +12,7 @@
 - [x] Improve narrow-terminal behavior with a simplified compact layout.
 - [x] Add a reduced-chrome mode.
 - [x] Add a startup splash / onboarding screen for the core controls.
-- [ ] Add transient volume feedback as a thin symmetric line in the existing color scheme that appears only while volume changes.
+- [x] Add transient volume feedback as a thin symmetric line in the existing color scheme that appears only while volume changes.
 
 ## Music Realism
 

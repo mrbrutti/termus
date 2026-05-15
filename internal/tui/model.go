@@ -33,20 +33,21 @@ type Model struct {
 	keyName string
 	seed    int64
 
-	volume           int
-	paused           bool
-	recording        bool
-	debugVisible     bool
-	helpVisible      bool
-	libraryVisible   bool
-	inspectorVisible bool
-	exportVisible    bool
-	exportBusy       bool
-	reducedChrome    bool
-	splashVisible    bool
-	status           string
-	statusTTL        time.Time
-	stickyStatus     string
+	volume             int
+	paused             bool
+	recording          bool
+	debugVisible       bool
+	helpVisible        bool
+	libraryVisible     bool
+	inspectorVisible   bool
+	exportVisible      bool
+	exportBusy         bool
+	reducedChrome      bool
+	splashVisible      bool
+	status             string
+	statusTTL          time.Time
+	stickyStatus       string
+	volumeOverlayUntil time.Time
 
 	themeIdx  int // index into Themes
 	visualIdx int // index into Visuals
@@ -537,12 +538,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.volume = 100
 			}
 			m.cmd.SetVolume(m.volume)
+			m.showVolumeOverlay()
 		case actionVolDown:
 			m.volume -= 5
 			if m.volume < 0 {
 				m.volume = 0
 			}
 			m.cmd.SetVolume(m.volume)
+			m.showVolumeOverlay()
 		case actionRecord:
 			path, err := m.cmd.ToggleRecord()
 			if err != nil {
@@ -631,11 +634,15 @@ func (m Model) View() string {
 	if m.width < 40 || m.height < 10 {
 		return centerBox(m.width, m.height, "terminal too small — resize to ≥ 40 × 10")
 	}
+	now := time.Now()
 	compact := useCompactLayout(m.width, m.height)
 	chromeH := 3 // top + now-playing + bottom bars
 	if m.reducedChrome {
 		chromeH = 1
 	} else if m.debugVisible {
+		chromeH++
+	}
+	if m.volumeOverlayVisible(now) {
 		chromeH++
 	}
 	innerH := m.height - chromeH
@@ -653,6 +660,10 @@ func (m Model) View() string {
 	top := topBar(m, innerW, theme, compact)
 	playback := playbackBar(m, innerW, theme, samples, compact)
 	bottom := bottomBar(m, innerW, theme, compact)
+	volumeLine := ""
+	if m.volumeOverlayVisible(now) {
+		volumeLine = renderVolumeLine(m, innerW, theme)
+	}
 	body := scopeStr
 	if m.helpVisible {
 		body = helpPanel(m, innerW, innerH, theme)
@@ -666,11 +677,20 @@ func (m Model) View() string {
 		body = splashPanel(m, innerW, innerH, theme)
 	}
 	if m.reducedChrome {
+		if volumeLine != "" {
+			return lipgloss.JoinVertical(lipgloss.Left, body, volumeLine, bottom)
+		}
 		return lipgloss.JoinVertical(lipgloss.Left, body, bottom)
 	}
 	if m.debugVisible {
 		debug := debugBar(m, innerW, theme)
+		if volumeLine != "" {
+			return lipgloss.JoinVertical(lipgloss.Left, top, playback, volumeLine, debug, body, bottom)
+		}
 		return lipgloss.JoinVertical(lipgloss.Left, top, playback, debug, body, bottom)
+	}
+	if volumeLine != "" {
+		return lipgloss.JoinVertical(lipgloss.Left, top, playback, volumeLine, body, bottom)
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, top, playback, body, bottom)
 }
@@ -688,6 +708,10 @@ func (m Model) activeTheme() ColorTheme {
 func (m *Model) flashStatus(text string, ttl time.Duration) {
 	m.status = text
 	m.statusTTL = time.Now().Add(ttl)
+}
+
+func (m *Model) showVolumeOverlay() {
+	m.volumeOverlayUntil = time.Now().Add(1200 * time.Millisecond)
 }
 
 func (m *Model) setStickyStatus(text string) {
@@ -888,6 +912,38 @@ func renderCompactMeter(theme ColorTheme, peak float64, clipped bool, width int)
 		clip = lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render("clip")
 	}
 	return label + " " + active + idle + " " + clip
+}
+
+func (m Model) volumeOverlayVisible(now time.Time) bool {
+	return now.Before(m.volumeOverlayUntil)
+}
+
+func renderVolumeLine(m Model, w int, theme ColorTheme) string {
+	if w < 12 {
+		return fmt.Sprintf("%d%%", m.volume)
+	}
+	label := fmt.Sprintf(" %d%% ", m.volume)
+	labelW := lipgloss.Width(label)
+	side := maxInt(0, (w-labelW)/2)
+	activeSide := int(float64(side) * float64(m.volume) / 100.0)
+	if m.volume > 0 && activeSide == 0 {
+		activeSide = 1
+	}
+	if activeSide > side {
+		activeSide = side
+	}
+	idleSide := side - activeSide
+	left := lipgloss.NewStyle().Faint(true).Render(strings.Repeat("─", idleSide)) +
+		lipgloss.NewStyle().Foreground(theme.BarHi).Render(strings.Repeat("─", activeSide))
+	center := lipgloss.NewStyle().Foreground(theme.BarHi).Render(label)
+	right := lipgloss.NewStyle().Foreground(theme.BarHi).Render(strings.Repeat("─", activeSide)) +
+		lipgloss.NewStyle().Faint(true).Render(strings.Repeat("─", idleSide))
+	line := left + center + right
+	pad := w - (side*2 + labelW)
+	if pad > 0 {
+		line += spaces(pad)
+	}
+	return line
 }
 
 func slotSeedLabel(mark *seedBookmark) string {
