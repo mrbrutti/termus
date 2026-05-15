@@ -243,6 +243,7 @@ func main() {
 
 	model := tui.New(ring, root, liveAlgo.Name(), "Cmin", *seed, *initialVol).
 		WithDebug(*debugView).
+		WithExportController(makeTUIExporter(buildAlgo, *initialVol)).
 		WithSwitcher(genres, startIdx, buildFn)
 
 	// Optional playlist. When set, the TUI auto-advances tracks with a

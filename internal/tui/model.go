@@ -40,6 +40,8 @@ type Model struct {
 	helpVisible      bool
 	libraryVisible   bool
 	inspectorVisible bool
+	exportVisible    bool
+	exportBusy       bool
 	status           string
 	statusTTL        time.Time
 	stickyStatus     string
@@ -58,6 +60,7 @@ type Model struct {
 	kept       map[string]seedBookmark
 	savedSeeds []savedSeedRecord
 	libraryIdx int
+	exporter   *ExportController
 
 	// Playlist auto-advance.
 	playlist        *gen.Playlist
@@ -103,6 +106,11 @@ func (m Model) WithSwitcher(genres []gen.AlgoSpec, startIdx int, buildFn BuildAl
 // WithDebug controls whether the dedicated debug inspector starts visible.
 func (m Model) WithDebug(visible bool) Model {
 	m.debugVisible = visible
+	return m
+}
+
+func (m Model) WithExportController(exporter *ExportController) Model {
+	m.exporter = exporter
 	return m
 }
 
@@ -268,6 +276,7 @@ func (m *Model) toggleLibrary() {
 	if m.libraryVisible {
 		m.helpVisible = false
 		m.inspectorVisible = false
+		m.exportVisible = false
 		if m.libraryIdx >= len(m.savedSeeds) {
 			m.libraryIdx = maxInt(0, len(m.savedSeeds)-1)
 		}
@@ -282,10 +291,67 @@ func (m *Model) toggleInspector() {
 	if m.inspectorVisible {
 		m.helpVisible = false
 		m.libraryVisible = false
+		m.exportVisible = false
 		m.flashStatus("inspector: on", 2*time.Second)
 		return
 	}
 	m.flashStatus("inspector: off", 2*time.Second)
+}
+
+func (m *Model) toggleExportDrawer() {
+	if m.exporter == nil {
+		m.flashStatus("export: unavailable", 2*time.Second)
+		return
+	}
+	if m.exportBusy {
+		return
+	}
+	m.exportVisible = !m.exportVisible
+	if m.exportVisible {
+		m.helpVisible = false
+		m.libraryVisible = false
+		m.inspectorVisible = false
+		m.flashStatus("export: on", 2*time.Second)
+		return
+	}
+	m.flashStatus("export: off", 2*time.Second)
+}
+
+func (m Model) currentExportTarget() (gen.AlgoSpec, int64, bool) {
+	spec, ok := m.currentSpec()
+	if !ok {
+		return gen.AlgoSpec{}, 0, false
+	}
+	return spec, m.seed, true
+}
+
+func (m *Model) startExport(kind string) tea.Cmd {
+	if m.exporter == nil || m.exportBusy {
+		return nil
+	}
+	spec, seed, ok := m.currentExportTarget()
+	if !ok {
+		m.flashStatus("export: no active track", 2*time.Second)
+		return nil
+	}
+	var fn func(gen.AlgoSpec, int64) (string, error)
+	switch kind {
+	case "wav":
+		fn = m.exporter.WAV
+	case "midi":
+		fn = m.exporter.MIDI
+	case "stems":
+		fn = m.exporter.Stems
+	}
+	if fn == nil {
+		m.flashStatus("export: unsupported", 2*time.Second)
+		return nil
+	}
+	m.exportBusy = true
+	m.flashStatus("exporting "+kind+"...", 3*time.Second)
+	return runExport(kind, func() (string, error) {
+		return fn(spec, seed)
+	})
 }
 
 func (m *Model) moveLibrary(delta int) {
@@ -377,6 +443,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case audio.BackendState:
 		m.applyAudioState(msg)
 		return m, nil
+	case exportResultMsg:
+		m.exportBusy = false
+		if msg.err != nil {
+			m.flashStatus(msg.kind+" export failed: "+msg.err.Error(), 4*time.Second)
+		} else {
+			m.flashStatus(msg.kind+" → "+msg.path, 4*time.Second)
+			m.exportVisible = false
+		}
+		return m, nil
 	case tea.KeyMsg:
 		if m.libraryVisible {
 			switch msg.String() {
@@ -395,11 +470,42 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.exportVisible {
+			switch msg.String() {
+			case "q", "ctrl+c":
+				return m, tea.Quit
+			case "e", "esc":
+				if !m.exportBusy {
+					m.toggleExportDrawer()
+				}
+			case "w":
+				return m, m.startExport("wav")
+			case "m":
+				return m, m.startExport("midi")
+			case "t":
+				return m, m.startExport("stems")
+			case "r":
+				path, err := m.cmd.ToggleRecord()
+				if err != nil {
+					m.flashStatus("rec error: "+err.Error(), 3*time.Second)
+					m.recording = false
+				} else if path != "" {
+					m.recording = true
+					m.recordStartedAt = time.Now()
+					m.flashStatus("rec → "+path, 3*time.Second)
+				} else {
+					m.recording = false
+					m.recordStartedAt = time.Time{}
+					m.flashStatus("rec stopped", 3*time.Second)
+				}
+			}
+			return m, nil
+		}
 		action := matchKey(msg)
 		if m.helpVisible && action != actionHelp && action != actionQuit {
 			return m, nil
 		}
-		if m.inspectorVisible && action != actionInspector && action != actionQuit {
+		if m.inspectorVisible && action != actionInspector && action != actionQuit && action != actionExport {
 			return m, nil
 		}
 		switch action {
@@ -454,6 +560,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.helpVisible {
 				m.libraryVisible = false
 				m.inspectorVisible = false
+				m.exportVisible = false
 				m.flashStatus("help: on", 2*time.Second)
 			} else {
 				m.flashStatus("help: off", 2*time.Second)
@@ -462,6 +569,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.toggleLibrary()
 		case actionInspector:
 			m.toggleInspector()
+		case actionExport:
+			m.toggleExportDrawer()
 		case actionNextAlgo:
 			m.switchAlgo(1)
 		case actionPrevAlgo:
@@ -526,6 +635,8 @@ func (m Model) View() string {
 		body = libraryPanel(m, innerW, innerH, theme)
 	} else if m.inspectorVisible {
 		body = inspectorPanel(m, innerW, innerH, theme)
+	} else if m.exportVisible {
+		body = exportPanel(m, innerW, innerH, theme)
 	}
 	if m.debugVisible {
 		debug := debugBar(m, innerW, theme)
@@ -746,6 +857,7 @@ func bottomBar(m Model, w int, theme ColorTheme) string {
 		fmt.Sprintf("[C] %s", Visuals[m.visualIdx].Name),
 		"[l] library",
 		"[i] inspect",
+		"[e] export",
 		"[?] help",
 	}
 	if m.recording {
@@ -772,6 +884,8 @@ func bottomBar(m Model, w int, theme ColorTheme) string {
 		hintParts = []string{"[↑↓] browse", "[enter] load", "[delete] remove", "[l] close", "[q] quit"}
 	} else if m.inspectorVisible {
 		hintParts = []string{"[i] close", "[e] export", "[r] record", "[q] quit"}
+	} else if m.exportVisible {
+		hintParts = []string{"[w] wav", "[m] midi", "[t] stems", "[r] record", "[e] close", "[q] quit"}
 	}
 	hint := strings.Join(hintParts, "   ")
 
@@ -799,6 +913,7 @@ func helpPanel(m Model, w, h int, theme ColorTheme) string {
 		styleHelpLine(theme, false, "Playback", "[space] pause/resume   [↑↓] volume   [r] record"),
 		styleHelpLine(theme, false, "Look", "[C] visual   [c] theme   [d] debug   [i] inspect"),
 		styleHelpLine(theme, false, "Seeds", "[[/]] browse   [a/b] store   [tab] compare   [k/x] keep/reject   [l] library"),
+		styleHelpLine(theme, false, "Export", "[e] drawer   [w] wav   [m] midi   [t] stems"),
 		styleHelpLine(theme, false, "Tracks", "[n/p] algorithm   [s] skip playlist track"),
 		styleHelpLine(theme, false, "Close", "[?] close this overlay   [q] quit"),
 	}
@@ -834,7 +949,7 @@ func filterHelpLines(lines []string, m Model) []string {
 	out := make([]string, 0, len(lines))
 	for idx, line := range lines {
 		switch idx {
-		case 3:
+		case 4:
 			if len(m.genres) <= 1 && m.playlist == nil {
 				continue
 			}
@@ -879,6 +994,37 @@ func inspectorPanel(m Model, w, h int, theme ColorTheme) string {
 				lipgloss.NewStyle().Faint(true).Render("[i] close   [e] export   [q] quit"),
 			),
 		)
+	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, panel)
+}
+
+func exportPanel(m Model, w, h int, theme ColorTheme) string {
+	bodyW := maxInt(30, minInt(w-6, 78))
+	bodyH := maxInt(12, minInt(h-2, 16))
+	duration := "60s"
+	if m.exporter != nil {
+		duration = m.exporter.durationLabel()
+	}
+	lines := []string{
+		lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render("EXPORT"),
+		"",
+		styleHelpLine(theme, false, "Track", fmt.Sprintf("%s · seed %d", m.algo, m.seed)),
+		styleHelpLine(theme, false, "Artifacts", fmt.Sprintf("[w] WAV %s   [m] MIDI %s   [t] stems %s", duration, duration, duration)),
+		styleHelpLine(theme, false, "Live", "[r] toggle recording"),
+		styleHelpLine(theme, false, "Status", "exports write to ./exports with the current theme and mix settings"),
+		"",
+	}
+	if m.exportBusy {
+		lines = append(lines, lipgloss.NewStyle().Foreground(theme.BarHi).Render("rendering in background..."))
+	} else {
+		lines = append(lines, lipgloss.NewStyle().Faint(true).Render("[e] close   [q] quit"))
+	}
+	panel := lipgloss.NewStyle().
+		Width(bodyW).
+		Height(bodyH).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(theme.BarFg).
+		Padding(1, 2).
+		Render(strings.Join(lines, "\n"))
 	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, panel)
 }
 

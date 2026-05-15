@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -220,6 +221,44 @@ func TestInspectorPanelShowsTrackState(t *testing.T) {
 		if !strings.Contains(panel, want) {
 			t.Fatalf("inspector panel missing %q:\n%s", want, panel)
 		}
+	}
+}
+
+func TestExportPanelShowsArtifactActions(t *testing.T) {
+	m := Model{
+		algo:          "Ambient",
+		seed:          42,
+		exportVisible: true,
+		exporter:      &ExportController{Seconds: 60},
+		themes:        []ColorTheme{DefaultTheme()},
+	}
+	panel := exportPanel(m, 90, 16, DefaultTheme())
+	for _, want := range []string{"EXPORT", "[w] WAV 60s", "[m] MIDI 60s", "[t] stems 60s"} {
+		if !strings.Contains(panel, want) {
+			t.Fatalf("export panel missing %q:\n%s", want, panel)
+		}
+	}
+}
+
+func TestStartExportRunsCallback(t *testing.T) {
+	specs := []gen.AlgoSpec{{Name: "ambient", Display: "Ambient"}}
+	m := Model{
+		genres:   specs,
+		genreIdx: 0,
+		seed:     42,
+		exporter: &ExportController{
+			WAV: func(spec gen.AlgoSpec, seed int64) (string, error) {
+				return fmt.Sprintf("%s-%d.wav", spec.Name, seed), nil
+			},
+		},
+	}
+	cmd := m.startExport("wav")
+	if cmd == nil {
+		t.Fatal("startExport returned nil cmd")
+	}
+	msg := cmd().(exportResultMsg)
+	if msg.path != "ambient-42.wav" || msg.err != nil {
+		t.Fatalf("export result = %+v", msg)
 	}
 }
 
