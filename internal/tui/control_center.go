@@ -168,30 +168,51 @@ func (m Model) controlItems() []controlItem {
 			},
 		}
 	case controlTabSessions:
+		selected, ok := m.selectedSession()
+		sessionValue := "none saved"
+		sessionHint := "enter save one"
+		if ok {
+			sessionValue = sessionLabel(selected)
+			sessionHint = fmt.Sprintf("left/right browse · %s ago", formatSessionAge(time.Now(), selected.SavedAt))
+		}
 		return []controlItem{
 			{
-				Title: "compare A/B",
-				Value: m.seedSlotsLabel(),
-				Hint:  "enter toggle",
+				Title: "save snapshot",
+				Value: fmt.Sprintf("%s · %s · %s", m.algo, Visuals[m.visualIdx].Name, m.activeTheme().Name),
+				Hint:  "enter save",
 				Activate: func(m *Model) tea.Cmd {
-					m.toggleSeedCompare()
+					m.saveCurrentSession()
 					return nil
 				},
 			},
 			{
-				Title: "reject take",
-				Value: "advance to next seed",
-				Hint:  "enter next",
+				Title: "saved sessions",
+				Value: sessionValue,
+				Hint:  sessionHint,
+				Disabled: !ok,
+				Adjust: func(m *Model, delta int) {
+					m.browseSession(delta)
+				},
+			},
+			{
+				Title: "load selected",
+				Value: "restore algo / seed / view / volume",
+				Hint:  "enter load",
+				Disabled: !ok,
 				Activate: func(m *Model) tea.Cmd {
-					m.rejectSeed()
+					m.loadSelectedSession()
 					return nil
 				},
 			},
 			{
-				Title: "session saves",
-				Value: "coming next",
-				Hint:  "backlog item",
-				Disabled: true,
+				Title: "remove selected",
+				Value: "delete saved snapshot",
+				Hint:  "enter remove",
+				Disabled: !ok,
+				Activate: func(m *Model) tea.Cmd {
+					m.deleteSelectedSession()
+					return nil
+				},
 			},
 		}
 	default:

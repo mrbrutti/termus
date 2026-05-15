@@ -63,10 +63,12 @@ type Model struct {
 	seedB      *seedBookmark
 	kept       map[string]seedBookmark
 	savedSeeds []savedSeedRecord
+	savedSessions []savedSessionRecord
 	libraryIdx int
 	exporter   *ExportController
 	controlTab controlTab
 	controlRow int
+	sessionIdx int
 
 	// Playlist auto-advance.
 	playlist        *gen.Playlist
@@ -83,6 +85,7 @@ type Model struct {
 func New(ring *scope.Ring, cmd audio.Commander, algo, keyName string, seed int64, initialVol int) Model {
 	ui := DetectAdaptiveUI()
 	savedSeeds, _ := loadSavedSeedRecords()
+	savedSessions, _ := loadSavedSessionRecords()
 	return Model{
 		ring:          ring,
 		cmd:           cmd,
@@ -96,6 +99,7 @@ func New(ring *scope.Ring, cmd audio.Commander, algo, keyName string, seed int64
 		themeIdx:      ui.DefaultThemeIdx,
 		kept:          recordsToBookmarks(savedSeeds),
 		savedSeeds:    savedSeeds,
+		savedSessions: savedSessions,
 		startedAt:     time.Now(),
 		splashUntil:   time.Now().Add(5 * time.Second),
 		splashVisible: true,
