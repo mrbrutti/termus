@@ -37,6 +37,7 @@ type Phase struct {
 
 	chordRoots      []int // 4 chord-root offsets from key center
 	currentChordIdx int
+	phaseFigure     []int
 
 	samplesElapsed int64
 	nextChordAt    int64
@@ -51,7 +52,7 @@ func (a *Phase) currentRoot() int { return a.rootMidi + a.keyOffset }
 
 func (a *Phase) Seed(seedVal int64) {
 	a.rng = rand.New(rand.NewSource(seedVal)) //nolint:gosec
-	a.rootMidi = 48 + a.rng.Intn(7) // C3..F#3
+	a.rootMidi = 48 + a.rng.Intn(7)           // C3..F#3
 	a.keyOffset = 0
 	a.samplesElapsed = 0
 	a.scheduleNextDrift()
@@ -64,6 +65,7 @@ func (a *Phase) Seed(seedVal int64) {
 		scalePentatonicMinor[3],
 		scalePentatonicMinor[1],
 	}
+	a.phaseFigure = a.makePhaseFigure()
 	a.currentChordIdx = 0
 	a.scheduleNextChord()
 
@@ -124,7 +126,7 @@ func (a *Phase) Seed(seedVal int64) {
 
 	// --- The phase pattern: 8 pentatonic notes (descending then ascending).
 	// Same pattern on both vibe and marimba.
-	figure := a.makePhaseFigure()
+	figureSlots := make([]int, len(a.phaseFigure))
 
 	// Cycle period: 6.5–8.5 s for the 8-note pattern → ~1 note per second-ish.
 	basePeriod := 6.5 + 2.0*a.rng.Float64()
@@ -135,14 +137,16 @@ func (a *Phase) Seed(seedVal int64) {
 	// --- Vibraphone voice A: fixed tempo. NO timing jitter — phase technique
 	// depends on each voice's tempo being precisely defined.
 	core.addTrack(SF2Track{
-		Channel: 0, Velocity: 78, Notes: append([]int{}, figure...),
+		Channel: 0, Velocity: 78, Notes: append([]int{}, figureSlots...),
 		PeriodSec: basePeriod, Phase01: 0,
+		ResolveNote:    func(slot int, _ int) int { return a.phaseFigureNote(slot) },
 		VelocityJitter: 6,
 	})
 	// --- Marimba voice B: slightly faster.
 	core.addTrack(SF2Track{
-		Channel: 1, Velocity: 72, Notes: append([]int{}, figure...),
+		Channel: 1, Velocity: 72, Notes: append([]int{}, figureSlots...),
 		PeriodSec: basePeriod * driftRatio, Phase01: 0,
+		ResolveNote:    func(slot int, _ int) int { return a.phaseFigureNote(slot) },
 		VelocityJitter: 6,
 	})
 
@@ -153,8 +157,9 @@ func (a *Phase) Seed(seedVal int64) {
 		core.addTrack(SF2Track{
 			Channel: 2, Velocity: 38, Notes: []int{a.padTone(v)},
 			PeriodSec: 19.3 + 9*float64(v), Phase01: a.rng.Float64(),
-			MutationRate: 0.40,
-			MutateOne:    func(_ int, _ int) int { return a.padTone(v) },
+			MutationRate:   0.40,
+			MutateOne:      func(_ int, _ int) int { return a.padTone(v) },
+			ResolveNote:    func(_ int, _ int) int { return a.padTone(v) },
 			VelocityJitter: 4, TimingJitterSec: 0.05,
 		})
 	}
@@ -163,8 +168,9 @@ func (a *Phase) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 3, Velocity: 36, Notes: []int{a.padTone(1) + 12},
 		PeriodSec: 27.3, Phase01: a.rng.Float64(),
-		MutationRate: 0.30,
-		MutateOne:    func(_ int, _ int) int { return a.padTone(1) + 12 },
+		MutationRate:   0.30,
+		MutateOne:      func(_ int, _ int) int { return a.padTone(1) + 12 },
+		ResolveNote:    func(_ int, _ int) int { return a.padTone(1) + 12 },
 		VelocityJitter: 4, TimingJitterSec: 0.06,
 	})
 
@@ -172,8 +178,9 @@ func (a *Phase) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 4, Velocity: 60, Notes: []int{a.bassRoot()},
 		PeriodSec: 41.7, Phase01: 0,
-		MutationRate: 0.50,
-		MutateOne:    func(_ int, _ int) int { return a.bassRoot() },
+		MutationRate:   0.50,
+		MutateOne:      func(_ int, _ int) int { return a.bassRoot() },
+		ResolveNote:    func(_ int, _ int) int { return a.bassRoot() },
 		VelocityJitter: 4, TimingJitterSec: 0.03,
 	})
 
@@ -181,8 +188,9 @@ func (a *Phase) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 5, Velocity: 40, Notes: []int{a.crotalesNote()},
 		PeriodSec: 47.3, Phase01: a.rng.Float64(),
-		MutationRate: 0.50,
-		MutateOne:    func(_ int, _ int) int { return a.crotalesNote() },
+		MutationRate:   0.50,
+		MutateOne:      func(_ int, _ int) int { return a.crotalesNote() },
+		ResolveNote:    func(_ int, _ int) int { return a.crotalesNote() },
 		VelocityJitter: 14, TimingJitterSec: 0.10,
 	})
 
@@ -190,9 +198,8 @@ func (a *Phase) Seed(seedVal int64) {
 }
 
 // makePhaseFigure builds the literal Steve Reich "Piano Phase" (1967)
-// pattern: 12 sixteenth notes using 5 distinct pitches (E4, F#4, B4, C#5,
-// D5). The pattern is asymmetric so each phase offset sounds perceptually
-// distinct from the others.
+// degree contour. Notes are resolved against the current harmonic center at
+// fire time so the phase pattern is reheard in each chord area.
 //
 // Original Piano Phase: E4 F#4 B4 C#5 D5 F#4 E4 F#4 B4 C#5 D5 F#4
 // We transpose into the current key for variety while preserving the
@@ -206,30 +213,14 @@ func (a *Phase) makePhaseFigure() []int {
 	//   D5 = root + 8  → degree 5
 	// 12-note sequence:
 	pattern := []int{-1, 0, 3, 4, 5, 0, -1, 0, 3, 4, 5, 0}
-	// Use dorian/aeolian-ish scale so the b3 lands correctly.
+	return pattern
+}
+
+func (a *Phase) phaseFigureNote(slot int) int {
 	scale := []int{0, 2, 3, 5, 7, 8, 10}
-	root := a.currentRoot() + 24 // around C5
-	out := make([]int, len(pattern))
-	for i, deg := range pattern {
-		oct := 0
-		for deg < 0 {
-			deg += len(scale)
-			oct--
-		}
-		for deg >= len(scale) {
-			deg -= len(scale)
-			oct++
-		}
-		key := root + scale[deg] + 12*oct
-		for key < 72 {
-			key += 12
-		}
-		for key > 88 {
-			key -= 12
-		}
-		out[i] = key
-	}
-	return out
+	root := a.currentRoot() + a.chordRoots[a.currentChordIdx] + 24
+	key := scaleNoteAt(a.phaseFigure, slot, scale, root, 0, 0)
+	return clampMidiToRange(key, 72, 88)
 }
 
 // padTone returns one chord-tone in the mid register for the pad bed.

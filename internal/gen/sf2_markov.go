@@ -171,8 +171,8 @@ func (a *SF2Markov) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 1, Velocity: 76, Notes: cellaNotes,
 		PeriodSec: cycleSec, Phase01: 0,
-		MutationRate: 0.05, // very low — bass lines stay stable in Classical
-		MutateOne:    func(slot int, _ int) int { return a.celloLine(slot) },
+		MutationRate:   0.05, // very low — bass lines stay stable in Classical
+		MutateOne:      func(slot int, _ int) int { return a.celloLine(slot) },
 		VelocityJitter: 6, TimingJitterSec: 0.008,
 	})
 
@@ -187,8 +187,8 @@ func (a *SF2Markov) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 2, Velocity: 56, Notes: albertiNotes,
 		PeriodSec: cycleSec, Phase01: 0,
-		MutationRate: 0.02, // Alberti is fixed pattern — almost no mutation
-		MutateOne:    func(slot int, _ int) int { return a.albertiNoteAt(slot) },
+		MutationRate:   0.02, // Alberti is fixed pattern — almost no mutation
+		MutateOne:      func(slot int, _ int) int { return a.albertiNoteAt(slot) },
 		VelocityJitter: 4, TimingJitterSec: 0.006,
 	})
 
@@ -227,15 +227,12 @@ func (a *SF2Markov) Seed(seedVal int64) {
 	// This is the "string halo" supporting the texture.
 	for voiceIdx := 1; voiceIdx <= 2; voiceIdx++ {
 		voice := voiceIdx
-		notes := make([]int, numBars)
-		for i := range notes {
-			notes[i] = a.padTone(i, voice)
-		}
+		notes := a.buildPadLine(voice, numBars)
 		core.addTrack(SF2Track{
 			Channel: 3, Velocity: 36, Notes: notes,
 			PeriodSec: cycleSec, Phase01: float64(voice) * 0.04,
-			MutationRate: 0.06,
-			MutateOne:    func(slot int, _ int) int { return a.padTone(slot, voice) },
+			MutationRate:   0.06,
+			MutateOne:      func(slot int, _ int) int { return a.padTone(slot, voice) },
 			VelocityJitter: 4, TimingJitterSec: 0.015,
 		})
 	}
@@ -307,13 +304,19 @@ func (a *SF2Markov) albertiNoteAt(slot int) int {
 // triadic-opening + stepwise development + downward resolution to tonic.
 // Stays in pure major scale (no modal flavoring).
 func (a *SF2Markov) makeClassicalMelody(numSlots int) []int {
-	// Mozart-style contour (scale-degree offsets from tonic):
-	// Antecedent: 1-3-5-3 1-2-3-2 (triadic opening, walk to supertonic — half cadence)
-	// Consequent: 1-3-5-4 3-2-1-1 (mirror, then stepwise descent to tonic)
-	contour := []int{
-		0, 2, 4, 2, 0, 1, 2, 1, // bars 1-4 ending on supertonic over V
-		0, 2, 4, 3, 2, 1, 0, 0, // bars 5-8 resolving down to tonic
+	// Build the melody as a 2-bar motive, a 2-bar answer, a varied restatement,
+	// then a cadential tail. This reads more like sentence/period writing than
+	// a single fixed 8-bar contour.
+	motives := [][]int{
+		{0, 2, 4, 2},
+		{0, 2, 4, 1},
+		{0, 1, 2, 4},
 	}
+	motive := append([]int(nil), motives[a.rng.Intn(len(motives))]...)
+	answer := []int{motive[1], motive[2], motive[3], 1}
+	variant := []int{motive[0], motive[1], motive[2], 3}
+	cadence := []int{2, 1, 0, 0}
+	contour := append(append(append(append([]int{}, motive...), answer...), variant...), cadence...)
 	if len(contour) != numSlots {
 		extended := make([]int, numSlots)
 		for i := range extended {
@@ -322,15 +325,52 @@ func (a *SF2Markov) makeClassicalMelody(numSlots int) []int {
 		contour = extended
 	}
 	root := a.currentRoot() + 24
-	notes := applyPhraseToScale(contour, []int{0, 2, 4, 5, 7, 9, 11}, root, 0, 0)
-	for i, k := range notes {
-		for k < 67 {
-			k += 12
+	majorScale := []int{0, 2, 4, 5, 7, 9, 11}
+	notes := make([]int, len(contour))
+	for i := range contour {
+		target := clampMidiToRange(scaleNoteAt(contour, i, majorScale, root, 0, 0), 67, 88)
+		chord := a.progression[(i/2)%len(a.progression)]
+		chordRoot := a.currentRoot() + chord.rootSemi + 24
+		if i%2 == 0 {
+			notes[i] = nearestRelativeNote(target, chordRoot, chord.tones, 67, 88)
+			continue
 		}
-		for k > 88 {
-			k -= 12
+		notes[i] = nearestRelativeNote(target, root, majorScale, 67, 88)
+		if i > 0 && absInt(notes[i]-notes[i-1]) > 7 {
+			up := nearestRelativeNote(notes[i-1]+2, root, majorScale, 67, 88)
+			down := nearestRelativeNote(notes[i-1]-2, root, majorScale, 67, 88)
+			if absInt(up-target) <= absInt(down-target) {
+				notes[i] = up
+			} else {
+				notes[i] = down
+			}
 		}
-		notes[i] = k
+	}
+	return notes
+}
+
+func (a *SF2Markov) buildPadLine(voice, numBars int) []int {
+	notes := make([]int, numBars)
+	prev := 0
+	for i := 0; i < numBars; i++ {
+		chord := a.progression[i%len(a.progression)]
+		target := a.currentRoot() + chord.rootSemi + chord.tones[voice]
+		best := clampMidiToRange(target, 55, 76)
+		if i > 0 {
+			bestDist := absInt(best - prev)
+			for oct := -3; oct <= 3; oct++ {
+				cand := target + 12*oct
+				if cand < 55 || cand > 76 {
+					continue
+				}
+				if d := absInt(cand - prev); d < bestDist {
+					best = cand
+					bestDist = d
+				}
+			}
+		}
+		notes[i] = best
+		prev = best
 	}
 	return notes
 }

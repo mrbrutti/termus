@@ -14,11 +14,11 @@ var _ SF2Reverberator = (*Chill)(nil)
 // Chill is a lofi-style algorithm with a real drum beat at its core — the
 // element that makes lofi feel like lofi rather than ambient jazz. Layout:
 //
-//   ch 0 — Electric Piano 2 (Rhodes, chorused)  chord stabs (1 chord/bar)
-//   ch 1 — Acoustic Bass                        root note on each downbeat
-//   ch 2 — Vibraphone                           sparse melody (1 note/chord)
-//   ch 9 — GM percussion                        kick (1 & 3), snare (2 & 4),
-//                                                hi-hat (every 8th)
+//	ch 0 — Electric Piano 2 (Rhodes, chorused)  chord stabs (1 chord/bar)
+//	ch 1 — Acoustic Bass                        root note on each downbeat
+//	ch 2 — Vibraphone                           sparse melody (1 note/chord)
+//	ch 9 — GM percussion                        kick (1 & 3), snare (2 & 4),
+//	                                             hi-hat (every 8th)
 //
 // Tempo: ~75 BPM, 4 beats per chord × 4 chords = 12.8 s per loop.
 //
@@ -58,6 +58,10 @@ type Chill struct {
 	saxOn         *bool
 	guitarOn      *bool
 	nextSectionAt int64
+
+	vibePlan   []int
+	guitarPlan []int
+	saxPlan    []int
 }
 
 // chillChord is one chord in the loop, expressed as semitone offsets from
@@ -83,13 +87,14 @@ type chillChordOption struct {
 
 // Major-key chord grammar. Indices match diatonic scale degrees so the
 // nextIdxs read like Roman-numeral progression rules:
-//   I    → ii iii IV V vi vii (root chord, can go anywhere)
-//   ii   → iii V vii          (predominant)
-//   iii  → IV vi              (median, weak)
-//   IV   → ii V               (subdominant → predominant or dominant)
-//   V    → I iii vi           (dominant → tonic or deceptive)
-//   vi   → ii IV              (relative-minor area)
-//   vii  → I iii              (leading-tone)
+//
+//	I    → ii iii IV V vi vii (root chord, can go anywhere)
+//	ii   → iii V vii          (predominant)
+//	iii  → IV vi              (median, weak)
+//	IV   → ii V               (subdominant → predominant or dominant)
+//	V    → I iii vi           (dominant → tonic or deceptive)
+//	vi   → ii IV              (relative-minor area)
+//	vii  → I iii              (leading-tone)
 var chillMajorChordGrammar = []chillChordOption{
 	{tones: []int{0, 4, 7, 11}, label: "Imaj7", nextIdxs: []int{1, 2, 3, 4, 5, 6}},
 	{tones: []int{2, 5, 9, 12}, label: "ii7", nextIdxs: []int{2, 4, 6}},
@@ -101,12 +106,13 @@ var chillMajorChordGrammar = []chillChordOption{
 }
 
 // Minor-key chord grammar:
-//   i   → iv V VI VII III     (tonic, goes most places)
-//   iv  → i V VII             (subdominant)
-//   V   → i VI                (cadential dominant; borrowed from harmonic minor)
-//   VI  → iv VII              (relative-major area)
-//   VII → i III               (subtonic resolves to tonic or relative major)
-//   III → iv VI               (relative major)
+//
+//	i   → iv V VI VII III     (tonic, goes most places)
+//	iv  → i V VII             (subdominant)
+//	V   → i VI                (cadential dominant; borrowed from harmonic minor)
+//	VI  → iv VII              (relative-major area)
+//	VII → i III               (subtonic resolves to tonic or relative major)
+//	III → iv VI               (relative major)
 var chillMinorChordGrammar = []chillChordOption{
 	{tones: []int{0, 3, 7, 10}, label: "i7", nextIdxs: []int{1, 2, 3, 4, 5}},
 	{tones: []int{5, 8, 12, 15}, label: "iv7", nextIdxs: []int{0, 2, 4}},
@@ -193,14 +199,25 @@ var chillProgressions = [][]chillChord{
 
 // GM standard drum keys on channel 9 (channel 10 in 1-indexed MIDI).
 const (
-	drumKick      = 36 // C2  — Bass Drum 1
-	drumSnare     = 38 // D2  — Acoustic Snare
-	drumHiHatC    = 42 // F#2 — Closed Hi-Hat
-	drumChannel   = 9
-	drumBankMSB   = 128 // bank 128 = drum kit in standard MIDI
-	ccBankSelect  = 0xB0
-	ccBankNumber  = 0x00
+	drumKick        = 36 // C2  — Bass Drum 1
+	drumSnare       = 38 // D2  — Acoustic Snare
+	drumHiHatC      = 42 // F#2 — Closed Hi-Hat
+	drumChannel     = 9
+	drumBankMSB     = 128 // bank 128 = drum kit in standard MIDI
+	ccBankSelect    = 0xB0
+	ccBankNumber    = 0x00
 	progStandardKit = 0
+)
+
+const (
+	chillPlanRest = iota
+	chillPlanRoot
+	chillPlanThird
+	chillPlanFifth
+	chillPlanSeventh
+	chillPlanNinth
+	chillPlanEleventh
+	chillPlanThirteenth
 )
 
 // NewChill constructs the algorithm. Caller must call Seed before Next.
@@ -212,7 +229,7 @@ func (a *Chill) currentRoot() int { return a.rootMidi + a.keyOffset }
 
 func (a *Chill) Seed(seedVal int64) {
 	a.rng = rand.New(rand.NewSource(seedVal)) //nolint:gosec
-	a.rootMidi = 48 + a.rng.Intn(7) // C3..F#3
+	a.rootMidi = 48 + a.rng.Intn(7)           // C3..F#3
 	a.keyOffset = 0
 	a.samplesElapsed = 0
 	a.scheduleNextDrift()
@@ -284,13 +301,13 @@ func (a *Chill) Seed(seedVal int64) {
 	// SyntheticRoomIR), but per-channel sends shape the mix character.
 	// Sax solo gets the most reverb for "soloistic space"; drums stay dry
 	// to keep the beat punchy; bass dry to keep the low end tight.
-	core.setReverbSend(0, 56) // Rhodes: light room verb
-	core.setReverbSend(1, 24) // bass: dry
-	core.setReverbSend(2, 80) // vibraphone: wet, halo
-	core.setReverbSend(3, 96) // sax: most wet — soloistic space
-	core.setReverbSend(4, 50) // nylon guitar: moderate
+	core.setReverbSend(0, 56)           // Rhodes: light room verb
+	core.setReverbSend(1, 24)           // bass: dry
+	core.setReverbSend(2, 80)           // vibraphone: wet, halo
+	core.setReverbSend(3, 96)           // sax: most wet — soloistic space
+	core.setReverbSend(4, 50)           // nylon guitar: moderate
 	core.setReverbSend(drumChannel, 30) // drums: mostly dry, just a touch of room
-	core.setChorusSend(0, 56) // Rhodes loves chorus
+	core.setChorusSend(0, 56)           // Rhodes loves chorus
 	core.setChorusSend(2, 32)
 	core.setChorusSend(4, 24)
 
@@ -328,6 +345,10 @@ func (a *Chill) Seed(seedVal int64) {
 	} else {
 		a.progression = chillProgressions[a.rng.Intn(len(chillProgressions))]
 	}
+	numBars := len(a.progression)
+	a.vibePlan = a.makeVibePlan(numBars)
+	a.guitarPlan = a.makeGuitarPlan(numBars)
+	a.saxPlan = a.makeSaxPlan(numBars)
 
 	// Tempo: 65 BPM ± 4 (61–69 BPM range, seed-driven). Per research, lofi
 	// sits at 65–95 BPM and the sweet spot for "doesn't tire the listener
@@ -337,7 +358,6 @@ func (a *Chill) Seed(seedVal int64) {
 	beatSec := 60.0 / bpm
 	barSec := beatSec * 4
 	cycleSec := barSec * float64(len(a.progression))
-	numBars := len(a.progression)
 
 	// --- EP chord stabs: two stabs per bar (beats 1 and 3), same chord both
 	// times. Four tracks (one per chord tone), all on channel 0, each with
@@ -369,8 +389,8 @@ func (a *Chill) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 1, Velocity: 88, Notes: bassNotes,
 		PeriodSec: cycleSec, Phase01: 0,
-		MutationRate: 0.4,
-		MutateOne:    func(slot int, _ int) int { return a.bassNoteAt(slot) },
+		MutationRate:   0.4,
+		MutateOne:      func(slot int, _ int) int { return a.bassNoteAt(slot) },
 		VelocityJitter: 6, TimingJitterSec: 0.005, // bass — tight
 	})
 
@@ -382,8 +402,7 @@ func (a *Chill) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 2, Velocity: 68, Notes: vibeNotes,
 		PeriodSec: cycleSec, Phase01: 0,
-		MutationRate: 0.35,
-		MutateOne:    func(slot int, _ int) int { return a.vibeNoteAt(slot) },
+		ResolveNote:    func(slot int, _ int) int { return a.vibeNoteAt(slot) },
 		VelocityJitter: 12, TimingJitterSec: 0.020, // vibe — laid back
 	})
 
@@ -395,27 +414,23 @@ func (a *Chill) Seed(seedVal int64) {
 	}
 	core.addTrack(SF2Track{
 		Channel: 4, Velocity: 50, Notes: guitarNotes,
-		PeriodSec: cycleSec,
-		Phase01:   1.5 / float64(4*numBars), // 1.5 beats into the first bar
-		MutationRate: 1.0,
-		MutateOne:    func(slot int, _ int) int { return a.guitarNoteAt(slot) },
+		PeriodSec:      cycleSec,
+		Phase01:        1.5 / float64(4*numBars), // 1.5 beats into the first bar
+		ResolveNote:    func(slot int, _ int) int { return a.guitarNoteAt(slot) },
 		VelocityJitter: 10, TimingJitterSec: 0.025, // nylon comping — humans don't quantize
 		Enabled: a.guitarOn,
 	})
 
-	// --- Soprano Sax: very sparse solo. Only 2 notes per loop (one in the
-	// middle, one near the end), high register, jazzy color tones. With
-	// mutation it'll wander to different chord tones across cycles.
-	saxNotes := make([]int, 2)
+	// --- Soprano Sax: a recurring 8-bar phrase with explicit rests.
+	saxNotes := make([]int, len(a.saxPlan))
 	for i := range saxNotes {
 		saxNotes[i] = a.saxNoteAt(i)
 	}
 	core.addTrack(SF2Track{
 		Channel: 3, Velocity: 64, Notes: saxNotes,
-		PeriodSec: cycleSec,
-		Phase01:   0.4, // come in 40% through the cycle
-		MutationRate: 0.4,
-		MutateOne:    func(slot int, _ int) int { return a.saxNoteAt(slot) },
+		PeriodSec:      cycleSec,
+		Phase01:        0.5 / float64(numBars), // enter on beat 3 of bar 1
+		ResolveNote:    func(slot int, _ int) int { return a.saxNoteAt(slot) },
 		VelocityJitter: 14, TimingJitterSec: 0.035, // sax solo — most expressive, most loose
 		Enabled: a.saxOn,
 	})
@@ -446,8 +461,8 @@ func (a *Chill) Seed(seedVal int64) {
 	const dillaSnareLagSec = 0.030
 	core.addTrack(SF2Track{
 		Channel: drumChannel, Velocity: 82, Notes: snareNotes,
-		PeriodSec: cycleSec,
-		Phase01:   0.5/float64(2*numBars) + dillaSnareLagSec/cycleSec,
+		PeriodSec:      cycleSec,
+		Phase01:        0.5/float64(2*numBars) + dillaSnareLagSec/cycleSec,
 		VelocityJitter: 6, TimingJitterSec: 0.004,
 		FireProbability: 0.88, // snare almost always lands, with rare skips
 	})
@@ -521,53 +536,106 @@ func (a *Chill) bassNoteAt(slot int) int {
 // of beat 2 — classic jazz/bossa comping placement.
 func (a *Chill) guitarNoteAt(slot int) int {
 	chordIdx := slot % len(a.progression)
-	c := a.progression[chordIdx]
-	// 60% root, 30% 5th, 10% 9th (chord extension)
-	switch r := a.rng.Float64(); {
-	case r < 0.10:
-		return a.currentRoot() + c.tones[0] + 14 // 9th of chord root
-	case r < 0.40:
-		return a.currentRoot() + c.tones[2] + 12 // 5th
-	default:
-		return a.currentRoot() + c.tones[0] + 12 // root
-	}
+	return a.resolvePlanNote(a.progression[chordIdx], a.guitarPlan[slot%len(a.guitarPlan)], 12, 52, 76)
 }
 
-// saxNoteAt returns one soprano-sax note. The sax track has only 2 slots
-// per cycle so the sax phrases are very sparse — soloistic, not constant
-// melody. Plays jazzy intervals: chord tones, 9th, 11th, or 13th.
+// saxNoteAt resolves one slot of the precomputed phrase. Negative slots are
+// explicit rests, which gives the solo space instead of forcing a note every
+// bar.
 func (a *Chill) saxNoteAt(slot int) int {
-	// Pick a chord from the current cycle proportional to slot position.
-	chordIdx := (slot * len(a.progression) / 2) % len(a.progression)
-	c := a.progression[chordIdx]
-	chordRoot := a.currentRoot() + c.tones[0]
-	switch r := a.rng.Float64(); {
-	case r < 0.20:
-		return chordRoot + 14 // 9th
-	case r < 0.35:
-		return chordRoot + 17 // 11th
-	case r < 0.50:
-		return chordRoot + 21 // 13th
-	default:
-		// Chord tone in high register
-		return a.currentRoot() + c.tones[a.rng.Intn(len(c.tones))] + 36
-	}
+	chordIdx := slot % len(a.progression)
+	return a.resolvePlanNote(a.progression[chordIdx], a.saxPlan[slot%len(a.saxPlan)], 24, 67, 90)
 }
 
-// vibeNoteAt returns one melody note per chord. 65% chord tone, 35% color
-// tone (9th or 13th) for jazzy character.
+// vibeNoteAt resolves the upper-voice motif that answers the Rhodes stabs.
 func (a *Chill) vibeNoteAt(slot int) int {
 	chordIdx := slot % len(a.progression)
-	c := a.progression[chordIdx]
-	chordRoot := a.currentRoot() + c.tones[0]
-	switch r := a.rng.Float64(); {
-	case r < 0.20:
-		return chordRoot + 14 // 9th
-	case r < 0.35:
-		return chordRoot + 21 // 13th
-	default:
-		return a.currentRoot() + c.tones[a.rng.Intn(len(c.tones))] + 36
+	return a.resolvePlanNote(a.progression[chordIdx], a.vibePlan[slot%len(a.vibePlan)], 24, 72, 92)
+}
+
+func (a *Chill) makeVibePlan(numBars int) []int {
+	plans := [][]int{
+		{chillPlanThird, chillPlanNinth},
+		{chillPlanSeventh, chillPlanThirteenth},
+		{chillPlanNinth, chillPlanFifth},
 	}
+	out := make([]int, numBars)
+	for i := 0; i < numBars; i += 2 {
+		cell := plans[a.rng.Intn(len(plans))]
+		for j := 0; j < 2 && i+j < numBars; j++ {
+			out[i+j] = cell[j]
+		}
+	}
+	return out
+}
+
+func (a *Chill) makeGuitarPlan(numBars int) []int {
+	plans := [][]int{
+		{chillPlanNinth, chillPlanRest},
+		{chillPlanFifth, chillPlanNinth},
+		{chillPlanRoot, chillPlanFifth},
+	}
+	out := make([]int, numBars)
+	for i := 0; i < numBars; i += 2 {
+		cell := plans[a.rng.Intn(len(plans))]
+		for j := 0; j < 2 && i+j < numBars; j++ {
+			out[i+j] = cell[j]
+		}
+	}
+	return out
+}
+
+func (a *Chill) makeSaxPlan(numBars int) []int {
+	callTemplates := [][]int{
+		{chillPlanNinth, chillPlanRest, chillPlanThird, chillPlanSeventh},
+		{chillPlanRest, chillPlanThirteenth, chillPlanNinth, chillPlanRest},
+		{chillPlanThird, chillPlanNinth, chillPlanRest, chillPlanSeventh},
+	}
+	call := callTemplates[a.rng.Intn(len(callTemplates))]
+	answer := []int{call[0], chillPlanEleventh, chillPlanThird, chillPlanRest}
+	out := make([]int, numBars)
+	for i := 0; i < numBars; i++ {
+		if i < len(call) {
+			out[i] = call[i]
+			continue
+		}
+		if i-len(call) < len(answer) {
+			out[i] = answer[i-len(call)]
+			continue
+		}
+		out[i] = chillPlanRest
+	}
+	if len(out) > 0 {
+		out[len(out)-1] = chillPlanRoot
+	}
+	return out
+}
+
+func (a *Chill) resolvePlanNote(chord chillChord, code, octaveBump, low, high int) int {
+	chordRoot := a.currentRoot() + chord.tones[0]
+	if code == chillPlanRest {
+		return -1
+	}
+	var key int
+	switch code {
+	case chillPlanRoot:
+		key = chordRoot
+	case chillPlanThird:
+		key = a.currentRoot() + chord.tones[1]
+	case chillPlanFifth:
+		key = a.currentRoot() + chord.tones[2]
+	case chillPlanSeventh:
+		key = a.currentRoot() + chord.tones[3]
+	case chillPlanNinth:
+		key = chordRoot + 14
+	case chillPlanEleventh:
+		key = chordRoot + 17
+	case chillPlanThirteenth:
+		key = chordRoot + 21
+	default:
+		key = chordRoot
+	}
+	return clampMidiToRange(key+octaveBump, low, high)
 }
 
 func (a *Chill) scheduleNextDrift() {

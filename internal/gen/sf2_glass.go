@@ -42,8 +42,12 @@ type SF2Glass struct {
 	nextSectionAt  int64
 	musicBoxOn     *bool
 
-	bellPhrase    []int
-	celestaPhrase []int
+	bellContour         []int
+	bellStartDegree     int
+	celestaContour      []int
+	celestaStartDegree  int
+	musicBoxContour     []int
+	musicBoxStartDegree int
 }
 
 // majorPentatonic: 0, 2, 4, 7, 9 (the "happy" pentatonic).
@@ -61,7 +65,7 @@ func (a *SF2Glass) currentRoot() int { return a.rootMidi + a.keyOffset }
 
 func (a *SF2Glass) Seed(seedVal int64) {
 	a.rng = rand.New(rand.NewSource(seedVal)) //nolint:gosec
-	a.rootMidi = 48 + a.rng.Intn(7) // C3..F#3
+	a.rootMidi = 48 + a.rng.Intn(7)           // C3..F#3
 	a.keyOffset = 0
 	// Boards of Canada "Roygbiv" canonical recipe: major pentatonic only,
 	// avoiding 4th and 7th (which sound un-bell-like). 60% major pent for
@@ -77,6 +81,12 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	a.chordOffsets = []int{0, 5, 0, 7}
 	a.currentChordIdx = 0
 	a.samplesElapsed = 0
+	a.bellContour = append([]int(nil), pickMelodicPhrase(a.rng)...)
+	a.bellStartDegree = a.rng.Intn(2)
+	a.celestaContour = append([]int(nil), pickMelodicPhrase(a.rng)...)
+	a.celestaStartDegree = 1 + a.rng.Intn(2)
+	a.musicBoxContour = append([]int(nil), melodicPhrases[5][:4]...)
+	a.musicBoxStartDegree = a.rng.Intn(3)
 	a.scheduleNextChord()
 
 	musicBoxStart := true
@@ -139,28 +149,24 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	core.setChorusSend(4, 32)
 	core.setChorusSend(5, 28)
 
-	// --- Tubular bells: a single coherent 8-note pentatonic phrase, looped
-	// on a long period. Listeners recognize a melody, not random strikes.
-	a.bellPhrase = a.makePhraseInBellRegister(0)
+	// --- Tubular bells: a coherent pentatonic phrase resolved against the
+	// current chord at fire time, so the motif survives while the harmony moves.
+	bellSlots := make([]int, len(a.bellContour))
 	core.addTrack(SF2Track{
-		Channel: 0, Velocity: 72, Notes: a.bellPhrase,
+		Channel: 0, Velocity: 72, Notes: bellSlots,
 		PeriodSec: 21.7, Phase01: a.rng.Float64(),
-		MutationRate: 0.10,
-		MutateOne: func(slot int, _ int) int {
-			return a.bellPhrase[slot%len(a.bellPhrase)]
-		},
+		ResolveNote:    func(slot int, _ int) int { return a.phraseNoteAt(slot, a.bellContour, a.bellStartDegree, 12, 60, 96) },
 		VelocityJitter: 16, TimingJitterSec: 0.10,
 	})
 
 	// --- Celesta counter-phrase: a second coherent phrase one octave up,
 	// on a different period — answers the tubular bell motif.
-	a.celestaPhrase = a.makePhraseInBellRegister(12)
+	celestaSlots := make([]int, len(a.celestaContour))
 	core.addTrack(SF2Track{
-		Channel: 1, Velocity: 56, Notes: a.celestaPhrase,
+		Channel: 1, Velocity: 56, Notes: celestaSlots,
 		PeriodSec: 29.7, Phase01: a.rng.Float64(),
-		MutationRate: 0.12,
-		MutateOne: func(slot int, _ int) int {
-			return a.celestaPhrase[slot%len(a.celestaPhrase)]
+		ResolveNote: func(slot int, _ int) int {
+			return a.phraseNoteAt(slot, a.celestaContour, a.celestaStartDegree, 24, 72, 96)
 		},
 		VelocityJitter: 14, TimingJitterSec: 0.10,
 	})
@@ -170,8 +176,25 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 2, Velocity: 48, Notes: []int{a.bellNote(0, 24)},
 		PeriodSec: 37.3, Phase01: a.rng.Float64(),
-		MutationRate: 0.40,
-		MutateOne:    func(_ int, _ int) int { return a.bellNote(0, 24) },
+		MutationRate:   0.40,
+		MutateOne:      func(_ int, _ int) int { return a.bellNote(0, 24) },
+		ResolveNote:    func(_ int, _ int) int { return a.bellNote(0, 24) },
+		VelocityJitter: 12, TimingJitterSec: 0.12,
+	})
+
+	// --- Music box ornament: nostalgic answering fragment that drops in/out
+	// by section. Uses explicit rests so the layer feels like a phrase rather
+	// than a constant ostinato.
+	musicBoxSlots := make([]int, len(a.musicBoxContour)+2)
+	core.addTrack(SF2Track{
+		Channel: 3, Velocity: 44, Notes: musicBoxSlots,
+		PeriodSec: 43.1, Phase01: a.rng.Float64(),
+		ResolveNote: func(slot int, _ int) int {
+			if slot%len(musicBoxSlots) >= len(a.musicBoxContour) {
+				return -1
+			}
+			return a.phraseNoteAt(slot, a.musicBoxContour, a.musicBoxStartDegree, 12, 72, 92)
+		},
 		VelocityJitter: 12, TimingJitterSec: 0.12,
 		Enabled: a.musicBoxOn,
 	})
@@ -182,8 +205,9 @@ func (a *SF2Glass) Seed(seedVal int64) {
 		core.addTrack(SF2Track{
 			Channel: 4, Velocity: 44, Notes: []int{a.padNote(voice)},
 			PeriodSec: period, Phase01: a.rng.Float64(),
-			MutationRate: 0.30,
-			MutateOne:    func(_ int, _ int) int { return a.padNote(voice) },
+			MutationRate:   0.30,
+			MutateOne:      func(_ int, _ int) int { return a.padNote(voice) },
+			ResolveNote:    func(_ int, _ int) int { return a.padNote(voice) },
 			VelocityJitter: 6, TimingJitterSec: 0.08,
 		})
 	}
@@ -192,8 +216,9 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 5, Velocity: 40, Notes: []int{a.padNote(1) + 12},
 		PeriodSec: 53.9, Phase01: a.rng.Float64(),
-		MutationRate: 0.35,
-		MutateOne:    func(_ int, _ int) int { return a.padNote(1) + 12 },
+		MutationRate:   0.35,
+		MutateOne:      func(_ int, _ int) int { return a.padNote(1) + 12 },
+		ResolveNote:    func(_ int, _ int) int { return a.padNote(1) + 12 },
 		VelocityJitter: 6, TimingJitterSec: 0.10,
 	})
 
@@ -201,33 +226,20 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 6, Velocity: 60, Notes: []int{a.bassRoot()},
 		PeriodSec: 51.3, Phase01: 0,
-		MutationRate: 0.50,
-		MutateOne:    func(_ int, _ int) int { return a.bassRoot() },
+		MutationRate:   0.50,
+		MutateOne:      func(_ int, _ int) int { return a.bassRoot() },
+		ResolveNote:    func(_ int, _ int) int { return a.bassRoot() },
 		VelocityJitter: 4, TimingJitterSec: 0.05,
 	})
 
 	a.core = core
 }
 
-// makePhraseInBellRegister builds an 8-note coherent melodic phrase in the
-// chosen pentatonic scale, placed into the bell register with optional
-// octave-bump offset. The shape is one of melodicPhrases — a coherent
-// contour beats per-note randomness for any motivic instrument.
-func (a *SF2Glass) makePhraseInBellRegister(octaveBump int) []int {
-	contour := pickMelodicPhrase(a.rng)
+func (a *SF2Glass) phraseNoteAt(slot int, contour []int, startDegree, octaveBump, low, high int) int {
 	chordOff := a.chordOffsets[a.currentChordIdx]
 	root := a.currentRoot() + chordOff + 12 + octaveBump
-	notes := applyPhraseToScale(contour, a.scale, root, 0, 0)
-	for i, k := range notes {
-		for k < 60 {
-			k += 12
-		}
-		for k > 96 {
-			k -= 12
-		}
-		notes[i] = k
-	}
-	return notes
+	key := scaleNoteAt(contour, slot, a.scale, root, startDegree, 0)
+	return clampMidiToRange(key, low, high)
 }
 
 // bellNote returns a pentatonic-scale MIDI key for a bell voice. voice picks

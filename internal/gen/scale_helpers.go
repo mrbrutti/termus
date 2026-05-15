@@ -59,6 +59,67 @@ func applyPhraseToScale(phrase []int, scale []int, rootMidi, startDegree, octave
 	return out
 }
 
+// scaleNoteAt resolves one slot of a phrase contour against a scale without
+// allocating a whole phrase slice.
+func scaleNoteAt(phrase []int, slot int, scale []int, rootMidi, startDegree, octave int) int {
+	if len(phrase) == 0 || len(scale) == 0 {
+		return rootMidi + octave
+	}
+	deg := startDegree + phrase[((slot%len(phrase))+len(phrase))%len(phrase)]
+	oct := 0
+	for deg < 0 {
+		deg += len(scale)
+		oct--
+	}
+	for deg >= len(scale) {
+		deg -= len(scale)
+		oct++
+	}
+	return rootMidi + scale[deg] + 12*oct + octave
+}
+
+func clampMidiToRange(key, low, high int) int {
+	if low > high {
+		low, high = high, low
+	}
+	for key < low {
+		key += 12
+	}
+	for key > high {
+		key -= 12
+	}
+	return key
+}
+
+func absInt(v int) int {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
+
+func nearestRelativeNote(target, root int, rels []int, low, high int) int {
+	if len(rels) == 0 {
+		return clampMidiToRange(root, low, high)
+	}
+	best := clampMidiToRange(root+rels[0], low, high)
+	bestDist := absInt(best - target)
+	for oct := -6; oct <= 6; oct++ {
+		for _, rel := range rels {
+			cand := root + rel + 12*oct
+			if cand < low || cand > high {
+				continue
+			}
+			d := absInt(cand - target)
+			if d < bestDist || (d == bestDist && cand > best) {
+				best = cand
+				bestDist = d
+			}
+		}
+	}
+	return best
+}
+
 // scalePitchLoc identifies a pitch's location relative to a scale: which
 // degree it is, and how many octaves above/below the reference root. Used by
 // mutation closures that want to walk from "wherever we currently are"

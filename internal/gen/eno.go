@@ -45,7 +45,7 @@ func (e *Eno) Name() string { return "eno-drift" }
 
 func (e *Eno) Seed(s int64) {
 	e.rng = rand.New(rand.NewSource(s)) //nolint:gosec
-	e.rootMidi = 36 + e.rng.Intn(12) // C2..B2
+	e.rootMidi = 36 + e.rng.Intn(12)    // C2..B2
 
 	// Slow pad bed.
 	e.voices = make([]*padBellVoice, len(loopPeriods))
@@ -144,6 +144,11 @@ type padBellVoice struct {
 	gateOn   bool
 	baseFreq float64
 	leadMode bool
+	rng      *rand.Rand
+
+	noteGain       float64
+	noteCutoffBase float64
+	attackNoise    float64
 
 	ctrlPhase int // sub-sampled filter envelope updates
 }
@@ -168,6 +173,8 @@ func newPadBellVoice(periodSec float64, notes []int, phase01, vibSeed float64) *
 		vibSeed:       vibSeed,
 		curNote:       -1,
 		partAmp:       [4]float64{1.00, 0.45, 0.20, 0.10},
+		rng:           rand.New(rand.NewSource(int64(phase01*1e9) ^ int64(vibSeed*1e9))), //nolint:gosec
+		noteGain:      1.0,
 	}
 	for i := range v.osc {
 		v.osc[i] = synth.NewOscillator(synth.WaveSine)
@@ -194,6 +201,15 @@ func (v *padBellVoice) tick(t int64) float64 {
 		for i := range v.osc {
 			v.osc[i].SetFrequency(v.baseFreq * partialRatios[i])
 		}
+		if v.leadMode {
+			v.noteCutoffBase = 720 + 280*v.rng.Float64()
+			v.noteGain = 0.94 + 0.16*v.rng.Float64()
+			v.attackNoise = 0.010 + 0.006*v.rng.Float64()
+		} else {
+			v.noteCutoffBase = 280 + 180*v.rng.Float64()
+			v.noteGain = 0.92 + 0.14*v.rng.Float64()
+			v.attackNoise = 0.004 + 0.004*v.rng.Float64()
+		}
 		v.env.Gate(true)
 		v.gateOn = true
 	}
@@ -217,6 +233,10 @@ func (v *padBellVoice) tick(t int64) float64 {
 		s += v.partAmp[i] * v.osc[i].Tick()
 	}
 	s *= envVal
+	if v.attackNoise > 1e-5 {
+		s += (v.rng.Float64()*2 - 1) * v.attackNoise
+		v.attackNoise *= 0.992
+	}
 
 	// Filter envelope: cutoff opens with envelope.
 	v.ctrlPhase++
@@ -224,17 +244,17 @@ func (v *padBellVoice) tick(t int64) float64 {
 		v.ctrlPhase = 0
 		var cutoff float64
 		if v.leadMode {
-			cutoff = 800 + 3200*envVal // brighter for leads
+			cutoff = v.noteCutoffBase + 3200*envVal // brighter for leads
 		} else {
-			cutoff = 350 + 2600*envVal
+			cutoff = v.noteCutoffBase + 2600*envVal
 		}
 		v.lp.SetParams(cutoff, 0.7)
 	}
 	s = v.lp.Tick(s)
 	if v.leadMode {
-		return s * 0.16
+		return s * 0.16 * v.noteGain
 	}
-	return s * 0.22
+	return s * 0.22 * v.noteGain
 }
 
 // --- sineDrone: 5-partial additive bed with very slow movement ---
@@ -258,8 +278,8 @@ func newSineDrone(rootMidi int) *sineDrone {
 	for i := range d.osc {
 		d.osc[i] = synth.NewOscillator(synth.WaveSine)
 	}
-	d.osc[0].SetFrequency(d.base * 0.5) // sub-octave
-	d.osc[1].SetFrequency(d.base * 1.002) // root, slight detune up
+	d.osc[0].SetFrequency(d.base * 0.5)         // sub-octave
+	d.osc[1].SetFrequency(d.base * 1.002)       // root, slight detune up
 	d.osc[2].SetFrequency(d.base * 2.0 * 0.998) // octave, detune down
 	d.osc[3].SetFrequency(d.base * 3.0)
 	d.osc[4].SetFrequency(d.base * 4.0 * 1.001)

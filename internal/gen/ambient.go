@@ -49,9 +49,12 @@ type Ambient struct {
 	bellsOn   *bool
 	celestaOn *bool
 
-	// Coherent 8-note bell phrase, pre-computed at Seed time so the bell
-	// motif reads as a tune rather than a random sequence of strikes.
-	bellPhrase []int
+	// Contours are fixed per seed, but their concrete notes are resolved
+	// against the current chord at fire time so the harmony actually moves.
+	bellContour        []int
+	bellStartDegree    int
+	celestaContour     []int
+	celestaStartDegree int
 }
 
 // ambientChord is one harmonic center: a root offset from the key center,
@@ -112,6 +115,10 @@ func (a *Ambient) Seed(seedVal int64) {
 	a.samplesElapsed = 0
 	a.currentChordIdx = 0
 	a.chords = ambientCycles[a.rng.Intn(len(ambientCycles))]
+	a.bellContour = append([]int(nil), melodicPhrases[2]...)
+	a.bellStartDegree = a.rng.Intn(3)
+	a.celestaContour = append([]int(nil), melodicPhrases[3][:4]...)
+	a.celestaStartDegree = 1 + a.rng.Intn(2)
 	a.scheduleNextChord()
 
 	bellsStart := true
@@ -179,8 +186,9 @@ func (a *Ambient) Seed(seedVal int64) {
 		core.addTrack(SF2Track{
 			Channel: 0, Velocity: 56, Notes: []int{a.padNote(voice, 0)},
 			PeriodSec: period, Phase01: a.rng.Float64(),
-			MutationRate: 0.30,
-			MutateOne:    func(_ int, _ int) int { return a.padNote(voice, 0) },
+			MutationRate:   0.30,
+			MutateOne:      func(_ int, _ int) int { return a.padNote(voice, 0) },
+			ResolveNote:    func(_ int, _ int) int { return a.padNote(voice, 0) },
 			VelocityJitter: 8, TimingJitterSec: 0.05,
 		})
 	}
@@ -190,8 +198,9 @@ func (a *Ambient) Seed(seedVal int64) {
 		core.addTrack(SF2Track{
 			Channel: 1, Velocity: 50, Notes: []int{a.padNote(voice, 0)},
 			PeriodSec: period, Phase01: a.rng.Float64(),
-			MutationRate: 0.30,
-			MutateOne:    func(_ int, _ int) int { return a.padNote(voice, 0) },
+			MutationRate:   0.30,
+			MutateOne:      func(_ int, _ int) int { return a.padNote(voice, 0) },
+			ResolveNote:    func(_ int, _ int) int { return a.padNote(voice, 0) },
 			VelocityJitter: 6, TimingJitterSec: 0.05,
 		})
 	}
@@ -201,40 +210,34 @@ func (a *Ambient) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 2, Velocity: 48, Notes: []int{a.choirNote(0)},
 		PeriodSec: 29.2, Phase01: a.rng.Float64(),
-		MutationRate: 0.35,
-		MutateOne:    func(_ int, _ int) int { return a.choirNote(0) },
+		MutationRate:   0.35,
+		MutateOne:      func(_ int, _ int) int { return a.choirNote(0) },
+		ResolveNote:    func(_ int, _ int) int { return a.choirNote(0) },
 		VelocityJitter: 8, TimingJitterSec: 0.06,
 	})
 
-	// --- Tubular bell motif: literal Eno "2/1" recipe. Three voices, each
-	// holding ONE pitch of the current chord, on incommensurate loop
-	// periods (25.7s, 31.0s, 36.1s) so they never realign. This is the
-	// canonical Music for Airports voices-on-tape-loops technique that the
-	// listener recognizes as ambient — not a melodic phrase, but three
-	// pitches that overlap unpredictably with long fadeouts.
-	a.bellPhrase = a.makeBellPhrase()
+	// --- Tubular bell motif: three canon-like loop voices sharing one contour
+	// but offset against each other. The contour stays recognizable while the
+	// actual notes are resolved against the current chord at fire time.
 	bellPeriods := []float64{25.7, 31.0, 36.1}
 	for ti, period := range bellPeriods {
 		voice := ti
+		bellSlots := make([]int, len(a.bellContour))
 		core.addTrack(SF2Track{
-			Channel: 3, Velocity: 64, Notes: []int{a.bellPhrase[voice%len(a.bellPhrase)]},
+			Channel: 3, Velocity: 64, Notes: bellSlots,
 			PeriodSec: period, Phase01: a.rng.Float64(),
-			MutationRate: 0.20,
-			MutateOne: func(_ int, _ int) int {
-				return a.bellPhrase[voice%len(a.bellPhrase)]
-			},
+			ResolveNote:    func(slot int, _ int) int { return a.bellNoteAt(voice, slot) },
 			VelocityJitter: 14, TimingJitterSec: 0.30, // tape-loop slippage feel
 			Enabled: a.bellsOn,
 		})
 	}
 
-	// --- Celesta sparkle: very high register, very sparse — single voice on
-	// a long period.
+	// --- Celesta sparkle: a shorter answering phrase high above the bells.
+	celestaSlots := make([]int, len(a.celestaContour))
 	core.addTrack(SF2Track{
-		Channel: 4, Velocity: 44, Notes: []int{a.celestaNote()},
+		Channel: 4, Velocity: 44, Notes: celestaSlots,
 		PeriodSec: 53.7, Phase01: a.rng.Float64(),
-		MutationRate: 0.40,
-		MutateOne:    func(_ int, _ int) int { return a.celestaNote() },
+		ResolveNote:    func(slot int, _ int) int { return a.celestaNote(slot) },
 		VelocityJitter: 12, TimingJitterSec: 0.10,
 		Enabled: a.celestaOn,
 	})
@@ -244,8 +247,9 @@ func (a *Ambient) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 5, Velocity: 60, Notes: []int{a.bassRoot()},
 		PeriodSec: 41.7, Phase01: 0,
-		MutationRate: 0.50,
-		MutateOne:    func(_ int, _ int) int { return a.bassRoot() },
+		MutationRate:   0.50,
+		MutateOne:      func(_ int, _ int) int { return a.bassRoot() },
+		ResolveNote:    func(_ int, _ int) int { return a.bassRoot() },
 		VelocityJitter: 6, TimingJitterSec: 0.03,
 	})
 
@@ -299,48 +303,23 @@ func (a *Ambient) choirNote(voice int) int {
 // using the current chord's tones, transposed into the bell register
 // (C5–C7). Picks a stylized contour (peak-and-fall by default for the Eno
 // 2/1 vibe) and uses chord-tone scale degrees so every note resolves.
-func (a *Ambient) makeBellPhrase() []int {
+func (a *Ambient) bellNoteAt(voice, slot int) int {
 	if len(a.chords) == 0 {
-		return []int{72}
+		return 72
 	}
-	// Pentatonic of the chord: root, 3rd (or 4th if no 3rd), 5th, 7th (or 9th).
 	c := a.chords[a.currentChordIdx]
-	scale := make([]int, 0, len(c.tones))
-	for _, t := range c.tones {
-		scale = append(scale, t)
-	}
-	// Peak-and-fall contour — Music for Airports "2/1" feel.
-	phrase := melodicPhrases[2] // {0, 2, 4, 6, 4, 2, 0, -2}
-	root := a.currentRoot() + c.rootSemi + 36
-	notes := applyPhraseToScale(phrase, scale, root, 0, 0)
-	// Clamp into the bell register.
-	for i, k := range notes {
-		for k < 72 {
-			k += 12
-		}
-		for k > 96 {
-			k -= 12
-		}
-		notes[i] = k
-	}
-	return notes
+	key := scaleNoteAt(a.bellContour, slot+voice*2, c.tones, a.currentRoot()+c.rootSemi+36, a.bellStartDegree, 0)
+	return clampMidiToRange(key, 72, 96)
 }
 
-// celestaNote returns a very high chord-tone key (C6–C7).
-func (a *Ambient) celestaNote() int {
+// celestaNote returns one slot of the answering celesta phrase (C6–C7).
+func (a *Ambient) celestaNote(slot int) int {
 	if len(a.chords) == 0 {
 		return 84
 	}
 	c := a.chords[a.currentChordIdx]
-	idx := a.rng.Intn(len(c.tones))
-	key := a.currentRoot() + c.rootSemi + c.tones[idx] + 48
-	for key < 84 {
-		key += 12
-	}
-	for key > 96 {
-		key -= 12
-	}
-	return key
+	key := scaleNoteAt(a.celestaContour, slot, c.tones, a.currentRoot()+c.rootSemi+48, a.celestaStartDegree, 0)
+	return clampMidiToRange(key, 84, 96)
 }
 
 // bassRoot returns the chord's root in the bass register (around C2).

@@ -38,7 +38,7 @@ func (g *Glass) Name() string { return "glass-fm" }
 
 func (g *Glass) Seed(s int64) {
 	g.rng = rand.New(rand.NewSource(s)) //nolint:gosec
-	g.rootMidi = 48 + g.rng.Intn(7) // C3..F#3 — brighter starting register
+	g.rootMidi = 48 + g.rng.Intn(7)     // C3..F#3 — brighter starting register
 	g.voices = make([]*fmBellVoice, len(glassLoopPeriods))
 	for i, period := range glassLoopPeriods {
 		notes := make([]int, 1+g.rng.Intn(2)) // 1..2 notes per phrase — sparse
@@ -93,14 +93,18 @@ type fmBellVoice struct {
 	modInc       float64
 
 	modIndex float64 // FM depth (radians)
+	modRatio float64
 
 	env     *synth.Envelope
 	vibrato *synth.Oscillator
 	vibAmt  float64 // pitch wobble in semitones
+	rng     *rand.Rand
 
 	curNote   int
 	gateOn    bool
 	ctrlPhase int
+	noteGain  float64
+	attackPop float64
 }
 
 func newFMBellVoice(periodSec float64, notes []int, phase01, vibSeed float64) *fmBellVoice {
@@ -111,11 +115,14 @@ func newFMBellVoice(periodSec float64, notes []int, phase01, vibSeed float64) *f
 		env:      synth.NewEnvelope(0.005, 1.4, 0.15, 3.2),
 		curNote:  -1,
 		modIndex: 2.0, // with 2.003× ratio this is a clean bell
+		modRatio: 2.003,
 		// Slow per-voice vibrato adds warmth and life — small enough that the
 		// pitch sounds "alive" rather than detuned. Each voice gets its own
 		// rate so they don't all wobble in sync.
-		vibrato: synth.NewOscillator(synth.WaveSine),
-		vibAmt:  0.05, // ~0.3% pitch wobble
+		vibrato:  synth.NewOscillator(synth.WaveSine),
+		vibAmt:   0.05,                                                              // ~0.3% pitch wobble
+		rng:      rand.New(rand.NewSource(int64(phase01*1e9) ^ int64(vibSeed*1e9))), //nolint:gosec
+		noteGain: 1.0,
 	}
 	v.vibrato.SetFrequency(0.4 + 0.5*vibSeed) // 0.4..0.9 Hz
 	v.phaseOffset = int64(phase01 * float64(v.periodSamples))
@@ -131,9 +138,13 @@ func (v *fmBellVoice) tick(t int64) float64 {
 	if slot != v.curNote {
 		v.curNote = slot
 		f := midiToHz(v.notes[slot])
+		v.modRatio = 1.995 + 0.020*v.rng.Float64()
+		v.modIndex = 1.7 + 0.7*v.rng.Float64()
+		v.noteGain = 0.92 + 0.16*v.rng.Float64()
+		v.attackPop = 0.008 + 0.008*v.rng.Float64()
 		// Base increments — vibrato modulates these every control tick below.
 		v.baseCarrier = f / float64(synth.SampleRate)
-		v.baseMod = (f * 2.003) / float64(synth.SampleRate)
+		v.baseMod = (f * v.modRatio) / float64(synth.SampleRate)
 		v.carrierInc = v.baseCarrier
 		v.modInc = v.baseMod
 		v.env.Gate(true)
@@ -161,6 +172,10 @@ func (v *fmBellVoice) tick(t int64) float64 {
 	// Modulation depth tracks the envelope so the timbre brightens on attack
 	// and mellows on release — a key part of FM bell realism.
 	carrierVal := math.Sin(v.carrierPhase*2*math.Pi + v.modIndex*envVal*modOut)
+	if v.attackPop > 1e-5 {
+		carrierVal += (v.rng.Float64()*2 - 1) * v.attackPop
+		v.attackPop *= 0.990
+	}
 
 	v.carrierPhase += v.carrierInc
 	if v.carrierPhase >= 1 {
@@ -171,5 +186,5 @@ func (v *fmBellVoice) tick(t int64) float64 {
 		v.modPhase -= 1
 	}
 
-	return carrierVal * envVal * 0.20
+	return carrierVal * envVal * 0.20 * v.noteGain
 }

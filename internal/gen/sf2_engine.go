@@ -34,12 +34,18 @@ type SF2Reverberator interface {
 type SF2Track struct {
 	Channel   int32 // MIDI channel 0..15
 	Velocity  int32 // 0..127
-	Notes     []int // MIDI keys, cycled
+	Notes     []int // MIDI keys, cycled. Negative values are treated as rests.
 	PeriodSec float64
 	Phase01   float64 // 0..1 phase offset within the period
 
 	MutationRate float64
 	MutateOne    func(slot int, prev int) int
+
+	// ResolveNote, when non-nil, is called right before firing a slot. It can
+	// remap a stored note to the current harmonic context without waiting for a
+	// background mutation pass. Returning a negative value turns the slot into
+	// a rest for this fire.
+	ResolveNote func(slot int, prev int) int
 
 	VelocityJitter  int32   // ±range added to Velocity per NoteOn
 	TimingJitterSec float64 // ±range added to fire time per NoteOn (seconds)
@@ -217,12 +223,12 @@ func newSF2Core(sf *meltysynth.SoundFont, masterGain float64, mutationSeed int64
 		// Distinct seed offset so the mutation stream doesn't correlate with
 		// the note-generation stream (which would make mutations feel
 		// "predictable" alongside the initial figure).
-		rng:        rand.New(rand.NewSource(mutationSeed ^ 0x6D757461)), //nolint:gosec // ASCII "muta"
-		eqLowL:     synth.NewLowShelf(180, 2.5, 0.707),
-		eqLowR:     synth.NewLowShelf(180, 2.5, 0.707),
-		eqHighL:    synth.NewHighShelf(7500, 3.0, 0.707),
-		eqHighR:    synth.NewHighShelf(7500, 3.0, 0.707),
-		comp:       synth.NewStereoCompressor(-14, 3.0, 8, 250, 6, 4),
+		rng:     rand.New(rand.NewSource(mutationSeed ^ 0x6D757461)), //nolint:gosec // ASCII "muta"
+		eqLowL:  synth.NewLowShelf(180, 2.5, 0.707),
+		eqLowR:  synth.NewLowShelf(180, 2.5, 0.707),
+		eqHighL: synth.NewHighShelf(7500, 3.0, 0.707),
+		eqHighR: synth.NewHighShelf(7500, 3.0, 0.707),
+		comp:    synth.NewStereoCompressor(-14, 3.0, 8, 250, 6, 4),
 	}, nil
 }
 
@@ -543,8 +549,8 @@ func (s *sf2TrackState) samplesUntilNextSlot(t int64) int64 {
 // (computed from `t`), then schedules the next fire time at the next slot
 // boundary plus a random timing-jitter offset.
 //
-// Velocity is jittered if VelocityJitter > 0. Also optionally re-rolls one
-// OTHER slot's note so the cycled material gradually evolves.
+// Velocity is jittered if VelocityJitter > 0. Also optionally re-rolls notes
+// so the cycled material gradually evolves.
 func (s *sf2TrackState) fireTransition(t int64, syn *meltysynth.Synthesizer, rng *rand.Rand) {
 	// Compute the slot we're firing — based on t, not the previous slot.
 	// With timing jitter the fire time may be just past the natural slot
@@ -577,11 +583,19 @@ func (s *sf2TrackState) fireTransition(t int64, syn *meltysynth.Synthesizer, rng
 			skip = true
 		}
 	}
+	key := s.cfg.Notes[newSlot]
+	if s.cfg.ResolveNote != nil {
+		key = s.cfg.ResolveNote(newSlot, key)
+		s.cfg.Notes[newSlot] = key
+	}
+	if key < 0 {
+		skip = true
+	}
+
 	if skip {
 		s.curSlot = newSlot
 		// Fall through to schedule next fire normally; mutations still happen.
 	} else {
-		key := s.cfg.Notes[newSlot]
 		vel := s.cfg.Velocity
 		if s.cfg.VelocityJitter > 0 && rng != nil {
 			offset := int32(rng.Intn(int(2*s.cfg.VelocityJitter)+1)) - s.cfg.VelocityJitter
@@ -635,11 +649,16 @@ func (s *sf2TrackState) fireTransition(t int64, syn *meltysynth.Synthesizer, rng
 		s.nextFireT = t + 1
 	}
 
-	if s.cfg.MutateOne != nil && s.cfg.MutationRate > 0 && len(s.cfg.Notes) > 1 && rng != nil {
+	if s.cfg.MutateOne != nil && s.cfg.MutationRate > 0 && len(s.cfg.Notes) > 0 && rng != nil {
 		if rng.Float64() < s.cfg.MutationRate {
-			victim := rng.Intn(len(s.cfg.Notes) - 1)
-			if victim >= newSlot {
-				victim++
+			victim := 0
+			if len(s.cfg.Notes) == 1 {
+				victim = 0
+			} else {
+				victim = rng.Intn(len(s.cfg.Notes) - 1)
+				if victim >= newSlot {
+					victim++
+				}
 			}
 			s.cfg.Notes[victim] = s.cfg.MutateOne(victim, s.cfg.Notes[victim])
 		}

@@ -39,7 +39,7 @@ func (d *Drone) Name() string { return "drone-bed" }
 
 func (d *Drone) Seed(s int64) {
 	d.rng = rand.New(rand.NewSource(s)) //nolint:gosec
-	d.rootMidi = 24 + d.rng.Intn(7) // C1..F#1 — really low for the bed
+	d.rootMidi = 24 + d.rng.Intn(7)     // C1..F#1 — really low for the bed
 	d.voices = make([]*droneVoice, len(droneLoopPeriods))
 	for i, period := range droneLoopPeriods {
 		// Each voice cycles through 3..5 notes from the minor scale.
@@ -107,6 +107,11 @@ type droneVoice struct {
 	curNote  int
 	gateOn   bool
 	baseFreq float64
+	rng      *rand.Rand
+
+	noteGain    float64
+	filterBase  float64
+	filterDepth float64
 
 	ctrlPhase int
 }
@@ -118,6 +123,8 @@ func (v *droneVoice) makeShimmer() {
 	v.lp = synth.NewLowpass(2400, 0.6)
 	// Quiet the upper partials further — shimmer should be a pure-ish bell tone.
 	v.amp = [5]float64{1.0, 0.35, 0.15, 0.06, 0.0}
+	v.filterBase = 1800
+	v.filterDepth = 900
 }
 
 func newDroneVoice(periodSec float64, notes []int, phase01 float64) *droneVoice {
@@ -128,6 +135,10 @@ func newDroneVoice(periodSec float64, notes []int, phase01 float64) *droneVoice 
 		lp:            synth.NewLowpass(900, 0.6),
 		curNote:       -1,
 		amp:           [5]float64{1.0, 0.55, 0.28, 0.14, 0.07},
+		rng:           rand.New(rand.NewSource(int64(phase01 * 1e9))), //nolint:gosec
+		noteGain:      1.0,
+		filterBase:    700,
+		filterDepth:   260,
 	}
 	for i := range v.osc {
 		v.osc[i] = synth.NewOscillator(synth.WaveSine)
@@ -154,6 +165,13 @@ func (v *droneVoice) tick(t int64) float64 {
 		for i := range v.osc {
 			v.osc[i].SetFrequency(v.baseFreq * dronePartialRatios[i])
 		}
+		if v.filterDepth > 500 {
+			v.filterBase = 1700 + 400*v.rng.Float64()
+			v.noteGain = 0.92 + 0.12*v.rng.Float64()
+		} else {
+			v.filterBase = 650 + 260*v.rng.Float64()
+			v.noteGain = 0.94 + 0.10*v.rng.Float64()
+		}
 		v.env.Gate(true)
 		v.gateOn = true
 	}
@@ -172,9 +190,10 @@ func (v *droneVoice) tick(t int64) float64 {
 		v.ctrlPhase = 0
 		for i := range v.osc {
 			cents := 0.04 * v.vib[i].Tick() // ~0.04 semitones
-			factor := 1.0 + cents*0.0578     // small-angle approx of 2^(cents/12)
+			factor := 1.0 + cents*0.0578    // small-angle approx of 2^(cents/12)
 			v.osc[i].SetFrequency(v.baseFreq * dronePartialRatios[i] * factor)
 		}
+		v.lp.SetParams(v.filterBase+v.filterDepth*envVal, 0.6)
 	}
 
 	var s float64
@@ -183,5 +202,5 @@ func (v *droneVoice) tick(t int64) float64 {
 	}
 	s *= envVal
 	s = v.lp.Tick(s)
-	return s * 0.18
+	return s * 0.18 * v.noteGain
 }

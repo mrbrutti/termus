@@ -4,6 +4,8 @@ import (
 	"math/rand"
 
 	"github.com/sinshu/go-meltysynth/meltysynth"
+
+	"github.com/mrbrutti/termus/internal/synth"
 )
 
 var _ Algorithm = (*SF2Pentatonic)(nil)
@@ -34,6 +36,7 @@ type SF2Pentatonic struct {
 	keyOffset int
 
 	progression []lullabyChord
+	barSamples  int64
 
 	samplesElapsed int64
 	nextSectionAt  int64
@@ -161,6 +164,7 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 	bpm := 72.0 + 12.0*a.rng.Float64()
 	beatSec := 60.0 / bpm
 	barSec := beatSec * 3 // 3/4 time
+	a.barSamples = int64(barSec * float64(synth.SampleRate))
 	numBars := len(a.progression)
 	cycleSec := barSec * float64(numBars)
 
@@ -172,8 +176,8 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 0, Velocity: 70, Notes: bassNotes,
 		PeriodSec: cycleSec, Phase01: 0,
-		MutationRate: 0.10,
-		MutateOne:    func(slot int, _ int) int { return a.bassRoot(slot) },
+		MutationRate:   0.10,
+		MutateOne:      func(slot int, _ int) int { return a.bassRoot(slot) },
 		VelocityJitter: 8, TimingJitterSec: 0.012,
 	})
 
@@ -191,10 +195,10 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 		}
 		core.addTrack(SF2Track{
 			Channel: 2, Velocity: 54, Notes: notes,
-			PeriodSec: cycleSec,
-			Phase01:   float64(beat) / (3 * float64(numBars)),
-			MutationRate: 0.15,
-			MutateOne:    func(slot int, _ int) int { return a.compTone(slot, voice+1) },
+			PeriodSec:      cycleSec,
+			Phase01:        float64(beat) / (3 * float64(numBars)),
+			MutationRate:   0.15,
+			MutateOne:      func(slot int, _ int) int { return a.compTone(slot, voice+1) },
 			VelocityJitter: 10, TimingJitterSec: 0.020,
 		})
 	}
@@ -221,8 +225,8 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 	}
 	core.addTrack(SF2Track{
 		Channel: 3, Velocity: 48, Notes: glockNotes,
-		PeriodSec: cycleSec,
-		Phase01:   0.125 / float64(numBars), // slight offset from beat 1
+		PeriodSec:    cycleSec,
+		Phase01:      0.125 / float64(numBars), // slight offset from beat 1
 		MutationRate: 0.35,
 		MutateOne: func(slot int, _ int) int {
 			return a.compTone(slot*4, 1) + 24
@@ -237,8 +241,9 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 		core.addTrack(SF2Track{
 			Channel: 4, Velocity: 36, Notes: []int{a.padNote(voice)},
 			PeriodSec: period, Phase01: a.rng.Float64(),
-			MutationRate: 0.20,
-			MutateOne:    func(_ int, _ int) int { return a.padNote(voice) },
+			MutationRate:   0.20,
+			MutateOne:      func(_ int, _ int) int { return a.padNote(voice) },
+			ResolveNote:    func(_ int, _ int) int { return a.padNote(voice) },
 			VelocityJitter: 4, TimingJitterSec: 0.040,
 		})
 	}
@@ -281,7 +286,9 @@ func (a *SF2Pentatonic) compTone(slot, idx int) int {
 
 // makeMelodyPhrase builds the music-box's melody. Specifically uses the
 // Brahms Wiegenlied Op. 49 No. 4 contour: scale degrees
-//   3 3 | 5 5 | 3 3 | 5 5 | 4 5 | 6 5 | 4 3 | 2 2
+//
+//	3 3 | 5 5 | 3 3 | 5 5 | 4 5 | 6 5 | 4 3 | 2 2
+//
 // (2 notes per bar across the 8-bar period). The iconic shape is
 // repetition on 3rd-and-5th, peak on 6th, stepwise descent 5-4-3-2.
 // Uses the major scale (NOT pentatonic) since Brahms is fully diatonic.
@@ -307,17 +314,29 @@ func (a *SF2Pentatonic) makeMelodyPhrase(numBars int) []int {
 		contour = extended
 	}
 	majorScale := []int{0, 2, 4, 5, 7, 9, 11}
-	// Music box sweet spot is C5–C6 (72..84).
 	root := a.currentRoot() + 24
-	notes := applyPhraseToScale(contour, majorScale, root, 0, 0)
-	for i, k := range notes {
-		for k < 72 {
-			k += 12
+	notes := make([]int, len(contour))
+	for i := range contour {
+		target := clampMidiToRange(scaleNoteAt(contour, i, majorScale, root, 0, 0), 72, 88)
+		chord := a.progression[(i/2)%len(a.progression)]
+		chordRoot := a.currentRoot() + chord.rootSemi + 24
+		if i%2 == 0 {
+			// Strong melodic positions land on chord tones so the lullaby
+			// actually outlines the harmony instead of floating over it.
+			notes[i] = nearestRelativeNote(target, chordRoot, chord.tones, 72, 88)
+			continue
 		}
-		for k > 88 {
-			k -= 12
+		notes[i] = nearestRelativeNote(target, root, majorScale, 72, 88)
+		if i > 0 && absInt(notes[i]-notes[i-1]) > 5 {
+			// Weak positions prefer stepwise rocking motion.
+			up := nearestRelativeNote(notes[i-1]+2, root, majorScale, 72, 88)
+			down := nearestRelativeNote(notes[i-1]-2, root, majorScale, 72, 88)
+			if absInt(up-target) <= absInt(down-target) {
+				notes[i] = up
+			} else {
+				notes[i] = down
+			}
 		}
-		notes[i] = k
 	}
 	return notes
 }
@@ -347,22 +366,23 @@ func (a *SF2Pentatonic) melodyNote(slot int) int {
 	return key
 }
 
-// padNote returns a soft chord-tone for the choir-aahs bed. Cycles through
-// the first 3 chords of the progression.
+func (a *SF2Pentatonic) currentBar() int {
+	if len(a.progression) == 0 || a.barSamples <= 0 {
+		return 0
+	}
+	return int((a.samplesElapsed / a.barSamples) % int64(len(a.progression)))
+}
+
+// padNote returns a soft chord-tone for the choir-aahs bed. It follows the
+// current bar's harmony rather than pulling a random chord from the form.
 func (a *SF2Pentatonic) padNote(voice int) int {
 	if len(a.progression) == 0 {
 		return 60
 	}
-	chord := a.progression[a.rng.Intn(len(a.progression))]
+	chord := a.progression[a.currentBar()]
 	idx := voice % len(chord.tones)
 	key := a.currentRoot() + chord.rootSemi + chord.tones[idx] + 12
-	for key < 60 {
-		key += 12
-	}
-	for key > 80 {
-		key -= 12
-	}
-	return key
+	return clampMidiToRange(key, 60, 80)
 }
 
 func (a *SF2Pentatonic) scheduleNextSection() {

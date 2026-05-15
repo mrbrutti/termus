@@ -78,7 +78,7 @@ func (a *SF2Drone) currentRoot() int { return a.rootMidi + a.keyOffset }
 
 func (a *SF2Drone) Seed(seedVal int64) {
 	a.rng = rand.New(rand.NewSource(seedVal)) //nolint:gosec
-	a.rootMidi = 30 + a.rng.Intn(7) // Bb1..E2 — very low pedal
+	a.rootMidi = 30 + a.rng.Intn(7)           // Bb1..E2 — very low pedal
 	a.keyOffset = 0
 	a.samplesElapsed = 0
 	a.currentChordIdx = 0
@@ -138,8 +138,9 @@ func (a *SF2Drone) Seed(seedVal int64) {
 		core.addTrack(SF2Track{
 			Channel: 0, Velocity: 52, Notes: []int{a.droneTone(voice, 0)},
 			PeriodSec: period, Phase01: a.rng.Float64(),
-			MutationRate: 0.20,
-			MutateOne:    func(_ int, _ int) int { return a.droneTone(voice, 0) },
+			MutationRate:   0.20,
+			MutateOne:      func(_ int, _ int) int { return a.droneTone(voice, 0) },
+			ResolveNote:    func(_ int, _ int) int { return a.droneTone(voice, 0) },
 			VelocityJitter: 8, TimingJitterSec: 0.15,
 		})
 	}
@@ -150,8 +151,9 @@ func (a *SF2Drone) Seed(seedVal int64) {
 		core.addTrack(SF2Track{
 			Channel: 1, Velocity: 46, Notes: []int{a.droneTone(voice, 12)},
 			PeriodSec: period, Phase01: a.rng.Float64(),
-			MutationRate: 0.20,
-			MutateOne:    func(_ int, _ int) int { return a.droneTone(voice, 12) },
+			MutationRate:   0.20,
+			MutateOne:      func(_ int, _ int) int { return a.droneTone(voice, 12) },
+			ResolveNote:    func(_ int, _ int) int { return a.droneTone(voice, 12) },
 			VelocityJitter: 6, TimingJitterSec: 0.18,
 		})
 	}
@@ -160,8 +162,9 @@ func (a *SF2Drone) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 2, Velocity: 44, Notes: []int{a.droneTone(1, 24)},
 		PeriodSec: 71.7, Phase01: a.rng.Float64(),
-		MutationRate: 0.30,
-		MutateOne:    func(_ int, _ int) int { return a.droneTone(1, 24) },
+		MutationRate:   0.30,
+		MutateOne:      func(_ int, _ int) int { return a.droneTone(1, 24) },
+		ResolveNote:    func(_ int, _ int) int { return a.droneTone(1, 24) },
 		VelocityJitter: 8, TimingJitterSec: 0.20,
 	})
 
@@ -170,8 +173,9 @@ func (a *SF2Drone) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 3, Velocity: 38, Notes: []int{a.droneTone(2, 36)},
 		PeriodSec: 91.1, Phase01: a.rng.Float64(),
-		MutationRate: 0.40,
-		MutateOne:    func(_ int, _ int) int { return a.droneTone(2, 36) },
+		MutationRate:   0.40,
+		MutateOne:      func(_ int, _ int) int { return a.droneTone(2, 36) },
+		ResolveNote:    func(_ int, _ int) int { return a.droneTone(2, 36) },
 		VelocityJitter: 10, TimingJitterSec: 0.25,
 	})
 
@@ -179,8 +183,9 @@ func (a *SF2Drone) Seed(seedVal int64) {
 	core.addTrack(SF2Track{
 		Channel: 4, Velocity: 56, Notes: []int{a.bassRoot()},
 		PeriodSec: 60.0, Phase01: 0,
-		MutationRate: 0.60,
-		MutateOne:    func(_ int, _ int) int { return a.bassRoot() },
+		MutationRate:   0.60,
+		MutateOne:      func(_ int, _ int) int { return a.bassRoot() },
+		ResolveNote:    func(_ int, _ int) int { return a.bassRoot() },
 		VelocityJitter: 4, TimingJitterSec: 0.05,
 	})
 
