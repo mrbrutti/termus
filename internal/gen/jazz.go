@@ -340,15 +340,15 @@ func (a *Jazz) Seed(seedVal int64) {
 	pianoAccentBeat4 := make([]int, numBars)
 	pianoAccentAnd4 := make([]int, numBars)
 	for i := 0; i < numBars; i++ {
-		pianoAccentAnd2[i] = a.compAccentNoteAt(i, a.accentAnd2, 9)
-		pianoAccentBeat4[i] = a.compAccentNoteAt(i, a.accentBeat4, 7)
-		pianoAccentAnd4[i] = a.compAccentNoteAt(i, a.accentAnd4, 5)
+		pianoAccentAnd2[i] = a.compAccentAnd2At(i)
+		pianoAccentBeat4[i] = a.compAccentBeat4At(i)
+		pianoAccentAnd4[i] = a.compAccentAnd4At(i)
 	}
 	core.addTrack(SF2Track{
 		Channel: 0, Velocity: 60, Notes: pianoAccentAnd2,
 		PeriodSec:              cycleSec,
 		Phase01:                0.417 / float64(numBars),
-		ResolveNote:            func(slot int, _ int) int { return a.compAccentNoteAt(slot, a.accentAnd2, 9) },
+		ResolveNote:            func(slot int, _ int) int { return a.compAccentAnd2At(slot) },
 		Gate:                   0.34,
 		ResolveTimingOffsetSec: cyclicTimingOffset(11),
 		VelocityJitter:         12, TimingJitterSec: 0.020,
@@ -357,7 +357,7 @@ func (a *Jazz) Seed(seedVal int64) {
 		Channel: 0, Velocity: 54, Notes: pianoAccentBeat4,
 		PeriodSec:              cycleSec,
 		Phase01:                0.75 / float64(numBars),
-		ResolveNote:            func(slot int, _ int) int { return a.compAccentNoteAt(slot, a.accentBeat4, 7) },
+		ResolveNote:            func(slot int, _ int) int { return a.compAccentBeat4At(slot) },
 		Gate:                   0.32,
 		ResolveTimingOffsetSec: cyclicTimingOffset(7),
 		VelocityJitter:         10, TimingJitterSec: 0.018,
@@ -366,7 +366,7 @@ func (a *Jazz) Seed(seedVal int64) {
 		Channel: 0, Velocity: 58, Notes: pianoAccentAnd4,
 		PeriodSec:              cycleSec,
 		Phase01:                0.917 / float64(numBars),
-		ResolveNote:            func(slot int, _ int) int { return a.compAccentNoteAt(slot, a.accentAnd4, 5) },
+		ResolveNote:            func(slot int, _ int) int { return a.compAccentAnd4At(slot) },
 		Gate:                   0.34,
 		ResolveTimingOffsetSec: cyclicTimingOffset(10),
 		VelocityJitter:         12, TimingJitterSec: 0.020,
@@ -586,6 +586,43 @@ func (a *Jazz) compAccentNoteAt(slot int, active []bool, interval int) int {
 		return -1
 	}
 	return a.compRootless(slot, interval)
+}
+
+func (a *Jazz) compAccentAnd2At(slot int) int {
+	if !a.allowCompDialogue(slot, false) {
+		return -1
+	}
+	return a.compAccentNoteAt(slot, a.accentAnd2, 9)
+}
+
+func (a *Jazz) compAccentBeat4At(slot int) int {
+	if !a.allowCompDialogue(slot, true) {
+		return -1
+	}
+	return a.compAccentNoteAt(slot, a.accentBeat4, 7)
+}
+
+func (a *Jazz) compAccentAnd4At(slot int) int {
+	if !a.allowCompDialogue(slot, true) {
+		return -1
+	}
+	return a.compAccentNoteAt(slot, a.accentAnd4, 5)
+}
+
+func (a *Jazz) allowCompDialogue(bar int, lateHalf bool) bool {
+	if a.section.LeadLevel == 0 || a.saxOn == nil || !*a.saxOn {
+		return true
+	}
+	front, back := a.saxActivityInBar(bar)
+	if lateHalf {
+		return !back
+	}
+	return !front
+}
+
+func (a *Jazz) saxActivityInBar(bar int) (front, back bool) {
+	base := bar * 2
+	return a.saxPlanCodeAt(base) != jazzPlanRest, a.saxPlanCodeAt(base+1) != jazzPlanRest
 }
 
 // saxNoteAt resolves one slot of the phrase plan. The plan includes explicit

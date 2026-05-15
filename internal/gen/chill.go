@@ -679,7 +679,7 @@ func (a *Chill) bassNoteAt(slot int) int {
 // of beat 2 — classic jazz/bossa comping placement.
 func (a *Chill) guitarNoteAt(slot int) int {
 	chordIdx := slot % len(a.progression)
-	return a.resolvePlanNote(slot, a.progression[chordIdx], a.guitarPlanCodeAt(slot), 12+a.section.RegisterLift, 52, 80)
+	return a.resolvePlanNote(slot, a.progression[chordIdx], a.guitarDialogueCodeAt(slot), 12+a.section.RegisterLift, 52, 80)
 }
 
 // saxNoteAt resolves one slot of the precomputed phrase. Negative slots are
@@ -693,7 +693,7 @@ func (a *Chill) saxNoteAt(slot int) int {
 // vibeNoteAt resolves the upper-voice motif that answers the Rhodes stabs.
 func (a *Chill) vibeNoteAt(slot int) int {
 	chordIdx := slot % len(a.progression)
-	return a.resolvePlanNote(slot, a.progression[chordIdx], a.vibePlanCodeAt(slot), 24+a.section.RegisterLift/2, 72, 94)
+	return a.resolvePlanNote(slot, a.progression[chordIdx], a.vibeDialogueCodeAt(slot), 24+a.section.RegisterLift/2, 72, 94)
 }
 
 func (a *Chill) makeVibePlan(numBars int) []int {
@@ -781,6 +781,38 @@ func (a *Chill) saxPlanCodeAt(slot int) int {
 	}
 	slot = ((slot % len(phrase)) + len(phrase)) % len(phrase)
 	return phrase[slot]
+}
+
+func (a *Chill) saxLeadActiveAt(slot int) bool {
+	if a.section.LeadLevel == 0 || a.saxOn == nil || !*a.saxOn {
+		return false
+	}
+	return a.saxPlanCodeAt(slot) != chillPlanRest
+}
+
+func (a *Chill) vibeDialogueCodeAt(slot int) int {
+	base := a.vibePlanCodeAt(slot)
+	if a.saxLeadActiveAt(slot) {
+		return chillPlanRest
+	}
+	if slot > 0 && a.saxLeadActiveAt(slot-1) && a.section.Kind == FormCadence {
+		return chillPlanEleventh
+	}
+	return base
+}
+
+func (a *Chill) guitarDialogueCodeAt(slot int) int {
+	base := a.guitarPlanCodeAt(slot)
+	if a.saxLeadActiveAt(slot) {
+		if a.section.Kind == FormCadence {
+			return chillPlanResolveThird
+		}
+		return chillPlanRest
+	}
+	if slot > 0 && a.saxLeadActiveAt(slot-1) {
+		return chillPlanNinth
+	}
+	return base
 }
 
 func (a *Chill) makeSaxMotifs() MotifMemory {
