@@ -59,10 +59,13 @@ type Model struct {
 	libraryIdx int
 
 	// Playlist auto-advance.
-	playlist     *gen.Playlist
-	playlistIdx  int       // index of currently-playing track
-	nextTrackAt  time.Time // when to advance to the next track
-	playlistFade int       // crossfade length in audio frames (44.1 kHz)
+	playlist        *gen.Playlist
+	playlistIdx     int // index of currently-playing track
+	trackStartedAt  time.Time
+	nextTrackAt     time.Time // when to advance to the next track
+	playlistFade    int       // crossfade length in audio frames (44.1 kHz)
+	startedAt       time.Time
+	recordStartedAt time.Time
 }
 
 // New constructs a Model. keyName is e.g. "Cmin".
@@ -82,6 +85,7 @@ func New(ring *scope.Ring, cmd audio.Commander, algo, keyName string, seed int64
 		themeIdx:   ui.DefaultThemeIdx,
 		kept:       recordsToBookmarks(savedSeeds),
 		savedSeeds: savedSeeds,
+		startedAt:  time.Now(),
 	}
 }
 
@@ -110,6 +114,7 @@ func (m Model) WithPlaylist(p *gen.Playlist, startIdx int, fadeFrames int) Model
 	m.playlistIdx = startIdx
 	m.playlistFade = fadeFrames
 	if p != nil && startIdx < len(p.Tracks) {
+		m.trackStartedAt = time.Now()
 		m.nextTrackAt = time.Now().Add(p.Tracks[startIdx].Duration)
 	}
 	return m
@@ -127,6 +132,7 @@ func (m *Model) advancePlaylist() {
 	m.cmd.SwapAlgorithmFade(algo, m.playlistFade)
 	m.algo = track.Spec.Display
 	m.seed = track.Seed
+	m.trackStartedAt = time.Now()
 	m.nextTrackAt = time.Now().Add(track.Duration)
 	m.flashStatus(fmt.Sprintf("▶ %d/%d %s",
 		m.playlistIdx+1, len(m.playlist.Tracks), track.Spec.Display), 3*time.Second)
@@ -405,9 +411,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.recording = false
 			} else if path != "" {
 				m.recording = true
+				m.recordStartedAt = time.Now()
 				m.flashStatus("rec → "+path, 3*time.Second)
 			} else {
 				m.recording = false
+				m.recordStartedAt = time.Time{}
 				m.flashStatus("rec stopped", 3*time.Second)
 			}
 		case actionTheme:
@@ -473,7 +481,7 @@ func (m Model) View() string {
 	if m.width < 40 || m.height < 10 {
 		return centerBox(m.width, m.height, "terminal too small — resize to ≥ 40 × 10")
 	}
-	chromeH := 2 // top + bottom bars
+	chromeH := 3 // top + now-playing + bottom bars
 	if m.debugVisible {
 		chromeH++
 	}
@@ -490,6 +498,7 @@ func (m Model) View() string {
 	})
 
 	top := topBar(m, innerW, theme)
+	playback := playbackBar(m, innerW, theme, samples)
 	bottom := bottomBar(m, innerW, theme)
 	body := scopeStr
 	if m.helpVisible {
@@ -499,9 +508,9 @@ func (m Model) View() string {
 	}
 	if m.debugVisible {
 		debug := debugBar(m, innerW, theme)
-		return lipgloss.JoinVertical(lipgloss.Left, top, debug, body, bottom)
+		return lipgloss.JoinVertical(lipgloss.Left, top, playback, debug, body, bottom)
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, top, body, bottom)
+	return lipgloss.JoinVertical(lipgloss.Left, top, playback, body, bottom)
 }
 
 func (m Model) activeTheme() ColorTheme {
@@ -605,6 +614,33 @@ func (m Model) seedSlotsLabel() string {
 	return out
 }
 
+func playbackBar(m Model, w int, theme ColorTheme, samples []float64) string {
+	leftParts := []string{formatElapsed("live", time.Since(m.startedAt))}
+	if m.playlist != nil && m.playlistIdx < len(m.playlist.Tracks) {
+		track := m.playlist.Tracks[m.playlistIdx]
+		leftParts = append(leftParts,
+			fmt.Sprintf("track %s/%s", shortDuration(time.Since(m.trackStartedAt)), shortDuration(track.Duration)),
+			fmt.Sprintf("next %s", shortDuration(time.Until(m.nextTrackAt))),
+			fmt.Sprintf("fade %s", shortDuration(time.Duration(m.playlistFade)*time.Second/44100)),
+		)
+		if len(m.playlist.Tracks) > 0 {
+			leftParts = append(leftParts, fmt.Sprintf("%d/%d", m.playlistIdx+1, len(m.playlist.Tracks)))
+		}
+	}
+	if m.recording && !m.recordStartedAt.IsZero() {
+		leftParts = append(leftParts, formatElapsed("rec", time.Since(m.recordStartedAt)))
+	}
+	leftText := trimToWidth(strings.Join(leftParts, " · "), maxInt(0, w-22))
+	meter, clipped := meterSummary(samples)
+	right := renderCompactMeter(theme, meter, clipped, 14)
+	left := lipgloss.NewStyle().Faint(true).Render(leftText)
+	pad := w - lipgloss.Width(left) - lipgloss.Width(right)
+	if pad < 1 {
+		pad = 1
+	}
+	return left + spaces(pad) + right
+}
+
 func debugBar(m Model, w int, theme ColorTheme) string {
 	status := gen.FormatDebugStatus(m.debug)
 	if status == "" {
@@ -621,6 +657,46 @@ func debugBar(m Model, w int, theme ColorTheme) string {
 		pad = 1
 	}
 	return left + spaces(pad) + right
+}
+
+func meterSummary(samples []float64) (float64, bool) {
+	peak := 0.0
+	for _, s := range samples {
+		if s < 0 {
+			s = -s
+		}
+		if s > peak {
+			peak = s
+		}
+	}
+	return peak, peak >= 0.985
+}
+
+func renderCompactMeter(theme ColorTheme, peak float64, clipped bool, width int) string {
+	if width < 4 {
+		width = 4
+	}
+	if peak < 0 {
+		peak = 0
+	}
+	if peak > 1 {
+		peak = 1
+	}
+	filled := int(peak * float64(width))
+	if peak > 0 && filled == 0 {
+		filled = 1
+	}
+	if filled > width {
+		filled = width
+	}
+	active := lipgloss.NewStyle().Foreground(theme.BarHi).Render(strings.Repeat("─", filled))
+	idle := lipgloss.NewStyle().Faint(true).Render(strings.Repeat("─", width-filled))
+	label := lipgloss.NewStyle().Foreground(theme.BarFg).Render("lvl")
+	clip := lipgloss.NewStyle().Faint(true).Render("ok")
+	if clipped {
+		clip = lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render("clip")
+	}
+	return label + " " + active + idle + " " + clip
 }
 
 func bottomBar(m Model, w int, theme ColorTheme) string {
@@ -809,6 +885,20 @@ func trimToWidth(text string, max int) string {
 		runes = runes[:limit]
 	}
 	return string(runes) + "..."
+}
+
+func formatElapsed(label string, d time.Duration) string {
+	return label + " " + shortDuration(d)
+}
+
+func shortDuration(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	total := int(d.Round(time.Second).Seconds())
+	mins := total / 60
+	secs := total % 60
+	return fmt.Sprintf("%02d:%02d", mins, secs)
 }
 
 func maxInt(a, b int) int {

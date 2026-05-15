@@ -5,8 +5,8 @@
 - [x] Improve alternate visualizers so they match the default scope's line-based design language.
 - [x] Add a `?` help overlay and reduce the always-visible footer chrome.
 - [x] Persist kept seeds to disk and add a browsable saved-seed library overlay.
-- [ ] Add a proper now-playing strip with elapsed time, playlist progress, crossfade countdown, and recording duration.
-- [ ] Add a compact audio meter and clip indicator.
+- [x] Add a proper now-playing strip with elapsed time, playlist progress, crossfade countdown, and recording duration.
+- [x] Add a compact audio meter and clip indicator.
 - [ ] Add a seed and track inspector overlay with algo, seed, A/B slots, kept count, chord, section, bar, and export actions.
 - [ ] Add an in-TUI export drawer for record, WAV, stems, and MIDI actions.
 - [ ] Improve narrow-terminal behavior with a simplified compact layout.
