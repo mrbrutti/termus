@@ -812,6 +812,7 @@ func (a *Chill) currentBar() int {
 
 func (a *Chill) applyArrangement() {
 	a.section = a.form.SectionAt(a.samplesElapsed)
+	mix := SectionMixProfileFor(a.section)
 	if a.saxOn != nil {
 		*a.saxOn = a.section.LeadLevel > 0 && a.section.Kind != FormOutro
 	}
@@ -825,24 +826,18 @@ func (a *Chill) applyArrangement() {
 		return
 	}
 	core := a.core
-	switch a.section.Kind {
-	case FormIntro:
-		core.setReverbSend(3, 88)
-		core.setChannelCutoff(0, 28)
-		core.setChannelExpression(0, 92)
-	case FormB:
-		core.setReverbSend(3, 104)
-		core.setChannelCutoff(0, 40)
-		core.setChannelExpression(0, 112)
-	case FormCadence:
-		core.setReverbSend(3, 110)
-		core.setChannelCutoff(0, 44)
-		core.setChannelExpression(0, 118)
-	default:
-		core.setReverbSend(3, 96)
-		core.setChannelCutoff(0, 32)
-		core.setChannelExpression(0, 104)
-	}
+	core.setReverbSend(3, SectionCC(96, mix.ReverbDelta))
+	core.setChannelCutoff(0, SectionCC(32, mix.BrightnessDelta))
+	core.setChannelCutoff(2, SectionCC(56, mix.BrightnessDelta/2))
+	core.setChannelCutoff(4, SectionCC(42, mix.BrightnessDelta/2))
+	core.setChannelExpression(0, SectionCC(104, mix.ExpressionDelta))
+	core.setChannelExpression(2, SectionCC(100, mix.ExpressionDelta/2))
+	core.setChannelExpression(3, SectionCC(108, mix.ExpressionDelta))
+	core.setChannelExpression(4, SectionCC(102, mix.ExpressionDelta/2))
+}
+
+func (a *Chill) SectionGain() float64 {
+	return SectionMixProfileFor(a.section).Gain
 }
 
 func (a *Chill) ghostSnareNoteAt(slot int) int {

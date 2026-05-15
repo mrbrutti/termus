@@ -61,7 +61,8 @@ func NewFormPlan(rng *rand.Rand, barSamples int64, profile string) FormPlan {
 			{Kind: FormA, Bars: 8, LeadLevel: 1, TextureLevel: 1, RhythmLevel: 0, CadenceStrength: 0},
 			{Kind: FormAprime, Bars: 8, LeadLevel: 2, TextureLevel: 2, RhythmLevel: 0, CadenceStrength: 1, RegisterLift: 2},
 			{Kind: FormB, Bars: 8, LeadLevel: 2, TextureLevel: 2, RhythmLevel: 0, CadenceStrength: 1, RegisterLift: 3},
-			{Kind: FormCadence, Bars: 8, LeadLevel: 1, TextureLevel: 1, RhythmLevel: 0, CadenceStrength: 2},
+			{Kind: FormCadence, Bars: 4, LeadLevel: 2, TextureLevel: 2, RhythmLevel: 0, CadenceStrength: 2, RegisterLift: 2},
+			{Kind: FormOutro, Bars: 4, LeadLevel: 0, TextureLevel: 1, RhythmLevel: 0, CadenceStrength: 2},
 		}
 	default: // lofi / chill
 		sections = []FormSection{

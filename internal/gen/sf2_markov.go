@@ -421,23 +421,25 @@ func (a *SF2Markov) Next(left, right []float64) {
 
 func (a *SF2Markov) applyArrangement() {
 	a.section = a.form.SectionAt(a.samplesElapsed)
+	mix := SectionMixProfileFor(a.section)
 	if a.oboeOn != nil {
-		*a.oboeOn = a.section.TextureLevel > 1 || a.section.Kind == FormCadence
+		*a.oboeOn = (a.section.TextureLevel > 1 || a.section.Kind == FormCadence) &&
+			a.section.Kind != FormOutro
 	}
 	if a.core == nil {
 		return
 	}
-	switch a.section.Kind {
-	case FormB:
-		a.core.setReverbSend(4, 96)
-		a.core.setChannelExpression(3, 112)
-	case FormCadence:
-		a.core.setReverbSend(4, 104)
-		a.core.setChannelExpression(3, 118)
-	default:
-		a.core.setReverbSend(4, 88)
-		a.core.setChannelExpression(3, 102)
-	}
+	a.core.setReverbSend(4, SectionCC(88, mix.ReverbDelta))
+	a.core.setChannelCutoff(0, SectionCC(110, mix.BrightnessDelta))
+	a.core.setChannelCutoff(3, SectionCC(80, mix.BrightnessDelta/2))
+	a.core.setChannelCutoff(4, SectionCC(100, mix.BrightnessDelta))
+	a.core.setChannelExpression(0, SectionCC(112, mix.ExpressionDelta))
+	a.core.setChannelExpression(3, SectionCC(102, mix.ExpressionDelta/2))
+	a.core.setChannelExpression(4, SectionCC(106, mix.ExpressionDelta))
+}
+
+func (a *SF2Markov) SectionGain() float64 {
+	return SectionMixProfileFor(a.section).Gain
 }
 
 func (a *SF2Markov) ListeningMarkers() []ListeningMarker {

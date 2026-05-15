@@ -62,6 +62,13 @@ func (c *constantAlgo) Next(l, r []float64) {
 	}
 }
 
+type gainedAlgo struct {
+	constantAlgo
+	sectionGain float64
+}
+
+func (g *gainedAlgo) SectionGain() float64 { return g.sectionGain }
+
 func TestRootCrossfadeSwap(t *testing.T) {
 	ring := scope.NewRing(2048)
 	old := &constantAlgo{v: 1.0, n: "old"}
@@ -130,5 +137,21 @@ func TestToggleRecordFailsBeforeAudioStarts(t *testing.T) {
 
 	if _, err := root.ToggleRecord(); err == nil {
 		t.Fatal("expected ToggleRecord to fail before Stream starts")
+	}
+}
+
+func TestRootAppliesEffectiveOutputGain(t *testing.T) {
+	ring := scope.NewRing(64)
+	root := NewRoot(&gainedAlgo{
+		constantAlgo: constantAlgo{v: 1.0, n: "glass-fm"},
+		sectionGain:  0.8,
+	}, ring)
+	root.SetVolume(100)
+
+	frames := make([][2]float64, 16)
+	root.Stream(frames)
+	want := 0.55 * 0.8
+	if math.Abs(frames[0][0]-want) > 1e-6 {
+		t.Fatalf("frame 0 = %g, want %g", frames[0][0], want)
 	}
 }

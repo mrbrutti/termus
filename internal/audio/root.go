@@ -192,7 +192,6 @@ func (r *Root) Stream(samples [][2]float64) (n int, ok bool) {
 // across the join. Walks the buffer in segments that share a single
 // fade phase (out, in, or none).
 func (r *Root) renderWithFades(samples [][2]float64) {
-	masterGain := float64(r.volume.Load()) / 100.0
 	n := len(samples)
 
 	for i := 0; i < n; {
@@ -206,6 +205,7 @@ func (r *Root) renderWithFades(samples [][2]float64) {
 		}
 
 		// Render this segment with the active algorithm.
+		masterGain := float64(r.volume.Load()) / 100.0 * gen.EffectiveOutputGain(r.algo)
 		r.algo.Next(r.left[i:i+segN], r.right[i:i+segN])
 
 		// Apply master gain modulated by fade envelope (if any).

@@ -26,3 +26,11 @@ func TestSectionAtAdvancesThroughPlan(t *testing.T) {
 		t.Fatalf("expected section to advance after intro bars")
 	}
 }
+
+func TestClassicalFormEndsWithOutro(t *testing.T) {
+	form := NewFormPlan(nil, 100, "classical")
+	lastBar := int64((form.TotalBars() - 1) * 100)
+	if got := form.SectionAt(lastBar).Kind; got != FormOutro {
+		t.Fatalf("last section = %s, want %s", got, FormOutro)
+	}
+}

@@ -717,30 +717,23 @@ func (a *Jazz) Next(left, right []float64) {
 
 func (a *Jazz) applyArrangement() {
 	a.section = a.form.SectionAt(a.samplesElapsed)
+	mix := SectionMixProfileFor(a.section)
 	if a.saxOn != nil {
 		*a.saxOn = a.section.LeadLevel > 0 && a.section.Kind != FormOutro
 	}
 	if a.core == nil {
 		return
 	}
-	switch a.section.Kind {
-	case FormIntro:
-		a.core.setReverbSend(2, 74)
-		a.core.setChannelCutoff(0, 90)
-		a.core.setChannelExpression(0, 96)
-	case FormB:
-		a.core.setReverbSend(2, 94)
-		a.core.setChannelCutoff(0, 102)
-		a.core.setChannelExpression(0, 114)
-	case FormCadence:
-		a.core.setReverbSend(2, 98)
-		a.core.setChannelCutoff(0, 108)
-		a.core.setChannelExpression(0, 120)
-	default:
-		a.core.setReverbSend(2, 86)
-		a.core.setChannelCutoff(0, 96)
-		a.core.setChannelExpression(0, 108)
-	}
+	a.core.setReverbSend(2, SectionCC(86, mix.ReverbDelta))
+	a.core.setChannelCutoff(0, SectionCC(96, mix.BrightnessDelta))
+	a.core.setChannelCutoff(2, SectionCC(110, mix.BrightnessDelta/2))
+	a.core.setChannelExpression(0, SectionCC(108, mix.ExpressionDelta))
+	a.core.setChannelExpression(1, SectionCC(104, mix.ExpressionDelta/2))
+	a.core.setChannelExpression(2, SectionCC(110, mix.ExpressionDelta))
+}
+
+func (a *Jazz) SectionGain() float64 {
+	return SectionMixProfileFor(a.section).Gain
 }
 
 func (a *Jazz) crashNoteAt(slot int) int {
