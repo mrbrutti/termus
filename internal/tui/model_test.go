@@ -160,6 +160,23 @@ func TestControlsPanelShowsTabbedOverlay(t *testing.T) {
 	}
 }
 
+func TestControlsPanelShowsAudioRecoveryActions(t *testing.T) {
+	m := Model{
+		controlsVisible: true,
+		controlTab:      controlTabAudio,
+		algo:            "Ambient",
+		seed:            42,
+		volume:          70,
+		themes:          []ColorTheme{DefaultTheme()},
+	}
+	panel := controlsPanel(m, 100, 22, DefaultTheme())
+	for _, want := range []string{"CONTROL CENTER", "retry live audio", "render-only fallback", "debug inspector"} {
+		if !strings.Contains(panel, want) {
+			t.Fatalf("audio controls panel missing %q:\n%s", want, panel)
+		}
+	}
+}
+
 func TestSplashPanelShowsOnboarding(t *testing.T) {
 	m := Model{
 		splashVisible: true,

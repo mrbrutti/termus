@@ -17,6 +17,11 @@ import (
 // over the loaded SoundFont (or nil) and any per-build wiring like IR setup.
 type BuildAlgoFn func(spec gen.AlgoSpec, seed int64) gen.Algorithm
 
+type AudioControl struct {
+	Retry      func()
+	RenderOnly func()
+}
+
 type seedBookmark struct {
 	Spec gen.AlgoSpec
 	Seed int64
@@ -56,6 +61,7 @@ type Model struct {
 	ui           AdaptiveUI
 	musicProfile *gen.ControlProfile
 	morphMode    int
+	audioControl *AudioControl
 
 	// Algorithm switching ([n]/[p]).
 	genres          []gen.AlgoSpec // ordered list of switchable algorithms
@@ -141,6 +147,11 @@ func (m Model) WithExportController(exporter *ExportController) Model {
 
 func (m Model) WithControlProfile(profile *gen.ControlProfile) Model {
 	m.musicProfile = profile
+	return m
+}
+
+func (m Model) WithAudioControl(control *AudioControl) Model {
+	m.audioControl = control
 	return m
 }
 
@@ -426,6 +437,24 @@ func (m *Model) refreshCurrentTake(label string) {
 	m.cmd.SwapAlgorithmFade(algo, fade)
 	m.algo = spec.Display
 	m.flashStatus(label, 2*time.Second)
+}
+
+func (m *Model) retryAudio() {
+	if m.audioControl == nil || m.audioControl.Retry == nil {
+		m.flashStatus("audio retry unavailable", 2*time.Second)
+		return
+	}
+	m.audioControl.Retry()
+	m.flashStatus("audio retrying...", 2*time.Second)
+}
+
+func (m *Model) fallbackRenderOnly() {
+	if m.audioControl == nil || m.audioControl.RenderOnly == nil {
+		m.flashStatus("render-only fallback unavailable", 2*time.Second)
+		return
+	}
+	m.audioControl.RenderOnly()
+	m.flashStatus("audio: render-only", 2*time.Second)
 }
 
 func (m Model) currentExportTarget() (gen.AlgoSpec, int64, bool) {

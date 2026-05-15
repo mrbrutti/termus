@@ -342,6 +342,24 @@ func (m Model) controlItems() []controlItem {
 				Disabled: true,
 			},
 			{
+				Title: "retry live audio",
+				Value: "new startup attempt",
+				Hint:  "enter retry",
+				Activate: func(m *Model) tea.Cmd {
+					m.retryAudio()
+					return nil
+				},
+			},
+			{
+				Title: "render-only fallback",
+				Value: "disable live audio expectation",
+				Hint:  "enter fallback",
+				Activate: func(m *Model) tea.Cmd {
+					m.fallbackRenderOnly()
+					return nil
+				},
+			},
+			{
 				Title: "export drawer",
 				Value: "wav / midi / stems",
 				Hint:  "enter open",

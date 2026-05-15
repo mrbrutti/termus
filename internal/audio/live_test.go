@@ -41,10 +41,12 @@ func TestLiveBackendReportsHungThenReady(t *testing.T) {
 	timeout := time.After(200 * time.Millisecond)
 	for {
 		select {
-		case state, ok := <-backend.States():
-			if !ok {
+		case state := <-backend.States():
+			states = append(states, state.Kind)
+			if len(states) == 3 {
+				backend.Close()
 				if !started.Load() {
-					t.Fatal("expected startFn to run before states closed")
+					t.Fatal("expected startFn to run before ready state")
 				}
 				want := []BackendStateKind{
 					BackendStateStarting,
@@ -56,7 +58,6 @@ func TestLiveBackendReportsHungThenReady(t *testing.T) {
 				}
 				return
 			}
-			states = append(states, state.Kind)
 		case <-timeout:
 			t.Fatal("timed out waiting for backend states")
 		}
@@ -71,11 +72,67 @@ func TestLiveBackendCloseOnlyRunsAfterReady(t *testing.T) {
 		func() { closes.Add(1) },
 		0,
 	)
-	for range backend.States() {
+	timeout := time.After(100 * time.Millisecond)
+	for {
+		select {
+		case state := <-backend.States():
+			if state.Kind == BackendStateReady {
+				goto ready
+			}
+		case <-timeout:
+			t.Fatal("timed out waiting for ready state")
+		}
 	}
+ready:
 	backend.Close()
 	backend.Close()
 	if closes.Load() != 1 {
 		t.Fatalf("close count = %d, want 1", closes.Load())
 	}
+}
+
+func TestLiveBackendRetryStartsFreshAttempt(t *testing.T) {
+	var attempts atomic.Int32
+	backend := startLiveBackend(
+		func() error {
+			if attempts.Add(1) == 1 {
+				return errors.New("no device")
+			}
+			return nil
+		},
+		func() {},
+		nil,
+		0,
+	)
+	states := []BackendStateKind{(<-backend.States()).Kind, (<-backend.States()).Kind}
+	backend.Retry()
+	states = append(states, (<-backend.States()).Kind, (<-backend.States()).Kind)
+	backend.Close()
+	want := []BackendStateKind{
+		BackendStateStarting,
+		BackendStateNoDefaultDevice,
+		BackendStateStarting,
+		BackendStateReady,
+	}
+	if !slices.Equal(states, want) {
+		t.Fatalf("states = %v, want %v", states, want)
+	}
+}
+
+func TestLiveBackendCanEnterRenderOnly(t *testing.T) {
+	backend := startLiveBackend(
+		func() error {
+			time.Sleep(20 * time.Millisecond)
+			return nil
+		},
+		func() {},
+		nil,
+		0,
+	)
+	<-backend.States() // initial starting
+	backend.SetRenderOnly()
+	if got := (<-backend.States()).Kind; got != BackendStateRenderOnly {
+		t.Fatalf("render-only state = %q, want %q", got, BackendStateRenderOnly)
+	}
+	backend.Close()
 }

@@ -271,6 +271,10 @@ func main() {
 	sr := beep.SampleRate(44100)
 	live := audio.StartLive(root, sr, sr.N(time.Second/20), 3*time.Second)
 	defer live.Close()
+	model = model.WithAudioControl(&tui.AudioControl{
+		Retry:      live.Retry,
+		RenderOnly: live.SetRenderOnly,
+	})
 
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	go func() {

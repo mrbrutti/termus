@@ -2,6 +2,7 @@ package audio
 
 import (
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -70,9 +71,15 @@ func ClassifyInitError(err error) BackendStateKind {
 
 // LiveBackend reports live-speaker startup progress without blocking the UI.
 type LiveBackend struct {
-	states  chan BackendState
-	ready   atomic.Bool
-	closeFn func()
+	states    chan BackendState
+	ready     atomic.Bool
+	closed    atomic.Bool
+	attemptID atomic.Uint64
+	closeFn   func()
+	initFn    func() error
+	startFn   func()
+	timeout   time.Duration
+	closeOnce sync.Once
 }
 
 // StartLive starts the speaker in the background and reports state changes on
@@ -95,36 +102,49 @@ func StartLive(root beep.Streamer, sr beep.SampleRate, bufferSize int, timeout t
 
 func startLiveBackend(initFn func() error, startFn func(), closeFn func(), timeout time.Duration) *LiveBackend {
 	b := &LiveBackend{
-		states:  make(chan BackendState, 8),
+		states:  make(chan BackendState, 16),
 		closeFn: closeFn,
+		initFn:  initFn,
+		startFn: startFn,
+		timeout: timeout,
 	}
-	b.emit(BackendState{Kind: BackendStateStarting})
-
-	done := make(chan error, 1)
-	go func() {
-		err := initFn()
-		if err == nil {
-			startFn()
-			b.ready.Store(true)
-		}
-		done <- err
-	}()
-	go b.watch(done, timeout)
-
+	b.startAttempt()
 	return b
 }
 
 // States returns the startup-state stream.
 func (b *LiveBackend) States() <-chan BackendState { return b.states }
 
+// Retry starts a fresh backend initialization attempt and emits a new
+// "starting" state. Late results from previous hung attempts are ignored.
+func (b *LiveBackend) Retry() {
+	if b.closed.Load() {
+		return
+	}
+	b.startAttempt()
+}
+
+// SetRenderOnly forces a user-facing render-only state without attempting
+// live audio startup.
+func (b *LiveBackend) SetRenderOnly() {
+	if b.closed.Load() {
+		return
+	}
+	b.ready.Store(false)
+	b.emit(BackendState{Kind: BackendStateRenderOnly})
+}
+
 // Close stops live playback if it was successfully started.
 func (b *LiveBackend) Close() {
+	b.closed.Store(true)
 	if !b.ready.Swap(false) {
+		b.closeOnce.Do(func() { close(b.states) })
 		return
 	}
 	if b.closeFn != nil {
 		b.closeFn()
 	}
+	b.closeOnce.Do(func() { close(b.states) })
 }
 
 func (b *LiveBackend) emit(state BackendState) {
@@ -134,7 +154,29 @@ func (b *LiveBackend) emit(state BackendState) {
 	}
 }
 
-func (b *LiveBackend) watch(done <-chan error, timeout time.Duration) {
+func (b *LiveBackend) startAttempt() {
+	if b.initFn == nil || b.startFn == nil {
+		return
+	}
+	id := b.attemptID.Add(1)
+	b.ready.Store(false)
+	b.emit(BackendState{Kind: BackendStateStarting})
+	done := make(chan error, 1)
+	go func(attempt uint64) {
+		err := b.initFn()
+		if b.closed.Load() || b.attemptID.Load() != attempt {
+			return
+		}
+		if err == nil {
+			b.startFn()
+			b.ready.Store(true)
+		}
+		done <- err
+	}(id)
+	go b.watchAttempt(id, done, b.timeout)
+}
+
+func (b *LiveBackend) watchAttempt(id uint64, done <-chan error, timeout time.Duration) {
 	timerC := (<-chan time.Time)(nil)
 	if timeout > 0 {
 		timer := time.NewTimer(timeout)
@@ -145,6 +187,9 @@ func (b *LiveBackend) watch(done <-chan error, timeout time.Duration) {
 	for {
 		select {
 		case err := <-done:
+			if b.closed.Load() || b.attemptID.Load() != id {
+				return
+			}
 			if err != nil {
 				b.emit(BackendState{
 					Kind:   ClassifyInitError(err),
@@ -153,9 +198,11 @@ func (b *LiveBackend) watch(done <-chan error, timeout time.Duration) {
 			} else {
 				b.emit(BackendState{Kind: BackendStateReady})
 			}
-			close(b.states)
 			return
 		case <-timerC:
+			if b.closed.Load() || b.attemptID.Load() != id {
+				return
+			}
 			b.emit(BackendState{Kind: BackendStateHung})
 			timerC = nil
 		}
