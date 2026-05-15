@@ -26,11 +26,17 @@ type Root struct {
 	paused atomic.Bool
 
 	// command channels for non-hot-path events
-	recCmd     chan recordCmd
-	algoSwap   chan gen.Algorithm // UI thread pushes; audio thread picks up on next Stream call
+	recCmd   chan recordCmd
+	algoSwap chan swapReq // UI thread pushes; audio thread picks up at top of next Stream call
 
 	// audio-thread-owned state (do not touch from UI)
 	wav *WAVWriter
+
+	// fade state during a crossfade swap (audio thread only)
+	fadeOutLeft int           // frames remaining of fade-out (algo == old)
+	fadeInLeft  int           // frames remaining of fade-in  (algo == new)
+	fadeTotal   int           // total frames per half (for ratio math)
+	pendingAlgo gen.Algorithm // algorithm waiting to be swapped in at fade midpoint
 
 	// internal scratch buffers
 	left, right []float64
@@ -49,24 +55,52 @@ type recordReply struct {
 	err  error
 }
 
+// swapReq is one queued algorithm swap. fadeFrames is the per-half fade
+// length: the swap fades out for fadeFrames, replaces the algorithm, then
+// fades in for fadeFrames. Zero means an immediate swap with no fade.
+type swapReq struct {
+	algo       gen.Algorithm
+	fadeFrames int
+}
+
+// Default fade lengths used by the public swap methods. The audio thread runs
+// at 44.1 kHz, so 8820 frames ≈ 200 ms and 88200 frames ≈ 2 s.
+const (
+	defaultSwapFade      = 8820  // ~200 ms — keyboard cycling
+	defaultPlaylistFade  = 88200 // ~2 s — playlist transitions
+)
+
 // NewRoot constructs a Root for the given algorithm and scope sink.
 func NewRoot(algo gen.Algorithm, ring *scope.Ring) *Root {
 	r := &Root{
 		algo:     algo,
 		scope:    ring,
 		recCmd:   make(chan recordCmd, 4),
-		algoSwap: make(chan gen.Algorithm, 4),
+		algoSwap: make(chan swapReq, 4),
 	}
 	r.volume.Store(70)
 	return r
 }
 
-// SwapAlgorithm hot-swaps the running algorithm. Called from UI thread; the
-// audio thread picks up the new algorithm at the top of the next Stream call.
+// SwapAlgorithm hot-swaps the running algorithm with a short (~200 ms)
+// fade-out / fade-in to avoid clicks when called from keyboard cycling.
 // Non-blocking: drops the swap if the channel is full (UI mash protection).
 func (r *Root) SwapAlgorithm(algo gen.Algorithm) {
+	r.queueSwap(swapReq{algo: algo, fadeFrames: defaultSwapFade})
+}
+
+// SwapAlgorithmFade is like SwapAlgorithm but with a caller-specified fade
+// length. Used for playlist transitions, which want a longer (~2 s) crossfade.
+func (r *Root) SwapAlgorithmFade(algo gen.Algorithm, fadeFrames int) {
+	if fadeFrames < 0 {
+		fadeFrames = 0
+	}
+	r.queueSwap(swapReq{algo: algo, fadeFrames: fadeFrames})
+}
+
+func (r *Root) queueSwap(req swapReq) {
 	select {
-	case r.algoSwap <- algo:
+	case r.algoSwap <- req:
 	default:
 	}
 }
@@ -126,12 +160,7 @@ func (r *Root) Stream(samples [][2]float64) (n int, ok bool) {
 			samples[i][1] = 0
 		}
 	} else {
-		r.algo.Next(r.left, r.right)
-		gain := float64(r.volume.Load()) / 100.0
-		for i := range samples {
-			samples[i][0] = r.left[i] * gain
-			samples[i][1] = r.right[i] * gain
-		}
+		r.renderWithFades(samples)
 	}
 
 	// Scope tap: mix L+R from the final output to mono and push.
@@ -153,6 +182,62 @@ func (r *Root) Stream(samples [][2]float64) (n int, ok bool) {
 	return n, true
 }
 
+// renderWithFades fills `samples` with audio from r.algo, splitting the
+// buffer at any swap boundary so fade-out/fade-in envelopes can be applied
+// across the join. Walks the buffer in segments that share a single
+// fade phase (out, in, or none).
+func (r *Root) renderWithFades(samples [][2]float64) {
+	masterGain := float64(r.volume.Load()) / 100.0
+	n := len(samples)
+
+	for i := 0; i < n; {
+		// How many samples fit before the next fade-phase boundary?
+		segN := n - i
+		switch {
+		case r.fadeOutLeft > 0 && r.fadeOutLeft < segN:
+			segN = r.fadeOutLeft
+		case r.fadeOutLeft == 0 && r.fadeInLeft > 0 && r.fadeInLeft < segN:
+			segN = r.fadeInLeft
+		}
+
+		// Render this segment with the active algorithm.
+		r.algo.Next(r.left[i:i+segN], r.right[i:i+segN])
+
+		// Apply master gain modulated by fade envelope (if any).
+		switch {
+		case r.fadeOutLeft > 0:
+			// gain at segment offset j = (fadeOutLeft - j) / fadeTotal
+			for j := 0; j < segN; j++ {
+				g := masterGain * float64(r.fadeOutLeft-j) / float64(r.fadeTotal)
+				samples[i+j][0] = r.left[i+j] * g
+				samples[i+j][1] = r.right[i+j] * g
+			}
+			r.fadeOutLeft -= segN
+			if r.fadeOutLeft == 0 {
+				// Crossover: swap to pending algo, start fade-in.
+				r.algo = r.pendingAlgo
+				r.pendingAlgo = nil
+				r.fadeInLeft = r.fadeTotal
+			}
+		case r.fadeInLeft > 0:
+			// gain at segment offset j = 1 - (fadeInLeft - j) / fadeTotal
+			for j := 0; j < segN; j++ {
+				g := masterGain * (1.0 - float64(r.fadeInLeft-j)/float64(r.fadeTotal))
+				samples[i+j][0] = r.left[i+j] * g
+				samples[i+j][1] = r.right[i+j] * g
+			}
+			r.fadeInLeft -= segN
+		default:
+			for j := 0; j < segN; j++ {
+				samples[i+j][0] = r.left[i+j] * masterGain
+				samples[i+j][1] = r.right[i+j] * masterGain
+			}
+		}
+
+		i += segN
+	}
+}
+
 // Err implements beep.Streamer.
 func (r *Root) Err() error { return nil }
 
@@ -160,8 +245,20 @@ func (r *Root) Err() error { return nil }
 func (r *Root) handleCommands() {
 	for {
 		select {
-		case newAlgo := <-r.algoSwap:
-			r.algo = newAlgo
+		case req := <-r.algoSwap:
+			// Reject the swap if a fade-in is already in progress — wait for
+			// it to finish before queueing the next one (it'll just be lost).
+			// Fade-out is fine to override (pendingAlgo just changes).
+			if r.fadeInLeft > 0 {
+				continue
+			}
+			if req.fadeFrames <= 0 {
+				r.algo = req.algo
+				continue
+			}
+			r.fadeTotal = req.fadeFrames
+			r.fadeOutLeft = req.fadeFrames
+			r.pendingAlgo = req.algo
 		case cmd := <-r.recCmd:
 			if cmd.start {
 				if r.wav != nil {

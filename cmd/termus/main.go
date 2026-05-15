@@ -31,6 +31,12 @@ func main() {
 		"SoundFont preset: 'general' (32 MB GeneralUser-GS, balanced) | 'sgm' (325 MB, much better piano/guitar/bass)")
 	irPath := flag.String("ir", "", "convolution IR: WAV file path, or preset name: room | hall | cathedral | plate")
 	irWet := flag.Float64("ir-wet", 0.40, "convolution wet mix 0..1 when --ir is provided")
+	playlistMode := flag.String("playlist", "",
+		"playlist mode: 'same' (multiple seeds of --algo) | 'mixed' (random genres). "+
+			"Default empty = single track.")
+	playlistTracks := flag.Int("playlist-tracks", 6, "number of tracks in the playlist")
+	playlistDur := flag.Duration("playlist-duration", 5*time.Minute,
+		"how long each playlist track plays before the crossfade")
 	flag.Parse()
 
 	if *initialVol < 0 || *initialVol > 100 {
@@ -134,14 +140,57 @@ func main() {
 		return a
 	}
 
-	// Launch TUI.
 	model := tui.New(ring, root, algo.Name(), "Cmin", *seed, *initialVol).
 		WithSwitcher(genres, startIdx, buildFn)
+
+	// Optional playlist. When set, the TUI auto-advances tracks with a
+	// crossfade. The first track is whichever genre is currently playing —
+	// we leave the speaker alone and just arm the timer for the next swap.
+	if *playlistMode != "" {
+		pl, err := buildPlaylist(*playlistMode, spec, genres, *playlistTracks, *seed, *playlistDur)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "playlist:", err)
+			os.Exit(2)
+		}
+		// 2s crossfade at 44.1 kHz between tracks.
+		model = model.WithPlaylist(pl, 0, 88200)
+		fmt.Fprintf(os.Stderr, "playlist %q · %d tracks · %s each\n",
+			pl.Name, len(pl.Tracks), *playlistDur)
+	}
+
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "tui error:", err)
 		os.Exit(1)
 	}
+}
+
+// buildPlaylist constructs the requested playlist. mode is "same" or "mixed".
+// In "same" mode, all tracks use the given spec with different seeds. In
+// "mixed" mode, tracks are randomly drawn from the available genre list.
+// The first track keeps the currently-playing seed/spec so playback doesn't
+// jolt at startup.
+func buildPlaylist(mode string, currentSpec gen.AlgoSpec, available []gen.AlgoSpec,
+	count int, baseSeed int64, dur time.Duration) (*gen.Playlist, error) {
+	if count < 1 {
+		return nil, fmt.Errorf("--playlist-tracks must be >= 1, got %d", count)
+	}
+	var pl gen.Playlist
+	switch mode {
+	case "same":
+		pl = gen.SameGenrePlaylist(currentSpec, count, baseSeed, dur)
+	case "mixed":
+		if len(available) == 0 {
+			return nil, fmt.Errorf("no algorithms available for a mixed playlist")
+		}
+		pl = gen.MixedPlaylist(available, count, baseSeed, dur)
+	default:
+		return nil, fmt.Errorf("unknown --playlist mode %q (want 'same' or 'mixed')", mode)
+	}
+	// Pin track 0 to the currently-playing spec + seed so the initial swap
+	// happens at the *first* duration boundary, not immediately at startup.
+	pl.Tracks[0] = gen.Track{Spec: currentSpec, Seed: baseSeed, Duration: dur}
+	return &pl, nil
 }
 
 // buildGenreList returns the ordered list of algorithms the TUI can cycle

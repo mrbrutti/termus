@@ -11,7 +11,11 @@ type Commander interface {
 	// ToggleRecord starts or stops recording. When starting, returns the
 	// output path. When stopping (or on failure), path is "".
 	ToggleRecord() (path string, err error)
-	// SwapAlgorithm hot-swaps the running algorithm. Picked up by the audio
-	// thread at the start of the next Stream call.
+	// SwapAlgorithm hot-swaps the running algorithm with a short (~200 ms)
+	// fade-out/fade-in. Picked up by the audio thread at the start of the
+	// next Stream call.
 	SwapAlgorithm(algo gen.Algorithm)
+	// SwapAlgorithmFade is like SwapAlgorithm but with a caller-controlled
+	// fade length in frames (44.1 kHz). Used for playlist crossfades.
+	SwapAlgorithmFade(algo gen.Algorithm, fadeFrames int)
 }

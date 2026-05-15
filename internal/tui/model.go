@@ -38,6 +38,12 @@ type Model struct {
 	genres   []gen.AlgoSpec // ordered list of switchable algorithms
 	genreIdx int            // current index into genres
 	buildFn  BuildAlgoFn    // closure used to construct a new algorithm
+
+	// Playlist auto-advance.
+	playlist     *gen.Playlist
+	playlistIdx  int       // index of currently-playing track
+	nextTrackAt  time.Time // when to advance to the next track
+	playlistFade int       // crossfade length in audio frames (44.1 kHz)
 }
 
 // New constructs a Model. keyName is e.g. "Cmin".
@@ -60,6 +66,47 @@ func (m Model) WithSwitcher(genres []gen.AlgoSpec, startIdx int, buildFn BuildAl
 	m.genreIdx = startIdx
 	m.buildFn = buildFn
 	return m
+}
+
+// WithPlaylist enables playlist auto-advance. The model walks through the
+// playlist's tracks, swapping the algorithm at each track's Duration boundary
+// with a crossfade of fadeFrames samples. buildFn must be set via
+// WithSwitcher first so the model knows how to construct algorithms.
+func (m Model) WithPlaylist(p *gen.Playlist, startIdx int, fadeFrames int) Model {
+	m.playlist = p
+	m.playlistIdx = startIdx
+	m.playlistFade = fadeFrames
+	if p != nil && startIdx < len(p.Tracks) {
+		m.nextTrackAt = time.Now().Add(p.Tracks[startIdx].Duration)
+	}
+	return m
+}
+
+// advancePlaylist moves to the next track in the playlist (wrapping) and
+// crossfades into it. Re-arms nextTrackAt for the new track's duration.
+func (m *Model) advancePlaylist() {
+	if m.playlist == nil || m.buildFn == nil || len(m.playlist.Tracks) == 0 {
+		return
+	}
+	m.playlistIdx = (m.playlistIdx + 1) % len(m.playlist.Tracks)
+	track := m.playlist.Tracks[m.playlistIdx]
+	algo := m.buildFn(track.Spec)
+	algo.Seed(track.Seed)
+	m.cmd.SwapAlgorithmFade(algo, m.playlistFade)
+	m.algo = track.Spec.Display
+	m.seed = track.Seed
+	m.nextTrackAt = time.Now().Add(track.Duration)
+	m.status = fmt.Sprintf("▶ %d/%d %s",
+		m.playlistIdx+1, len(m.playlist.Tracks), track.Spec.Display)
+	m.statusTTL = time.Now().Add(3 * time.Second)
+
+	// Keep the genre cycle index in sync if this track matches a genre.
+	for i, g := range m.genres {
+		if g.Name == track.Spec.Name {
+			m.genreIdx = i
+			break
+		}
+	}
 }
 
 // switchAlgo cycles the current algorithm by step (+1 or -1) and asks the
@@ -133,9 +180,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.switchAlgo(1)
 		case actionPrevAlgo:
 			m.switchAlgo(-1)
+		case actionNextTrack:
+			if m.playlist != nil {
+				m.advancePlaylist()
+			}
 		}
 		return m, nil
 	case tickMsg:
+		if m.playlist != nil && !m.paused && time.Now().After(m.nextTrackAt) {
+			m.advancePlaylist()
+		}
 		return m, tick()
 	}
 	return m, nil
@@ -160,9 +214,16 @@ func (m Model) View() string {
 }
 
 func topBar(m Model, w int, theme ColorTheme) string {
-	left := lipgloss.NewStyle().Foreground(theme.BarFg).Render(
-		fmt.Sprintf("termus · %s · %s · seed=%d", m.algo, m.keyName, m.seed),
-	)
+	var label string
+	if m.playlist != nil {
+		label = fmt.Sprintf("termus · %s · %d/%d %s · seed=%d",
+			m.playlist.Name, m.playlistIdx+1, len(m.playlist.Tracks),
+			m.algo, m.seed)
+	} else {
+		label = fmt.Sprintf("termus · %s · %s · seed=%d",
+			m.algo, m.keyName, m.seed)
+	}
+	left := lipgloss.NewStyle().Foreground(theme.BarFg).Render(label)
 	right := ""
 	if m.recording {
 		right = lipgloss.NewStyle().Foreground(lipgloss.Color("#ff5b5b")).Render("● REC")
@@ -183,6 +244,9 @@ func bottomBar(m Model, w int, theme ColorTheme) string {
 		state, m.volume, theme.Name)
 	if len(m.genres) > 1 {
 		hint += "   [n/p] algo"
+	}
+	if m.playlist != nil {
+		hint += "   [s] skip"
 	}
 	hint += "   [q] quit"
 	left := lipgloss.NewStyle().Faint(true).Render(hint)

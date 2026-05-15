@@ -46,6 +46,65 @@ func TestRootProducesAudioAndFeedsScope(t *testing.T) {
 	}
 }
 
+// constantAlgo emits a constant value on both channels — used to verify the
+// crossfade gain envelope in isolation.
+type constantAlgo struct {
+	v float64
+	n string
+}
+
+func (c *constantAlgo) Name() string { return c.n }
+func (c *constantAlgo) Seed(int64)   {}
+func (c *constantAlgo) Next(l, r []float64) {
+	for i := range l {
+		l[i] = c.v
+		r[i] = c.v
+	}
+}
+
+func TestRootCrossfadeSwap(t *testing.T) {
+	ring := scope.NewRing(2048)
+	old := &constantAlgo{v: 1.0, n: "old"}
+	root := NewRoot(old, ring)
+	root.SetVolume(100)
+
+	const fade = 4410 // 100 ms
+	newer := &constantAlgo{v: -1.0, n: "new"}
+	root.SwapAlgorithmFade(newer, fade)
+
+	// Pull a buffer that covers fade-out + fade-in + a tail of steady-state.
+	totalFrames := fade*2 + 1000
+	frames := make([][2]float64, totalFrames)
+	root.Stream(frames)
+
+	// Frame 0: full old gain (≈1.0).
+	if math.Abs(frames[0][0]-1.0) > 1e-6 {
+		t.Errorf("frame 0 = %g, want ≈ 1.0", frames[0][0])
+	}
+	// Frame fade-1 (last fade-out frame): nearly zero.
+	if math.Abs(frames[fade-1][0]) > 0.001 {
+		t.Errorf("last fade-out frame %g, want ≈ 0", frames[fade-1][0])
+	}
+	// Frame fade (first fade-in frame): nearly zero of new sign.
+	if math.Abs(frames[fade][0]) > 0.001 {
+		t.Errorf("first fade-in frame %g, want ≈ 0", frames[fade][0])
+	}
+	// Frame fade*2 (first post-fade frame): full new value (-1.0).
+	if math.Abs(frames[fade*2][0]+1.0) > 1e-6 {
+		t.Errorf("first post-fade frame = %g, want ≈ -1.0", frames[fade*2][0])
+	}
+	// Sample inside fade-out should have positive sign (old algo) and smaller magnitude.
+	mid := fade / 2
+	if frames[mid][0] <= 0.0 || frames[mid][0] >= 1.0 {
+		t.Errorf("mid fade-out frame = %g, expected in (0, 1)", frames[mid][0])
+	}
+	// Sample inside fade-in should have negative sign (new algo) and smaller magnitude.
+	midIn := fade + fade/2
+	if frames[midIn][0] >= 0.0 || frames[midIn][0] <= -1.0 {
+		t.Errorf("mid fade-in frame = %g, expected in (-1, 0)", frames[midIn][0])
+	}
+}
+
 func TestRootPauseSilences(t *testing.T) {
 	ring := scope.NewRing(64)
 	algo := gen.NewEno()
