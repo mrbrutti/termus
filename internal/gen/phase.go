@@ -95,14 +95,7 @@ func (a *Phase) Seed(seedVal int64) {
 		a.core = nil
 		return
 	}
-	if core.usingMaxPalette() {
-		core.routeChannelPreset(0, "fm-dx")
-		core.routeChannelPreset(1, "musescore-general")
-		core.routeChannelPreset(2, "timbres-of-heaven")
-		core.routeChannelPreset(3, "fm-dx")
-		core.routeChannelPreset(4, "fatboy")
-		core.routeChannelPreset(5, "fairy-tale")
-	}
+	applyMaxSF2Palette(core, "phase")
 
 	// Channel layout:
 	//   0 — Vibraphone     (program 11)  phase voice A

@@ -204,13 +204,7 @@ func (a *SF2Markov) Seed(seedVal int64) {
 		a.core = nil
 		return
 	}
-	if core.usingMaxPalette() {
-		core.routeChannelPreset(0, "timbres-of-heaven")
-		core.routeChannelPreset(1, "merlin-symphony")
-		core.routeChannelPreset(2, "musescore-general")
-		core.routeChannelPreset(3, "dsound4")
-		core.routeChannelPreset(4, "timbres-of-heaven")
-	}
+	applyMaxSF2Palette(core, "classical")
 
 	// Channel layout (Classical-period chamber orchestra — NO HARPSICHORD):
 	//   0 — Violin             (program 40)  1st violins, melody

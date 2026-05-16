@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -124,42 +125,11 @@ func main() {
 			*algoName, gen.AllAlgoNames())
 		os.Exit(2)
 	}
-	// sfByPreset is the lookup the build closure uses to pick the right
-	// SoundFont per algorithm. With strategy=single it contains exactly one
-	// entry, mapped under both the chosen preset name and a "" fallback for
-	// algorithms whose PreferredSF2 is empty.
-	sfByPreset := map[string]*meltysynth.SoundFont{}
-	var sf *meltysynth.SoundFont // the initial-algo SF
-	if spec.RequiresSF2 {
-		if *sf2Path != "" {
-			// User pinned a custom file — use it for everything.
-			loaded, err := sf2.Open(*sf2Path)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "sf2 open failed:", err)
-				os.Exit(1)
-			}
-			sfByPreset[""] = loaded
-			sf = loaded
-		} else {
-			needed := neededPresets(sfStrategy, *sf2Preset, spec)
-			paths, err := sf2.EnsureAll(os.Stderr, needed)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "sf2 setup failed:", err)
-				os.Exit(1)
-			}
-			for name, path := range paths {
-				loaded, err := sf2.Open(path)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "sf2 open %q failed: %v\n", path, err)
-					os.Exit(1)
-				}
-				sfByPreset[name] = loaded
-			}
-			// Pick the SF for the initially-requested algo.
-			sf = pickSF(sfByPreset, spec, *sf2Preset)
-		}
+	catalog, sf, err := loadInitialSoundFontCatalog(spec, sfStrategy, *sf2Preset, *sf2Path, os.Stderr)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "sf2 setup failed:", err)
+		os.Exit(1)
 	}
-	gen.SetSF2Runtime(sfStrategy, sfByPreset)
 	algo := spec.Build(sf)
 	algo.Seed(*seed)
 	controlProfile := gen.DefaultControlProfile()
@@ -185,7 +155,15 @@ func main() {
 		}
 	}
 	buildRenderedAlgo := func(s gen.AlgoSpec, algoSeed int64) gen.Algorithm {
-		chosen := pickSF(sfByPreset, s, *sf2Preset)
+		chosen := sf
+		if catalog != nil && s.RequiresSF2 {
+			loaded, err := catalog.EnsureForSpec(s, io.Discard)
+			if err != nil {
+				logCatalogEnsureError(s, err)
+				loaded = catalog.Pick(s)
+			}
+			chosen = loaded
+		}
 		a := gen.ConfigureControlProfile(s.Build(chosen), controlProfile)
 		a.Seed(algoSeed)
 		if len(ir) > 0 {
@@ -261,7 +239,10 @@ func main() {
 		if *sf2Path != "" {
 			return filepath.Base(*sf2Path)
 		}
-		return pickSFName(sfByPreset, s, *sf2Preset)
+		if catalog == nil {
+			return "sf2"
+		}
+		return catalog.PickName(s)
 	}
 	if *playlistOut != "" {
 		pl, err := buildPlaylist(effectivePlaylistMode, spec, genres, effectivePlaylistTracks, *seed, effectivePlaylistDuration, listenMode.Name)
@@ -321,6 +302,9 @@ func main() {
 
 	// Start the live audio backend asynchronously so a bad CoreAudio/default-
 	// device state does not block the TUI from launching.
+	if catalog != nil {
+		catalog.WarmMaxAsync()
+	}
 	sr := beep.SampleRate(44100)
 	live := audio.StartLive(root, sr, sr.N(time.Second/20), 3*time.Second)
 	defer live.Close()
