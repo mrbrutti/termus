@@ -96,3 +96,14 @@
 
 ### Motif Transformation
 - [x] Revisit motifs by transforming them over time (transpose, invert, stretch, reharmonize, re-orchestrate) instead of only repeating or replacing them outright.
+
+## Product Identity
+
+### Stations
+- [ ] Replace the raw genre-facing presentation with a curated station pass so the app surfaces named moods like `night drift`, `glass chapel`, and `soft tape` instead of only algorithm labels.
+
+### Listening Modes
+- [ ] Add explicit long-form listening modes such as `endless`, `album side`, `hour stream`, and `radio`, and wire them into live playback plus offline render/export defaults.
+
+### Visual Polish
+- [ ] Give the TUI one more signature visualization pass with subtle color breathing, smoother visual switching, and at least one uniquely `termus` visual mode that still matches the minimal line language.
