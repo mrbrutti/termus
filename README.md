@@ -1,19 +1,13 @@
 # termus
 
-A terminal music player that **generates ambient and lofi music from scratch in real time**. No tracks, no samples-on-disk, no playlist — every second of audio is synthesized or rendered through a SoundFont on the fly by one of nine generative algorithms. Run it in your terminal, hit play, and it produces music that never repeats and can keep going for hours.
+`termus` is a terminal-native generative music instrument. It can run live for hours, render long-form pieces to disk, build playlists, export stems and MIDI, and surface deeper controls through a minimal TUI plus a control center.
 
-```
-termus · chill · seed=42 · vol 70%
+- Live stations with curated identities like `Night Drift`, `Soft Tape`, and `Dusty Swing`
+- Long-form listening modes: `endless`, `album-side`, `hour-stream`, and `radio`
+- Live playback, direct WAV rendering, playlist rendering, stems, and MIDI export
+- Minimal play view with a deeper control center for music, seeds, library, export, audio, and debug
 
-⠀⠀⠀⠀⠠⢤⡀⠀⠀⠀⠀⠀⠀⢀⡠⠤⠀⠀⠀⠀⠀⠀⠀⠐⠂⢄⡀⠀⠀⠀⠀⠀⠀⠀⠠⠴⠉⠀⠀⠀⠀⠀⠀⠀⠐⠈⠂⢄⡀⠀
-⠀⠀⠀⠀⠀⠀⠉⠐⠉⠉⠁⠈⠁⠂⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠊⠘⠉⠁⠁⠐⠈⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠁
-
-[space] play  [↑↓] vol 70%  [r] rec  [c] indigo  [q] quit
-```
-
-(Above: a colored Braille oscilloscope tracking the synthesizer's output, with selectable themes.)
-
-## Quick start
+## Quick Start
 
 ```bash
 go install github.com/mrbrutti/termus/cmd/termus@latest
@@ -28,159 +22,290 @@ cd termus
 go run ./cmd/termus
 ```
 
-First run with a SoundFont-based algorithm (`--algo sf2`, `eno-sf2`, etc.) auto-downloads a SoundFont into `~/Library/Caches/termus/soundfonts/` (or the OS equivalent). The catalog:
-
-| Preset | Size | Best for |
-|-|-|-|
-| `general` (default) | 32 MB | Balanced GM — fallback for everything. MIT. |
-| `sgm` | 325 MB | Piano / guitar / bass focus. |
-| `tyros4` | 502 MB | **Jazz** — Tyros 4 brass, sax, walking bass, brushed kits. |
-| `dsound4` | 553 MB | Large balanced alt to `general`. |
-| `fatboy` | 315 MB | Loudness-matched GM. Good for clean lo-fi / baroque. MIT-ish. |
-| `timbres-of-heaven` | 377 MB | **Classical** — strings, brass, woodwinds. |
-| `merlin-symphony` | 163 MB | Alt orchestral. |
-| `fairy-tale` | 200 MB | **Bells / lullaby** — celesta, music-box, glockenspiel. CC-BY-NC-SA. |
-| `fm-dx` | 124 MB | **Drone / phase** — DX-style FM EPs, metallic bells. |
-| `musescore-general` | 208 MB | Polite, neutral GM. Safe legal status. |
-| `arachno` | 148 MB | D-50 / M1 / MU / Fairlight blend. CC-BY-NC-SA. |
-
-Use `--sf2-strategy optimal` to download each genre's preferred SoundFont automatically.
+Sample invocations:
 
 ```bash
-termus --algo chill              # default: GeneralUser-GS (32 MB)
-termus --algo chill --sf2-preset sgm   # audiophile: SGM (325 MB on first run)
-termus --algo chill --sf2 ~/Music/MyFavorite.sf2   # your own file
-```
-
-## Algorithms
-
-Termus ships eight genre-named algorithms, each with an SF2 sampled version (default) and a `-synth` pure-synthesis fallback (no download needed). All produce indefinitely-long output via per-note mutation, macro key drift, instrument swaps, and section toggling.
-
-| `--algo` | Genre | What it is |
-|-|-|-|
-| `ambient` | Ambient | Music for Airports — pad-bell on incommensurate loops, sampled |
-| `drone` | Drone | Stars of the Lid — held strings + flute shimmer over deep bed |
-| `bells` | Bells | Tubular bells + crystal pad — bright, late-night focus |
-| `lullaby` | Lullaby | Pentatonic random walk — piano, harp, kalimba, never clashes |
-| `classical` | Classical | Markov melody on piano + strings + clarinet — feels composed |
-| `phase` | Phase | Reich-style — two vibraphones drift in tempo, ever-changing pattern |
-| `lofi` | Lo-fi | Hip-hop drums + Rhodes EP + walking bass + sax + nylon guitar |
-| `jazz` | Jazz | Medium-swing small group — walking bass, ride pattern, Charleston comp, brushed kit, alto-sax solo over ii-V-I cycles |
-
-Each genre name has a `-synth` variant (e.g. `ambient-synth`, `lofi-synth` (n/a — only ambient/drone/bells/lullaby/classical have synth variants)) that uses pure synthesis instead of a SoundFont — useful if you want to skip the SoundFont download.
-
-Legacy algorithm names (`eno`, `eno-sf2`, `chill`, `glass`, `markov-sf2`, etc.) still work and resolve to the corresponding genre name.
-
-## Usage
-
-```bash
-termus [--algo NAME] [--seed N] [--volume 0..100]
-       [--sf2 PATH] [--ir NAME-OR-PATH] [--ir-wet 0..1]
-```
-
-Examples:
-
-```bash
-# Default — sampled ambient (Music for Airports style)
+# Default live station
 termus
 
-# Pick a genre + seed (same seed = same music)
-termus --algo lofi --seed 42
-termus --algo classical --seed 99
+# Long-form jazz station with preferred per-algorithm SoundFonts
+termus --algo jazz --listen-mode hour-stream --sf2-strategy pro
 
-# Jazz in a cathedral
-termus --algo jazz --ir cathedral
+# Render an album-side ambient piece to disk
+termus --algo ambient --listen-mode album-side --out ambient-side-a.wav
 
-# Bring your own impulse response
-termus --algo ambient --ir ~/Downloads/concert-hall.wav --ir-wet 0.4
+# Render a radio-style mixed playlist with WAVs + manifest
+termus --listen-mode radio --playlist-out ./radio-set
 
-# Use the 325 MB high-quality SoundFont
-termus --algo lofi --sf2-preset sgm
-
-# Skip the SoundFont download (pure synthesis)
-termus --algo ambient-synth
+# Render stems and MIDI when supported
+termus --algo lofi --out soft-tape.wav --stems --midi
 ```
 
-### `--ir` presets
+## Stations And Algorithms
 
-| Preset | What it is |
-|-|-|
-| `room` | ~80 ms early reflections — close, intimate |
-| `hall` | ~1.5 s concert-hall tail |
-| `cathedral` | ~3.5 s long cathedral tail |
-| `plate` | ~2 s dense plate-reverb |
-| any path | Load a 16-bit PCM WAV file as the IR |
+The CLI still uses genre-style `--algo` names. The TUI and playlists surface curated station labels, and the top bar / control center show both where useful, for example `Night Drift · ambient`.
 
-Synthetic IRs are generated from a deterministic xorshift seed, so the same preset produces the same impulse response every run. Long IRs (> 1024 samples) automatically use FFT-based partitioned convolution; shorter ones use direct time-domain convolution with zero latency.
+| `--algo` | Station label | Character | Synth fallback |
+| - | - | - | - |
+| `ambient` | `Night Drift` | Slow ambient chord drift, bells, and hovering textures | `ambient-synth` |
+| `drone` | `Deep Field` | Sustained low-motion beds and metallic shimmer | `drone-synth` |
+| `bells` | `Glass Chapel` | Bright bells, celesta-like figures, reflective space | `bells-synth` |
+| `lullaby` | `Sleep Walk` | Pentatonic lullaby textures that stay consonant | `lullaby-synth` |
+| `classical` | `Chamber Loop` | Chamber-like melodic writing and evolving form | `classical-synth` |
+| `phase` | `Slow Signal` | Reich-style phased motion and repeating pattern drift | sampled only |
+| `lofi` | `Soft Tape` | Beat-driven tape-warm grooves and melodic pocket | sampled only |
+| `jazz` | `Dusty Swing` | Walking bass, comping, drums, and lead phrasing | sampled only |
 
-## Controls
+Notes:
+
+- Legacy names such as `eno`, `chill`, `glass`, `markov-sf2`, and `sf2` still resolve.
+- The sampled algorithms can run with a curated SoundFont preset or your own `.sf2` file.
+- The long-form engine now evolves by episode and movement instead of short fixed loops.
+
+## Listening Modes
+
+Listening modes shape the session profile and some export defaults.
+
+| `--listen-mode` | What it does |
+| - | - |
+| `endless` | Default live mode. Single evolving stream. Offline `--out` defaults to 180 seconds. |
+| `album-side` | Longer, more deliberate arc. Offline `--out` defaults to 24 minutes. |
+| `hour-stream` | One continuous hour-scale piece. Offline `--out` defaults to 60 minutes. |
+| `radio` | Auto-configures a mixed playlist feel. Defaults to `--playlist mixed`, 8 tracks, ~7m30s per track. |
+
+Notes:
+
+- `--listen-mode radio` works for live playback and `--playlist-out`.
+- `--listen-mode radio` is not valid with direct single-file `--out`.
+
+## CLI Options
+
+### Core playback
+
+| Flag | Description |
+| - | - |
+| `--algo NAME` | Select algorithm/station source. |
+| `--seed N` | Set deterministic seed. Same seed recreates the same starting world. |
+| `--volume 0..100` | Initial live/output volume. |
+| `--listen-mode MODE` | `endless`, `album-side`, `hour-stream`, `radio`. |
+| `--debug` | Start the TUI with the musical debug inspector visible. |
+
+### Sound and space
+
+| Flag | Description |
+| - | - |
+| `--sf2 PATH` | Use a custom SoundFont file. Overrides preset selection. |
+| `--sf2-preset NAME` | Choose a curated preset such as `general` or `sgm`. |
+| `--sf2-strategy single\|pro\|max` | `single` uses one preset everywhere, `pro` loads each algorithm's preferred preset, and `max` preloads the full curated SoundFont catalog. |
+| `--ir room\|hall\|cathedral\|plate\|PATH` | Apply convolution reverb from a preset or WAV impulse response. |
+| `--ir-wet 0..1` | Wet mix for `--ir`. |
+
+### Playlists and rendering
+
+| Flag | Description |
+| - | - |
+| `--playlist same\|mixed` | Live or batch playlist mode. `same` varies seeds of the chosen algorithm; `mixed` rotates genres. |
+| `--playlist-tracks N` | Playlist length. |
+| `--playlist-duration DURATION` | Per-track duration before crossfade. |
+| `--out FILE.wav` | Render one piece to a WAV instead of starting live playback. |
+| `--seconds N` | Duration for `--out`. If omitted, the listening mode default is used. |
+| `--playlist-out DIR` | Render a playlist to a directory of WAVs plus `manifest.json`. |
+| `--stems` | With `--out` or `--playlist-out`, also export per-stem WAVs when supported. |
+| `--midi` | With `--out` or `--playlist-out`, also export MIDI when supported. |
+
+## TUI Model
+
+The live app now has a two-layer model:
+
+1. Play view: visualizer first, minimal chrome.
+2. Control center: the place for nearly everything deeper.
+
+### Global keys
 
 | Key | Action |
-|-|-|
+| - | - |
 | `space` | Play / pause |
-| `↑` `↓` `+` `-` | Volume ±5 |
-| `r` | Toggle WAV recording (writes `termus-<seed>-<timestamp>.wav` to CWD) |
-| `c` | Cycle color theme (indigo / amber / matrix / magenta / mono / rainbow) |
-| `C` | Cycle visualization style (scope / spectrum / bars / mirror) |
-| `n` / `p` | Next / previous algorithm — hot-swap with ~200 ms crossfade |
-| `s` | Skip to next playlist track (only when a playlist is active) |
-| `q` `Ctrl-C` | Quit |
+| `↑` `↓` `+` `-` | Volume up / down |
+| `m` | Open or close the control center |
+| `?` | Open or close help |
+| `q` or `Ctrl-C` | Quit |
 
-## Playlists
+The footer intentionally stays minimal. Most other actions live in the control center instead of the main play view.
 
-Termus can build a playlist that auto-advances tracks with a 2-second
-crossfade, so it keeps producing music for hours without intervention. Every
-playlist gets a stylized random name derived from the seed
-("Velvet Sessions Vol. 7", "Late Atlas").
+Power-user note:
+
+- Older direct shortcuts still work even though they are no longer advertised in the footer. If you already know keys like `c`, `C`, `n`, `p`, `d`, `l`, `i`, `e`, `z`, `[`, `]`, `a`, `b`, `tab`, `k`, or `x`, you can still use them directly.
+
+### Control center
+
+Inside the control center:
+
+- `↑` `↓` browse rows
+- `←` `→` adjust the current value
+- `Enter` apply, toggle, or open
+- `Tab` move to the next section
+
+Sections:
+
+- `Now`: playback, listening mode summary, track status, recording, playlist skip
+- `Look`: visual mode, theme, chrome, help state
+- `Music`: density, brightness, motion, reverb, swing, drone depth, tempo, phrase length, seed morph
+- `Seeds`: algorithm switching, seed browsing, A/B slots, compare, keep, reject
+- `Library`: saved seeds, rating, favorites, tags, recent history, best takes, saved sessions
+- `Export`: 60-second live export drawer for WAV, MIDI, stems, and recording control
+- `Audio`: backend status, retry live audio, render-only fallback
+- `Debug`: toggle overlay plus bar / section / chord / preset state
+
+### Help, chrome, and debug
+
+- `?` shows the current two-layer help overlay.
+- The debug overlay can be toggled from the control center or enabled on startup with `--debug`.
+- Reduced chrome / zen behavior is handled through the `Look` section instead of adding more always-visible keys.
+
+## Visualizers And Themes
+
+Current visual modes:
+
+- `scope`: the default thin waveform trace
+- `contour`: a center-weighted spectral horizon
+- `vector`: an expanded stereo phase portrait
+- `signal`: a `termus`-native carrier trace with restrained ghost echoes
+- `drift`: string-like horizontal vibration lines
+
+Current themes:
+
+- `indigo`
+- `amber`
+- `matrix`
+- `magenta`
+- `mono`
+- `rainbow`
+
+The non-default visualizers use the same minimal braille line language as the default view, with pulse-based color breathing and smoother visual transitions.
+
+## Rendering And Export
+
+### Direct offline renders
 
 ```bash
-# Six different seeds of lo-fi, 5 minutes each
-termus --algo lofi --playlist same --playlist-tracks 6 --playlist-duration 5m
-
-# Random genres throughout, 10 tracks
-termus --playlist mixed --playlist-tracks 10
+termus --algo ambient --out piece.wav
+termus --algo jazz --listen-mode album-side --out side-b.wav
+termus --algo lofi --out beat.wav --stems --midi
 ```
 
-## SoundFont strategy
+Behavior:
 
-By default termus uses one SoundFont for everything (`--sf2-strategy=single`,
-balanced 32 MB GeneralUser-GS). For best quality across all genres, opt in
-to per-algorithm preferences:
+- `--out` writes one WAV file.
+- `--seconds` controls duration unless the listening mode supplies a longer default.
+- When possible, renders snap to a nearby cadence/outro instead of hard-cutting.
+- `--stems` writes a sibling `-stems/` directory.
+- `--midi` writes a sibling `.mid` file when the algorithm supports MIDI capture/export.
+
+### Playlist renders
 
 ```bash
-# Downloads GeneralUser-GS (32 MB) + SGM (325 MB) on first run with a
-# progress bar; cycling/playlist switches between them automatically.
-termus --sf2-strategy optimal
+termus --playlist same --algo bells --playlist-out ./bells-set
+termus --listen-mode radio --playlist-out ./radio-set --stems --midi
 ```
 
-Piano-heavy genres (`lullaby`, `classical`, `lofi`, `jazz`) prefer SGM;
-shimmery genres (`ambient`, `drone`, `bells`, `phase`) stay on GeneralUser-GS.
+Behavior:
 
-## How it works
+- `--playlist-out` renders one file per track.
+- A `manifest.json` is written alongside the audio.
+- `--stems` and `--midi` can be added for per-track artifacts when supported.
 
-Every algorithm pushes audio at 44.1 kHz stereo into a beep `Streamer`. The pure-synthesis algorithms build voices from oscillators, ADSR envelopes, biquad lowpass filters, and delay lines. The SoundFont-based algorithms emit MIDI NoteOn/NoteOff events to a `go-meltysynth` synthesizer.
+### In-TUI export drawer
 
-Long-form variety comes from layered mutation:
+The live app also has a built-in export drawer in the control center:
 
-1. **Per-slot mutation** — at each note trigger, a small chance to re-roll one of the *other* slots in the cycle so the figure gradually evolves.
-2. **Macro key drift** — every 4–7 minutes the key shifts by ±1–2 semitones, taking effect gradually as mutations roll in.
-3. **Instrument swaps** — every 3–9 minutes one MIDI channel rotates to a musically-compatible different GM program.
-4. **Section toggles** — algorithms with optional ornament layers (e.g. chill's sax + nylon guitar) flip them in/out every 90–240 s, producing verse/chorus-like form.
-5. **Per-track humanization** — velocity jitter (±N MIDI velocity) and timing jitter (±N ms) on every note. Lofi swing is a separate deterministic offset.
+- WAV export
+- MIDI export
+- stem export
+- live recording toggle
 
-The TUI is built with bubbletea + lipgloss; the oscilloscope renders to a Braille glyph grid with 2×4 sub-pixel resolution per terminal cell, in your choice of color theme.
+Live exports currently render 60-second artifacts into `./exports/`.
+
+## Seeds, Library, And Sessions
+
+The app now includes built-in curation tools:
+
+- browse seeds for the current algorithm
+- store A/B seeds and compare them
+- keep or reject takes
+- rate and favorite seeds
+- tag seeds
+- browse recent history and best takes
+- save and reload sessions that capture algo, seed, visual, theme, volume, and related state
+
+This makes `termus` usable as a real exploration and capture workflow, not only a passive generator.
+
+## SoundFonts
+
+If you use sampled algorithms, `termus` can auto-download curated SoundFonts into your user cache directory on first use.
+
+| Preset | Size | Best for |
+| - | - | - |
+| `general` | 32 MB | Balanced default GM bank |
+| `sgm` | 325 MB | Piano, guitar, bass, and warm groove work |
+| `tyros4` | 502 MB | Jazz brass, sax, show-band color |
+| `dsound4` | 553 MB | Large balanced alternative |
+| `fatboy` | 315 MB | Loudness-matched GM, clean lo-fi / baroque |
+| `timbres-of-heaven` | 377 MB | Classical / orchestral writing |
+| `merlin-symphony` | 163 MB | Alternate orchestral bank |
+| `fairy-tale` | 200 MB | Bells, celesta, lullaby palettes |
+| `fm-dx` | 124 MB | FM textures for drone / phase |
+| `musescore-general` | 208 MB | Polite neutral GM |
+| `arachno` | 148 MB | Retro pad / bell / lead color |
+
+Recommended:
+
+```bash
+termus --sf2-strategy pro
+termus --sf2-strategy max
+```
+
+- `pro` loads the preferred preset for each sampled algorithm.
+- `max` preloads the entire curated catalog for instant switching and experimentation.
+
+## Reverb / IR Presets
+
+`--ir` accepts either a preset name or a WAV path:
+
+| Value | Description |
+| - | - |
+| `room` | Tight early reflections |
+| `hall` | Concert-hall tail |
+| `cathedral` | Long, spacious tail |
+| `plate` | Dense synthetic plate |
+| `PATH.wav` | Custom 16-bit PCM WAV impulse response |
+
+## How It Works
+
+`termus` combines several layers:
+
+- algorithm-specific note and phrase generation
+- long-form episode and movement planning
+- anti-repetition memory
+- voice-leading, motif recall, and arrangement changes
+- live TUI state and export tooling
+
+Under the hood it uses:
+
+- pure synthesis for the synth variants
+- `go-meltysynth` for sampled SoundFont playback
+- optional convolution reverb
+- Bubble Tea + Lip Gloss for the TUI
+- braille-grid rendering for the visual system
 
 ## Dependencies
 
 | Library | License | Purpose |
-|-|-|-|
-| [`gopxl/beep/v2`](https://github.com/gopxl/beep) | MIT | Audio output (CoreAudio / ALSA / WASAPI via `oto`) |
+| - | - | - |
+| [`gopxl/beep/v2`](https://github.com/gopxl/beep) | MIT | Audio output and streaming |
 | [`charmbracelet/bubbletea`](https://github.com/charmbracelet/bubbletea) | MIT | TUI framework |
 | [`charmbracelet/lipgloss`](https://github.com/charmbracelet/lipgloss) | MIT | Terminal styling |
 | [`sinshu/go-meltysynth`](https://github.com/sinshu/go-meltysynth) | MIT | Pure-Go SoundFont synthesizer |
-| [`madelynnblue/go-dsp`](https://github.com/madelynnblue/go-dsp) | BSD | FFT for partitioned convolution reverb |
-
-The auto-downloaded SoundFont is **GeneralUser-GS.sf2** by S. Christian Collins (~32 MB), MIT-licensed and fetched from [`mrbumpy409/GeneralUser-GS`](https://github.com/mrbumpy409/GeneralUser-GS). It's not bundled with the binary — termus downloads it on first use to your OS cache directory, where you can replace or delete it freely. Verified via SHA-256 after download to reject tampered files.
+| [`madelynnblue/go-dsp`](https://github.com/madelynnblue/go-dsp) | BSD | FFT support for DSP / visuals |
 
 ## License
 
