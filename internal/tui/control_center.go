@@ -122,10 +122,10 @@ func (m Model) nowControlItems() []controlItem {
 	if m.paused {
 		playback = "paused"
 	}
-	trackValue := fmt.Sprintf("%s · seed %d", m.algo, m.seed)
+	trackValue := fmt.Sprintf("%s · seed %d", m.currentAlgoIdentity(), m.seed)
 	trackHint := "current take"
 	if m.playlist != nil && m.playlistIdx < len(m.playlist.Tracks) {
-		trackValue = fmt.Sprintf("%s · %d/%d", m.algo, m.playlistIdx+1, len(m.playlist.Tracks))
+		trackValue = fmt.Sprintf("%s · %d/%d", m.currentAlgoIdentity(), m.playlistIdx+1, len(m.playlist.Tracks))
 		trackHint = shortDuration(time.Until(m.nextTrackAt)) + " to next"
 	}
 	modeValue := m.listeningMode
@@ -352,7 +352,7 @@ func (m Model) seedControlItems() []controlItem {
 	return []controlItem{
 		{
 			Title:    "algorithm",
-			Value:    m.algo,
+			Value:    m.currentAlgoIdentity(),
 			Hint:     "left/right cycle",
 			Disabled: len(m.genres) <= 1 || m.playlist != nil,
 			Adjust: func(m *Model, delta int) {
@@ -402,7 +402,7 @@ func (m Model) seedControlItems() []controlItem {
 		},
 		{
 			Title: "keep current",
-			Value: fmt.Sprintf("%s/%d", m.algo, m.seed),
+			Value: fmt.Sprintf("%s / %d", m.currentAlgoIdentity(), m.seed),
 			Hint:  "enter save",
 			Activate: func(m *Model) tea.Cmd {
 				m.keepSeed()
@@ -524,7 +524,7 @@ func (m Model) libraryControlItems() []controlItem {
 		},
 		{
 			Title: "save session",
-			Value: fmt.Sprintf("%s · %s · %s", m.algo, Visuals[m.visualIdx].Name, m.activeTheme().Name),
+			Value: fmt.Sprintf("%s · %s · %s", m.currentAlgoIdentity(), Visuals[m.visualIdx].Name, m.activeTheme().Name),
 			Hint:  "enter save",
 			Activate: func(m *Model) tea.Cmd {
 				m.saveCurrentSession()
@@ -806,7 +806,7 @@ func renderControlItem(theme ColorTheme, active bool, item controlItem, w int) s
 }
 
 func controlCenterSummary(m Model) string {
-	parts := []string{m.algo, fmt.Sprintf("seed %d", m.seed)}
+	parts := []string{m.currentAlgoIdentity(), fmt.Sprintf("seed %d", m.seed)}
 	if m.paused {
 		parts = append(parts, "paused")
 	} else {

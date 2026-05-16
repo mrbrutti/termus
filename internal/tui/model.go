@@ -235,6 +235,27 @@ func (m Model) currentSpec() (gen.AlgoSpec, bool) {
 	return gen.AlgoSpec{}, false
 }
 
+func algoIdentity(spec gen.AlgoSpec) string {
+	label := spec.Label()
+	if spec.Name == "" {
+		return label
+	}
+	if label == "" || strings.EqualFold(label, spec.Name) {
+		return spec.Name
+	}
+	return fmt.Sprintf("%s · %s", label, spec.Name)
+}
+
+func (m Model) currentAlgoIdentity() string {
+	if spec, ok := m.currentSpec(); ok {
+		return algoIdentity(spec)
+	}
+	if m.playlist != nil && m.playlistIdx >= 0 && m.playlistIdx < len(m.playlist.Tracks) {
+		return algoIdentity(m.playlist.Tracks[m.playlistIdx].Spec)
+	}
+	return m.algo
+}
+
 func (m *Model) swapToSeed(spec gen.AlgoSpec, seed int64, status string) {
 	if m.playlist != nil || m.buildFn == nil {
 		return
@@ -319,7 +340,7 @@ func (m *Model) keepSeed() {
 	m.kept[key] = seedBookmark{Spec: spec, Seed: m.seed}
 	rec := savedSeedRecord{
 		Algo:    spec.Name,
-		Display: spec.Label(),
+		Display: algoIdentity(spec),
 		Seed:    m.seed,
 		SavedAt: time.Now(),
 	}
@@ -391,6 +412,24 @@ func (m *Model) toggleControls() {
 		return
 	}
 	m.flashStatus("controls: off", 2*time.Second)
+}
+
+func (m *Model) toggleRecording() {
+	path, err := m.cmd.ToggleRecord()
+	if err != nil {
+		m.flashStatus("rec error: "+err.Error(), 3*time.Second)
+		m.recording = false
+		return
+	}
+	if path != "" {
+		m.recording = true
+		m.recordStartedAt = time.Now()
+		m.flashStatus("rec → "+path, 3*time.Second)
+		return
+	}
+	m.recording = false
+	m.recordStartedAt = time.Time{}
+	m.flashStatus("rec stopped", 3*time.Second)
 }
 
 func (m *Model) toggleReducedChrome() {
@@ -648,19 +687,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "t":
 				return m, m.startExport("stems")
 			case "r":
-				path, err := m.cmd.ToggleRecord()
-				if err != nil {
-					m.flashStatus("rec error: "+err.Error(), 3*time.Second)
-					m.recording = false
-				} else if path != "" {
-					m.recording = true
-					m.recordStartedAt = time.Now()
-					m.flashStatus("rec → "+path, 3*time.Second)
-				} else {
-					m.recording = false
-					m.recordStartedAt = time.Time{}
-					m.flashStatus("rec stopped", 3*time.Second)
-				}
+				m.toggleRecording()
 			}
 			return m, nil
 		}
@@ -696,10 +723,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.inspectorVisible && action != actionInspector && action != actionQuit && action != actionExport && action != actionControls {
 			return m, nil
 		}
-		if actionLivesInControlCenter(action) {
-			m.flashStatus("open control center: [m]", 2*time.Second)
-			return m, nil
-		}
 		switch action {
 		case actionQuit:
 			return m, tea.Quit
@@ -720,6 +743,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.cmd.SetVolume(m.volume)
 			m.showVolumeOverlay()
+		case actionRecord:
+			m.toggleRecording()
+		case actionTheme:
+			if len(m.themes) > 1 {
+				m.themeIdx = (m.themeIdx + 1) % len(m.themes)
+				m.flashStatus("theme: "+m.themes[m.themeIdx].Name, 2*time.Second)
+			}
+		case actionNextAlgo:
+			m.switchAlgo(1)
+		case actionPrevAlgo:
+			m.switchAlgo(-1)
+		case actionNextTrack:
+			if m.playlist != nil {
+				m.advancePlaylist()
+			}
+		case actionVisual:
+			m.startVisualTransition(m.visualIdx + 1)
+			m.flashStatus("visual: "+Visuals[m.visualIdx].Name, 2*time.Second)
+		case actionDebug:
+			m.debugVisible = !m.debugVisible
+			if m.debugVisible {
+				m.flashStatus("debug: on", 2*time.Second)
+			} else {
+				m.flashStatus("debug: off", 2*time.Second)
+			}
 		case actionHelp:
 			m.helpVisible = !m.helpVisible
 			if m.helpVisible {
@@ -730,8 +778,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.flashStatus("help: off", 2*time.Second)
 			}
+		case actionLibrary:
+			m.toggleLibrary()
+		case actionInspector:
+			m.toggleInspector()
+		case actionExport:
+			m.toggleExportDrawer()
 		case actionControls:
 			m.toggleControls()
+		case actionZen:
+			m.toggleReducedChrome()
+		case actionPrevSeed:
+			m.browseSeed(-1)
+		case actionNextSeed:
+			m.browseSeed(1)
+		case actionStoreA:
+			m.storeSeed("A")
+		case actionStoreB:
+			m.storeSeed("B")
+		case actionToggleAB:
+			m.toggleSeedCompare()
+		case actionKeepSeed:
+			m.keepSeed()
+		case actionRejectSeed:
+			m.rejectSeed()
 		}
 		return m, nil
 	case tickMsg:
@@ -893,34 +963,23 @@ func (m *Model) applyAudioState(state audio.BackendState) {
 	}
 }
 
-func actionLivesInControlCenter(action keyAction) bool {
-	switch action {
-	case actionRecord, actionTheme, actionNextAlgo, actionPrevAlgo, actionNextTrack,
-		actionVisual, actionDebug, actionLibrary, actionInspector, actionExport,
-		actionZen, actionPrevSeed, actionNextSeed, actionStoreA, actionStoreB,
-		actionToggleAB, actionKeepSeed, actionRejectSeed:
-		return true
-	default:
-		return false
-	}
-}
-
 func topBar(m Model, w int, theme ColorTheme, compact bool) string {
+	currentAlgo := m.currentAlgoIdentity()
 	var label string
 	if m.playlist != nil {
 		if compact {
-			label = fmt.Sprintf("termus · %s · %d/%d · %d", m.algo, m.playlistIdx+1, len(m.playlist.Tracks), m.seed)
+			label = fmt.Sprintf("termus · %s · %d/%d · %d", currentAlgo, m.playlistIdx+1, len(m.playlist.Tracks), m.seed)
 		} else {
 			label = fmt.Sprintf("termus · %s · %d/%d %s · seed=%d",
 				m.playlist.Name, m.playlistIdx+1, len(m.playlist.Tracks),
-				m.algo, m.seed)
+				currentAlgo, m.seed)
 		}
 	} else {
 		if compact {
-			label = fmt.Sprintf("termus · %s · %d", m.algo, m.seed)
+			label = fmt.Sprintf("termus · %s · %d", currentAlgo, m.seed)
 		} else {
 			label = fmt.Sprintf("termus · %s · %s · seed=%d",
-				m.algo, m.keyName, m.seed)
+				currentAlgo, m.keyName, m.seed)
 		}
 	}
 	right := ""
@@ -1230,7 +1289,7 @@ func inspectorPanel(m Model, w, h int, theme ColorTheme) string {
 	bodyW := maxInt(30, minInt(w-6, 84))
 	bodyH := maxInt(12, minInt(h-2, 18))
 	details := []string{
-		styleHelpLine(theme, false, "Track", fmt.Sprintf("%s · %s", m.algo, m.keyName)),
+		styleHelpLine(theme, false, "Track", fmt.Sprintf("%s · %s", m.currentAlgoIdentity(), m.keyName)),
 		styleHelpLine(theme, false, "Seed", fmt.Sprintf("%d", m.seed)),
 		styleHelpLine(theme, false, "Slots", fmt.Sprintf("A %s   B %s   kept %d", slotSeedLabel(m.seedA), slotSeedLabel(m.seedB), len(m.kept))),
 		styleHelpLine(theme, false, "State", inspectorDebugLabel(m.debug)),
@@ -1269,7 +1328,7 @@ func exportPanel(m Model, w, h int, theme ColorTheme) string {
 	lines := []string{
 		lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render("EXPORT"),
 		"",
-		styleHelpLine(theme, false, "Track", fmt.Sprintf("%s · seed %d", m.algo, m.seed)),
+		styleHelpLine(theme, false, "Track", fmt.Sprintf("%s · seed %d", m.currentAlgoIdentity(), m.seed)),
 		styleHelpLine(theme, false, "Artifacts", fmt.Sprintf("[w] WAV %s   [m] MIDI %s   [t] stems %s", duration, duration, duration)),
 		styleHelpLine(theme, false, "Live", "[r] toggle recording"),
 		styleHelpLine(theme, false, "Status", "exports write to ./exports with the current theme and mix settings"),

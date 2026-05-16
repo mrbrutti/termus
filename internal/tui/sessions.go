@@ -116,10 +116,11 @@ func (m *Model) saveCurrentSession() {
 		m.flashStatus("session save unavailable", 3*time.Second)
 		return
 	}
+	identity := algoIdentity(spec)
 	rec := savedSessionRecord{
-		Label:    fmt.Sprintf("%s / %d", spec.Label(), m.seed),
+		Label:    fmt.Sprintf("%s / %d", identity, m.seed),
 		Algo:     spec.Name,
-		Display:  spec.Label(),
+		Display:  identity,
 		Seed:     m.seed,
 		Visual:   Visuals[m.visualIdx].Name,
 		Theme:    m.activeTheme().Name,

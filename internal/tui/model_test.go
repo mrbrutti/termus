@@ -87,6 +87,21 @@ func TestTopBarShowsTitle(t *testing.T) {
 	}
 }
 
+func TestTopBarShowsStationAndAlgoNameWhenSpecAvailable(t *testing.T) {
+	m := Model{
+		algo:     "Night Drift",
+		seed:     42,
+		keyName:  "Cmin",
+		genreIdx: 0,
+		genres:   []gen.AlgoSpec{{Name: "ambient", Display: "Ambient", Station: "Night Drift"}},
+		themes:   []ColorTheme{DefaultTheme()},
+	}
+	bar := topBar(m, 140, DefaultTheme(), false)
+	if !strings.Contains(bar, "Night Drift · ambient") {
+		t.Fatalf("top bar should surface both station and canonical algo name: %q", bar)
+	}
+}
+
 func TestPlaybackBarShowsTimingAndMeter(t *testing.T) {
 	now := time.Now()
 	m := Model{
@@ -211,7 +226,7 @@ func TestHelpBlocksNonHelpKeys(t *testing.T) {
 	}
 }
 
-func TestNonEssentialGlobalKeysRedirectToControlCenter(t *testing.T) {
+func TestHiddenGlobalShortcutsStillWork(t *testing.T) {
 	cmd := &tuiCommanderStub{}
 	m := Model{
 		cmd:      cmd,
@@ -221,11 +236,38 @@ func TestNonEssentialGlobalKeysRedirectToControlCenter(t *testing.T) {
 	}
 	next, _ := m.Update(keyMsg("c"))
 	got := next.(Model)
-	if got.themeIdx != 0 {
-		t.Fatalf("theme changed outside control center: %d", got.themeIdx)
+	if got.themeIdx != 1 {
+		t.Fatalf("theme shortcut should still work, got themeIdx=%d", got.themeIdx)
 	}
-	if got.currentStatus(time.Now()) != "open control center: [m]" {
-		t.Fatalf("status = %q, want control center redirect", got.currentStatus(time.Now()))
+	next, _ = got.Update(keyMsg("z"))
+	got = next.(Model)
+	if !got.reducedChrome {
+		t.Fatal("zen shortcut should still toggle reduced chrome")
+	}
+	next, _ = got.Update(keyMsg("l"))
+	got = next.(Model)
+	if !got.libraryVisible {
+		t.Fatal("library shortcut should still open saved-seed library")
+	}
+	next, _ = got.Update(keyMsg("l"))
+	got = next.(Model)
+	if got.libraryVisible {
+		t.Fatal("library shortcut should still close saved-seed library")
+	}
+}
+
+func TestVisualShortcutCyclesWithoutControlCenter(t *testing.T) {
+	m := Model{
+		visualIdx: 0,
+		themes:    []ColorTheme{DefaultTheme()},
+	}
+	next, _ := m.Update(keyMsg("C"))
+	got := next.(Model)
+	if got.visualIdx != 1 {
+		t.Fatalf("visual shortcut should advance visual, got %d", got.visualIdx)
+	}
+	if !got.visualTransitionActive(time.Now()) {
+		t.Fatal("visual shortcut should trigger transition")
 	}
 }
 
@@ -272,7 +314,7 @@ func TestLibraryPanelShowsSavedSeeds(t *testing.T) {
 		themes: []ColorTheme{DefaultTheme()},
 	}
 	panel := libraryPanel(m, 90, 18, DefaultTheme())
-	for _, want := range []string{"SAVED SEEDS", "Night Drift", "42", "[enter] load"} {
+	for _, want := range []string{"SAVED SEEDS", "Night Drift · ambient", "42", "[enter] load"} {
 		if !strings.Contains(panel, want) {
 			t.Fatalf("library panel missing %q:\n%s", want, panel)
 		}
