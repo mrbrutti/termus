@@ -110,6 +110,26 @@ func (a *SF2Markov) ApplyControlProfile(profile ControlProfile) {
 
 func (a *SF2Markov) currentRoot() int { return a.rootMidi + a.keyOffset }
 
+func (a *SF2Markov) makeEpisodeProgression() []classicalChord {
+	var base []classicalChord
+	switch a.horizon.HarmonyFamily {
+	case "answer":
+		base = classicalProgressions[0]
+	case "subdominant-arc":
+		base = classicalProgressions[1]
+	case "cadential-return":
+		base = classicalProgressions[2]
+	default:
+		base = classicalProgressions[a.rng.Intn(len(classicalProgressions))]
+	}
+	return append([]classicalChord(nil), base...)
+}
+
+func (a *SF2Markov) rebuildEpisodeMaterials() {
+	a.progression = a.makeEpisodeProgression()
+	a.violinPhrase = a.makeClassicalMelody(2 * len(a.progression))
+}
+
 func (a *SF2Markov) Seed(seedVal int64) {
 	a.rng = rand.New(rand.NewSource(seedVal)) //nolint:gosec
 	// Classical period favors C, G, D, F, Bb, Eb major (few accidentals
@@ -117,7 +137,6 @@ func (a *SF2Markov) Seed(seedVal int64) {
 	hornKeys := []int{48, 50, 53, 55, 58, 60} // C3, D3, F3, G3, Bb3, C4
 	a.rootMidi = hornKeys[a.rng.Intn(len(hornKeys))]
 	a.keyOffset = 0
-	a.progression = classicalProgressions[a.rng.Intn(len(classicalProgressions))]
 	a.samplesElapsed = 0
 
 	oboeStart := false
@@ -169,6 +188,7 @@ func (a *SF2Markov) Seed(seedVal int64) {
 	a.form = NewEpisodePlan(a.rng, a.barSamples, "classical")
 	a.section = a.form.SectionAt(0)
 	a.horizon = NewLongHorizonState(a.rng, "classical", a.form.MovementAt(0))
+	a.rebuildEpisodeMaterials()
 	numBars := len(a.progression)
 	cycleSec := barSec * float64(numBars)
 
@@ -184,6 +204,7 @@ func (a *SF2Markov) Seed(seedVal int64) {
 		PeriodSec: cycleSec, Phase01: 0,
 		MutationRate:   0.05, // very low — bass lines stay stable in Classical
 		MutateOne:      func(slot int, _ int) int { return a.celloLine(slot) },
+		ResolveNote:    func(slot int, _ int) int { return a.celloLine(slot) },
 		Gate:           0.86,
 		Legato:         true,
 		VelocityJitter: 6, TimingJitterSec: 0.008,
@@ -202,6 +223,7 @@ func (a *SF2Markov) Seed(seedVal int64) {
 		PeriodSec: cycleSec, Phase01: 0,
 		MutationRate:   0.02, // Alberti is fixed pattern — almost no mutation
 		MutateOne:      func(slot int, _ int) int { return a.albertiNoteAt(slot) },
+		ResolveNote:    func(slot int, _ int) int { return a.albertiNoteAt(slot) },
 		Gate:           0.52,
 		VelocityJitter: 4, TimingJitterSec: 0.006,
 	})
@@ -212,16 +234,16 @@ func (a *SF2Markov) Seed(seedVal int64) {
 	//                          (half cadence)
 	//   consequent (bars 5-8): mirrors antecedent then descends 3-2-1
 	//                          (authentic cadence resolving to tonic)
-	a.violinPhrase = a.makeClassicalMelody(2 * numBars)
 	core.addTrack(SF2Track{
 		Channel: 0, Velocity: 88, Notes: a.violinPhrase,
 		PeriodSec: cycleSec, Phase01: 0,
 		MutationRate: 0.04, // melody is composed — almost no per-note mutation
 		MutateOne: func(slot int, _ int) int {
-			return a.violinPhrase[slot%len(a.violinPhrase)]
+			return a.violinNoteAt(slot)
 		},
-		Gate:   0.94,
-		Legato: true,
+		ResolveNote: func(slot int, _ int) int { return a.violinNoteAt(slot) },
+		Gate:        0.94,
+		Legato:      true,
 		ResolveExpression: func(slot int, key int) SF2ExpressionCurve {
 			return SF2ExpressionCurve{Start: 84, Peak: 108, End: 92, PeakAt01: 0.38}
 		},
@@ -235,8 +257,9 @@ func (a *SF2Markov) Seed(seedVal int64) {
 		PeriodSec: cycleSec, Phase01: 0,
 		MutationRate: 0.04,
 		MutateOne: func(slot int, _ int) int {
-			return a.violinPhrase[slot%len(a.violinPhrase)]
+			return a.violinNoteAt(slot)
 		},
+		ResolveNote:    func(slot int, _ int) int { return a.violinNoteAt(slot) },
 		Gate:           0.92,
 		Legato:         true,
 		VelocityJitter: 8, TimingJitterSec: 0.018,
@@ -254,6 +277,7 @@ func (a *SF2Markov) Seed(seedVal int64) {
 			PeriodSec: cycleSec, Phase01: float64(voice) * 0.04,
 			MutationRate:   0.06,
 			MutateOne:      func(slot int, _ int) int { return a.padTone(slot, voice) },
+			ResolveNote:    func(slot int, _ int) int { return a.padTone(slot, voice) },
 			Gate:           0.98,
 			Legato:         true,
 			VelocityJitter: 4, TimingJitterSec: 0.015,
@@ -321,6 +345,14 @@ func (a *SF2Markov) albertiNoteAt(slot int) int {
 		key -= 12
 	}
 	return key
+}
+
+func (a *SF2Markov) violinNoteAt(slot int) int {
+	if len(a.violinPhrase) == 0 {
+		return -1
+	}
+	slot = ((slot % len(a.violinPhrase)) + len(a.violinPhrase)) % len(a.violinPhrase)
+	return a.violinPhrase[slot]
 }
 
 // makeClassicalMelody builds the violin melody for the entire 8-bar period
@@ -423,6 +455,8 @@ func (a *SF2Markov) Next(left, right []float64) {
 	a.samplesElapsed += int64(len(left))
 	if a.form.EpisodeBoundaryCrossed(prev, a.samplesElapsed) {
 		a.horizon = AdvanceLongHorizonState(a.rng, a.horizon, "classical", a.form.MovementAt(a.samplesElapsed))
+		a.rebuildEpisodeMaterials()
+		a.applyArrangement()
 	}
 	if a.form.SectionBoundaryCrossed(prev, a.samplesElapsed) {
 		a.applyArrangement()

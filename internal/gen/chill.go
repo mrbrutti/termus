@@ -185,6 +185,17 @@ func markovWalkChords(rng *rand.Rand, grammar []chillChordOption, length int) []
 	return out
 }
 
+func repeatChillProgression(base []chillChord, n int) []chillChord {
+	if n <= 0 || len(base) == 0 {
+		return nil
+	}
+	out := make([]chillChord, n)
+	for i := range out {
+		out[i] = base[i%len(base)]
+	}
+	return out
+}
+
 // chillProgressions: legacy hand-curated 4-chord turnarounds. Kept as a
 // fallback for the 25% of seeds that go this route — tight Imaj7-VI-IV-V
 // loops still have their charm vs. the 8-chord Markov walks below.
@@ -263,6 +274,51 @@ func (a *Chill) Name() string { return "chill" }
 func (a *Chill) currentRoot() int { return a.rootMidi + a.keyOffset }
 
 func (a *Chill) ApplyControlProfile(profile ControlProfile) { a.profile = profileOrDefault(profile) }
+
+func (a *Chill) makeEpisodeProgression(targetBars int) []chillChord {
+	if targetBars <= 0 {
+		targetBars = 8
+	}
+	var base []chillChord
+	switch a.horizon.HarmonyFamily {
+	case "minor-haze":
+		if a.rng.Float64() < 0.8 {
+			base = markovWalkChords(a.rng, chillMinorChordGrammar, targetBars)
+		} else {
+			base = repeatChillProgression(chillProgressions[3+a.rng.Intn(2)], targetBars)
+		}
+	case "borrowed-loop":
+		base = repeatChillProgression(chillProgressions[a.rng.Intn(len(chillProgressions))], targetBars)
+	case "modal-wander":
+		grammar := chillMajorChordGrammar
+		if a.rng.Float64() < 0.55 {
+			grammar = chillMinorChordGrammar
+		}
+		base = markovWalkChords(a.rng, grammar, targetBars)
+	default:
+		grammar := chillMajorChordGrammar
+		if a.rng.Float64() < 0.35 {
+			grammar = chillMinorChordGrammar
+		}
+		base = markovWalkChords(a.rng, grammar, targetBars)
+	}
+	return a.reharmonizeProgression(repeatChillProgression(base, targetBars))
+}
+
+func (a *Chill) rebuildEpisodeMaterials() {
+	targetBars := len(a.progression)
+	if targetBars <= 0 {
+		targetBars = 8
+	}
+	a.progression = a.makeEpisodeProgression(targetBars)
+	numBars := len(a.progression)
+	a.vibeMotifs = a.makeVibeMotifs()
+	a.guitarMotifs = a.makeGuitarMotifs()
+	a.saxMotifs = a.makeSaxMotifs()
+	a.vibePlan = a.makeVibePlan(numBars)
+	a.guitarPlan = a.makeGuitarPlan(numBars)
+	a.saxPlan = a.makeSaxPlan(numBars)
+}
 
 func (a *Chill) swingOffset(slot int) float64 {
 	profile := profileOrDefault(a.profile)
@@ -384,31 +440,6 @@ func (a *Chill) Seed(seedVal int64) {
 	// producing.
 	core.setVinylCrackle(6, 0.022, 1.5)
 
-	// Pick a progression. 75% of seeds get a Markov-walked 8-chord progression
-	// (per chord grammar rules above); 25% get a hand-curated 4-chord
-	// turnaround. The two modes have different feels — Markov walks tend
-	// to wander more "compositionally" and are less predictable; the
-	// hand-curated turnarounds are tight loops that feel like classic
-	// lofi study-beat backings.
-	if a.rng.Float64() < 0.75 {
-		// 60% major-key, 40% minor for the Markov walks.
-		grammar := chillMajorChordGrammar
-		if a.rng.Float64() < 0.40 {
-			grammar = chillMinorChordGrammar
-		}
-		a.progression = markovWalkChords(a.rng, grammar, 8)
-	} else {
-		a.progression = chillProgressions[a.rng.Intn(len(chillProgressions))]
-	}
-	a.progression = a.reharmonizeProgression(a.progression)
-	numBars := len(a.progression)
-	a.vibeMotifs = a.makeVibeMotifs()
-	a.guitarMotifs = a.makeGuitarMotifs()
-	a.saxMotifs = a.makeSaxMotifs()
-	a.vibePlan = trimOrRepeatPhrase(a.vibeMotifs.A, numBars, chillPlanThird)
-	a.guitarPlan = trimOrRepeatPhrase(a.guitarMotifs.A, numBars, chillPlanNinth)
-	a.saxPlan = trimOrRepeatPhrase(a.saxMotifs.A, numBars, chillPlanRest)
-
 	// Tempo: 65 BPM ± 4 (61–69 BPM range, seed-driven). Per research, lofi
 	// sits at 65–95 BPM and the sweet spot for "doesn't tire the listener
 	// over hours" is the lower half of that range. We were at 75 — drop to
@@ -422,6 +453,9 @@ func (a *Chill) Seed(seedVal int64) {
 	a.section = a.form.SectionAt(0)
 	a.horizon = NewLongHorizonState(a.rng, "lofi", a.form.MovementAt(0))
 	a.scheduleNextDrift()
+	a.progression = a.makeEpisodeProgression(8)
+	a.rebuildEpisodeMaterials()
+	numBars := len(a.progression)
 	cycleSec := barSec * float64(len(a.progression))
 	a.applyArrangement()
 
@@ -1019,6 +1053,8 @@ func (a *Chill) Next(left, right []float64) {
 	}
 	if a.form.EpisodeBoundaryCrossed(prev, a.samplesElapsed) {
 		a.horizon = AdvanceLongHorizonState(a.rng, a.horizon, "lofi", a.form.MovementAt(a.samplesElapsed))
+		a.rebuildEpisodeMaterials()
+		a.applyArrangement()
 	}
 	if a.form.SectionBoundaryCrossed(prev, a.samplesElapsed) {
 		a.applyArrangement()

@@ -217,6 +217,67 @@ func (a *Jazz) wrapSwing(base func(int) float64) func(int) float64 {
 	}
 }
 
+func repeatJazzProgression(base []jazzChord, n int) []jazzChord {
+	if n <= 0 || len(base) == 0 {
+		return nil
+	}
+	out := make([]jazzChord, n)
+	for i := range out {
+		out[i] = base[i%len(base)]
+	}
+	return out
+}
+
+func (a *Jazz) episodeProgressionPalette() [][]jazzChord {
+	switch a.horizon.HarmonyFamily {
+	case "modal-minor":
+		return [][]jazzChord{
+			jazzProgressions[1],
+			jazzProgressions[2],
+		}
+	case "dominant-chain":
+		return [][]jazzChord{
+			jazzProgressions[3],
+			jazzProgressions[5],
+		}
+	case "turnaround":
+		return [][]jazzChord{
+			jazzProgressions[0],
+			jazzProgressions[4],
+		}
+	default:
+		return [][]jazzChord{
+			jazzProgressions[0],
+			jazzProgressions[1],
+			jazzProgressions[3],
+			jazzProgressions[4],
+		}
+	}
+}
+
+func (a *Jazz) makeEpisodeProgression(targetBars int) []jazzChord {
+	palette := a.episodeProgressionPalette()
+	base := palette[a.rng.Intn(len(palette))]
+	base = a.reharmonizeProgression(base)
+	return repeatJazzProgression(base, maxInt(8, targetBars))
+}
+
+func (a *Jazz) rebuildEpisodeMaterials() {
+	targetBars := maxInt(8, len(a.progression))
+	a.progression = a.makeEpisodeProgression(targetBars)
+	numBars := len(a.progression)
+	a.bassPlan = a.makeBassPlan(4 * numBars)
+	a.compLines = map[int][]int{
+		3: a.buildCompLine(3, numBars),
+		5: a.buildCompLine(5, numBars),
+		7: a.buildCompLine(7, numBars),
+		9: a.buildCompLine(9, numBars),
+	}
+	a.accentAnd2, a.accentBeat4, a.accentAnd4 = a.makeCompAccentPlans(numBars)
+	a.saxMotifs = a.makeSaxMotifs()
+	a.saxPlan = a.makeSaxPlan(2 * numBars)
+}
+
 func (a *Jazz) Seed(seedVal int64) {
 	a.rng = rand.New(rand.NewSource(seedVal)) //nolint:gosec
 	// Bb / F / Eb / C are common horn keys — pick from this group.
@@ -271,17 +332,6 @@ func (a *Jazz) Seed(seedVal int64) {
 	// Light chorus on piano only — gives it a slight Bill-Evans shimmer.
 	core.setChorusSend(0, 24)
 
-	// Pick a progression.
-	base := jazzProgressions[a.rng.Intn(len(jazzProgressions))]
-	base = a.reharmonizeProgression(base)
-	if len(base) < 8 {
-		a.progression = make([]jazzChord, 0, 2*len(base))
-		a.progression = append(a.progression, base...)
-		a.progression = append(a.progression, base...)
-	} else {
-		a.progression = append([]jazzChord(nil), base...)
-	}
-
 	// Tempo: 120–148 BPM medium swing.
 	bpm := 120.0 + 28.0*a.rng.Float64()
 	bpm *= TempoScale(profileOrDefault(a.profile))
@@ -292,18 +342,9 @@ func (a *Jazz) Seed(seedVal int64) {
 	a.section = a.form.SectionAt(0)
 	a.horizon = NewLongHorizonState(a.rng, "jazz", a.form.MovementAt(0))
 	a.scheduleNextDrift()
+	a.rebuildEpisodeMaterials()
 	numBars := len(a.progression)
 	cycleSec := barSec * float64(numBars)
-	a.bassPlan = a.makeBassPlan(4 * numBars)
-	a.compLines = map[int][]int{
-		3: a.buildCompLine(3, numBars),
-		5: a.buildCompLine(5, numBars),
-		7: a.buildCompLine(7, numBars),
-		9: a.buildCompLine(9, numBars),
-	}
-	a.accentAnd2, a.accentBeat4, a.accentAnd4 = a.makeCompAccentPlans(numBars)
-	a.saxMotifs = a.makeSaxMotifs()
-	a.saxPlan = trimOrRepeatPhrase(a.saxMotifs.A, 2*numBars, jazzPlanRest)
 	a.applyArrangement()
 
 	// --- Walking bass: 4 quarter notes per bar, hits every beat.
@@ -916,6 +957,8 @@ func (a *Jazz) applyMacroMutations(prev int64) {
 	}
 	if a.form.EpisodeBoundaryCrossed(prev, a.samplesElapsed) {
 		a.horizon = AdvanceLongHorizonState(a.rng, a.horizon, "jazz", a.form.MovementAt(a.samplesElapsed))
+		a.rebuildEpisodeMaterials()
+		a.applyArrangement()
 	}
 	if a.form.SectionBoundaryCrossed(prev, a.samplesElapsed) {
 		a.applyArrangement()
