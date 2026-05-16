@@ -59,6 +59,7 @@ type Jazz struct {
 	saxPlan     []int
 	saxMotifs   MotifMemory
 	profile     ControlProfile
+	horizon     LongHorizonState
 }
 
 // jazzChord is one bar of harmony. tones are MIDI semitone offsets from
@@ -289,6 +290,7 @@ func (a *Jazz) Seed(seedVal int64) {
 	a.barSamples = secondsToSamples(barSec)
 	a.form = NewEpisodePlan(a.rng, a.barSamples, "jazz")
 	a.section = a.form.SectionAt(0)
+	a.horizon = NewLongHorizonState(a.rng, "jazz", a.form.MovementAt(0))
 	a.scheduleNextDrift()
 	numBars := len(a.progression)
 	cycleSec := barSec * float64(numBars)
@@ -912,6 +914,9 @@ func (a *Jazz) applyMacroMutations(prev int64) {
 		}
 		a.scheduleNextDrift()
 	}
+	if a.form.EpisodeBoundaryCrossed(prev, a.samplesElapsed) {
+		a.horizon = AdvanceLongHorizonState(a.rng, a.horizon, "jazz", a.form.MovementAt(a.samplesElapsed))
+	}
 	if a.form.SectionBoundaryCrossed(prev, a.samplesElapsed) {
 		a.applyArrangement()
 	}
@@ -955,6 +960,8 @@ func (a *Jazz) applyArrangement() {
 	reverbDelta := ReverbDelta(profile)
 	brightDelta := BrightnessDelta(profile)
 	densityDelta := int32(ProfileCentered(profile.Density) * 8)
+	densityDelta += int32(a.horizon.DensityBias * 5)
+	brightDelta += int32(a.horizon.RegisterBias * 4)
 	a.core.setReverbSend(0, SectionCC(48, comp.ReverbDelta+reverbDelta))
 	a.core.setReverbSend(1, SectionCC(18, bass.ReverbDelta+reverbDelta/2))
 	a.core.setReverbSend(2, SectionCC(86, lead.ReverbDelta+reverbDelta))

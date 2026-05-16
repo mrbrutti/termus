@@ -300,6 +300,15 @@ func (p *EpisodePlan) MovementAt(samples int64) EpisodeMovement {
 	return ep.Movement
 }
 
+func (p *EpisodePlan) EpisodeIndexAt(samples int64) int {
+	if p == nil || p.barSamples <= 0 {
+		return 0
+	}
+	bar := sampleBarIndex(samples, p.barSamples)
+	_, idx := p.locateEpisode(bar)
+	return idx
+}
+
 func (p *EpisodePlan) ListeningMarkers(episodes int) []ListeningMarker {
 	if p == nil || p.barSamples <= 0 {
 		return nil

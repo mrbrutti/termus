@@ -50,6 +50,7 @@ type SF2Markov struct {
 
 	violinPhrase []int
 	profile      ControlProfile
+	horizon      LongHorizonState
 }
 
 // classicalChord is one bar of harmony — diatonic only.
@@ -167,6 +168,7 @@ func (a *SF2Markov) Seed(seedVal int64) {
 	a.barSamples = secondsToSamples(barSec)
 	a.form = NewEpisodePlan(a.rng, a.barSamples, "classical")
 	a.section = a.form.SectionAt(0)
+	a.horizon = NewLongHorizonState(a.rng, "classical", a.form.MovementAt(0))
 	numBars := len(a.progression)
 	cycleSec := barSec * float64(numBars)
 
@@ -419,6 +421,9 @@ func (a *SF2Markov) Next(left, right []float64) {
 	prev := a.samplesElapsed
 	a.core.renderInto(left, right)
 	a.samplesElapsed += int64(len(left))
+	if a.form.EpisodeBoundaryCrossed(prev, a.samplesElapsed) {
+		a.horizon = AdvanceLongHorizonState(a.rng, a.horizon, "classical", a.form.MovementAt(a.samplesElapsed))
+	}
 	if a.form.SectionBoundaryCrossed(prev, a.samplesElapsed) {
 		a.applyArrangement()
 	}
@@ -441,6 +446,8 @@ func (a *SF2Markov) applyArrangement() {
 	reverbDelta := ReverbDelta(profile)
 	brightDelta := BrightnessDelta(profile)
 	densityDelta := int32(ProfileCentered(profile.Density) * 8)
+	densityDelta += int32(a.horizon.DensityBias * 5)
+	brightDelta += int32(a.horizon.RegisterBias * 4)
 	droneDelta := DroneDepthDelta(profile)
 	a.core.setReverbSend(0, SectionCC(84, lead.ReverbDelta+reverbDelta))
 	a.core.setReverbSend(1, SectionCC(56, bass.ReverbDelta+reverbDelta/3))

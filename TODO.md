@@ -77,7 +77,7 @@
 - [x] Replace fixed looping forms with a streaming episode planner so `jazz`, `lofi`, and `classical` stop wrapping on one short bar cycle.
 
 ### Long Horizon State
-- [ ] Add a long-horizon conductor state that carries harmony family, motif family, texture scene, density bias, and movement identity across episodes.
+- [x] Add a long-horizon conductor state that carries harmony family, motif family, texture scene, density bias, and movement identity across episodes.
 
 ### Episode Regeneration
 - [ ] Regenerate progressions, motifs, comp/drum plans, and orchestration choices at episode boundaries instead of replaying one frozen cycle forever.

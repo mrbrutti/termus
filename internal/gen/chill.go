@@ -69,6 +69,7 @@ type Chill struct {
 	guitarMotifs MotifMemory
 	saxMotifs    MotifMemory
 	profile      ControlProfile
+	horizon      LongHorizonState
 }
 
 // chillChord is one chord in the loop, expressed as semitone offsets from
@@ -419,6 +420,7 @@ func (a *Chill) Seed(seedVal int64) {
 	a.barSamples = secondsToSamples(barSec)
 	a.form = NewEpisodePlan(a.rng, a.barSamples, "lofi")
 	a.section = a.form.SectionAt(0)
+	a.horizon = NewLongHorizonState(a.rng, "lofi", a.form.MovementAt(0))
 	a.scheduleNextDrift()
 	cycleSec := barSec * float64(len(a.progression))
 	a.applyArrangement()
@@ -1015,6 +1017,9 @@ func (a *Chill) Next(left, right []float64) {
 		a.shiftKey()
 		a.scheduleNextDrift()
 	}
+	if a.form.EpisodeBoundaryCrossed(prev, a.samplesElapsed) {
+		a.horizon = AdvanceLongHorizonState(a.rng, a.horizon, "lofi", a.form.MovementAt(a.samplesElapsed))
+	}
 	if a.form.SectionBoundaryCrossed(prev, a.samplesElapsed) {
 		a.applyArrangement()
 	}
@@ -1051,6 +1056,8 @@ func (a *Chill) applyArrangement() {
 	reverbDelta := ReverbDelta(profile)
 	brightDelta := BrightnessDelta(profile)
 	densityDelta := int32(ProfileCentered(profile.Density) * 8)
+	densityDelta += int32(a.horizon.DensityBias * 5)
+	brightDelta += int32(a.horizon.RegisterBias * 4)
 	core.setReverbSend(0, SectionCC(56, comp.ReverbDelta+reverbDelta))
 	core.setReverbSend(1, SectionCC(24, bass.ReverbDelta+reverbDelta/2))
 	core.setReverbSend(2, SectionCC(80, texture.ReverbDelta+reverbDelta))
