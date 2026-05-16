@@ -49,7 +49,9 @@ trap 'rm -rf "$WORK"' EXIT
 
 # Targets we ship binaries for. Keep in sync with .github/workflows/release.yml
 # and the on_macos/on_linux blocks in the formula template.
-TARGETS=(darwin-arm64 darwin-amd64 linux-amd64)
+# darwin-amd64 isn't here — Intel Mac users fall back to source build through
+# the formula's on_intel block.
+TARGETS=(darwin-arm64 linux-amd64)
 
 declare -A SHA
 for target in "${TARGETS[@]}"; do
@@ -63,6 +65,18 @@ for target in "${TARGETS[@]}"; do
   SHA[$target]="$(shasum -a 256 "$WORK/$TAR" | awk '{print $1}')"
   echo "    sha256=${SHA[$target]}"
 done
+
+# Also fetch the source tarball for the intel-Mac fallback path. GitHub
+# auto-generates these for every tag at /archive/refs/tags/<TAG>.tar.gz.
+SRC_TAR="termus-${VERSION}.tar.gz"
+SRC_URL="https://github.com/${REPO}/archive/refs/tags/${TAG}.tar.gz"
+echo "  fetching ${SRC_URL}"
+if ! curl -fsSL -o "$WORK/$SRC_TAR" "$SRC_URL"; then
+  echo "fatal: download failed for $SRC_URL" >&2
+  exit 1
+fi
+SHA[source]="$(shasum -a 256 "$WORK/$SRC_TAR" | awk '{print $1}')"
+echo "    source sha256=${SHA[source]}"
 
 FORMULA="$TAP_DIR/Formula/termus.rb"
 
@@ -81,8 +95,10 @@ class Termus < Formula
       sha256 "${SHA[darwin-arm64]}"
     end
     on_intel do
-      url "https://github.com/${REPO}/releases/download/${TAG}/termus_${VERSION}_darwin-amd64.tar.gz"
-      sha256 "${SHA[darwin-amd64]}"
+      # No prebuilt binary for Intel Macs yet — fall back to source build.
+      url "https://github.com/${REPO}/archive/refs/tags/${TAG}.tar.gz"
+      sha256 "${SHA[source]}"
+      depends_on "go" => :build
     end
   end
 
@@ -98,7 +114,9 @@ class Termus < Formula
   depends_on "go" => :build if build.head?
 
   def install
-    if build.head?
+    # Build from source on intel-Mac (no binary shipped) and on HEAD installs.
+    needs_build = build.head? || (OS.mac? && Hardware::CPU.intel?)
+    if needs_build
       ldflags = %W[-s -w -X main.version=#{version}]
       system "go", "build", *std_go_args(ldflags: ldflags, output: bin/"termus"), "./cmd/termus"
     else

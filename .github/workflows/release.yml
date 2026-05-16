@@ -28,14 +28,16 @@ jobs:
             runner: macos-latest
             goos: darwin
             goarch: arm64
-          - target: darwin-amd64
-            runner: macos-13
-            goos: darwin
-            goarch: amd64
           - target: linux-amd64
             runner: ubuntu-latest
             goos: linux
             goarch: amd64
+        # darwin-amd64 (Intel Mac binary) was tried via macos-13 but that
+        # runner is being deprecated by GitHub and free-tier queue times are
+        # very long (15+ min). Intel-Mac users fall back to the formula's
+        # source-build path (`brew install --build-from-source` or
+        # `brew install --HEAD`). Re-add this matrix entry when macos-13 is
+        # replaced or when bottling becomes essential.
     steps:
       - uses: actions/checkout@v4
 
