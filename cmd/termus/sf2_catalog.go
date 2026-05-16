@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/sinshu/go-meltysynth/meltysynth"
 
@@ -69,6 +70,21 @@ func (c *soundFontCatalog) WarmMaxAsync() {
 			_ = c.ensurePresets(io.Discard, sf2.AllPresetNames())
 		}()
 	})
+}
+
+func (c *soundFontCatalog) WarmCurrentSpecMaxAsync(spec gen.AlgoSpec, onReady func()) {
+	if c == nil || c.strategy != "max" || !spec.RequiresSF2 {
+		return
+	}
+	go func() {
+		if err := c.ensurePresets(io.Discard, gen.MaxSF2PresetsForSpec(spec)); err != nil {
+			logCatalogEnsureError(spec, err)
+			return
+		}
+		if onReady != nil {
+			onReady()
+		}
+	}()
 }
 
 func (c *soundFontCatalog) Pick(spec gen.AlgoSpec) *meltysynth.SoundFont {
@@ -179,11 +195,48 @@ func loadInitialSoundFontCatalog(spec gen.AlgoSpec, strategy, fallbackPreset, cu
 		return newPinnedSoundFontCatalog(customPath)
 	}
 	catalog := newSoundFontCatalog(strategy, fallbackPreset)
-	loaded, err := catalog.EnsureForSpec(spec, progress)
+	loaded, err := catalog.ensureForStartup(spec, progress)
 	if err != nil {
 		return nil, nil, err
 	}
 	return catalog, loaded, nil
+}
+
+func (c *soundFontCatalog) ensureForStartup(spec gen.AlgoSpec, progress io.Writer) (*meltysynth.SoundFont, error) {
+	if !spec.RequiresSF2 {
+		return nil, nil
+	}
+	var presets []string
+	switch c.strategy {
+	case "max":
+		presets = startupPresetsForMax(spec, c.fallback)
+	default:
+		presets = neededPresets(c.strategy, c.fallback, spec)
+	}
+	if err := c.ensurePresets(progress, presets); err != nil {
+		return nil, err
+	}
+	if c.strategy == "max" {
+		if c.fallback != "" {
+			c.mu.RLock()
+			fallback := c.byName[c.fallback]
+			c.mu.RUnlock()
+			if fallback != nil {
+				return fallback, nil
+			}
+		}
+	}
+	return c.pick(spec), nil
+}
+
+func startupPresetsForMax(spec gen.AlgoSpec, fallback string) []string {
+	if fallback != "" {
+		return []string{fallback}
+	}
+	if spec.PreferredSF2 != "" {
+		return []string{spec.PreferredSF2}
+	}
+	return gen.MaxSF2PresetsForSpec(spec)
 }
 
 func logCatalogEnsureError(spec gen.AlgoSpec, err error) {
@@ -191,4 +244,27 @@ func logCatalogEnsureError(spec gen.AlgoSpec, err error) {
 		return
 	}
 	_, _ = io.WriteString(os.Stderr, "sf2 warm for "+spec.Name+" failed: "+err.Error()+"\n")
+}
+
+func fastForwardAlgorithm(algo gen.Algorithm, elapsed time.Duration) {
+	if algo == nil || elapsed <= 0 {
+		return
+	}
+	const sampleRate = 44100
+	const block = 2048
+	const maxCatchup = 8 * time.Second
+	if elapsed > maxCatchup {
+		elapsed = maxCatchup
+	}
+	frames := int(float64(sampleRate) * elapsed.Seconds())
+	left := make([]float64, block)
+	right := make([]float64, block)
+	for frames > 0 {
+		n := block
+		if frames < n {
+			n = frames
+		}
+		algo.Next(left[:n], right[:n])
+		frames -= n
+	}
 }

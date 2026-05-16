@@ -59,3 +59,19 @@ func TestNeededPresetsMaxLoadsBeyondPreferredSet(t *testing.T) {
 		}
 	}
 }
+
+func TestStartupPresetsForMaxPrefersFallbackForFastBoot(t *testing.T) {
+	spec, _ := gen.Resolve("jazz")
+	got := startupPresetsForMax(spec, "general")
+	if len(got) != 1 || got[0] != "general" {
+		t.Fatalf("startupPresetsForMax(jazz, general) = %v, want [general]", got)
+	}
+}
+
+func TestStartupPresetsForMaxFallsBackToPreferredWhenNoFallbackProvided(t *testing.T) {
+	spec, _ := gen.Resolve("jazz")
+	got := startupPresetsForMax(spec, "")
+	if len(got) != 1 || got[0] != "tyros4" {
+		t.Fatalf("startupPresetsForMax(jazz, \"\") = %v, want [tyros4]", got)
+	}
+}

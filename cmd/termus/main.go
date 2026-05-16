@@ -269,7 +269,7 @@ func main() {
 			filepath.Join(*playlistOut, "manifest.json"), manifest.TrackCount, manifest.TotalDurationS)
 		return
 	}
-	liveAlgo := gen.WrapDebugStatus(buildLiveAlgo(spec, *seed), presetLabel(spec))
+	liveAlgo := gen.WrapDebugStatus(gen.ApplyControlProfile(algo, controlProfile), presetLabel(spec))
 	ring := scope.NewRing(4096)
 	root := audio.NewRoot(liveAlgo, ring)
 	root.SetSeed(*seed)
@@ -302,8 +302,18 @@ func main() {
 
 	// Start the live audio backend asynchronously so a bad CoreAudio/default-
 	// device state does not block the TUI from launching.
+	launchStartedAt := time.Now()
 	if catalog != nil {
-		catalog.WarmMaxAsync()
+		if sfStrategy == "max" && *sf2Path == "" && spec.RequiresSF2 {
+			catalog.WarmCurrentSpecMaxAsync(spec, func() {
+				upgraded := gen.WrapDebugStatus(buildLiveAlgo(spec, *seed), presetLabel(spec))
+				fastForwardAlgorithm(upgraded, time.Since(launchStartedAt))
+				root.SwapAlgorithmFade(upgraded, 4410)
+				catalog.WarmMaxAsync()
+			})
+		} else {
+			catalog.WarmMaxAsync()
+		}
 	}
 	sr := beep.SampleRate(44100)
 	live := audio.StartLive(root, sr, sr.N(time.Second/20), 3*time.Second)
