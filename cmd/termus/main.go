@@ -253,7 +253,7 @@ func main() {
 		return gen.WrapDebugStatus(buildLiveAlgo(s, algoSeed), presetLabel(s))
 	}
 
-	model := tui.New(ring, root, liveAlgo.Name(), "Cmin", *seed, *initialVol).
+	model := tui.New(ring, root, spec.Label(), "Cmin", *seed, *initialVol).
 		WithDebug(*debugView).
 		WithControlProfile(&controlProfile).
 		WithExportController(makeTUIExporter(buildAlgo, *initialVol)).

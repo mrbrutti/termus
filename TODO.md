@@ -100,7 +100,7 @@
 ## Product Identity
 
 ### Stations
-- [ ] Replace the raw genre-facing presentation with a curated station pass so the app surfaces named moods like `night drift`, `glass chapel`, and `soft tape` instead of only algorithm labels.
+- [x] Replace the raw genre-facing presentation with a curated station pass so the app surfaces named moods like `night drift`, `glass chapel`, and `soft tape` instead of only algorithm labels.
 
 ### Listening Modes
 - [ ] Add explicit long-form listening modes such as `endless`, `album side`, `hour stream`, and `radio`, and wire them into live playback plus offline render/export defaults.

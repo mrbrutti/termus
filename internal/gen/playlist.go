@@ -43,7 +43,7 @@ func SameGenrePlaylist(spec AlgoSpec, count int, baseSeed int64, dur time.Durati
 		}
 	}
 	return Playlist{
-		Name:   generatePlaylistName(rng, spec.Display),
+		Name:   generatePlaylistName(rng, spec.Label()),
 		Mode:   PlaylistSameGenre,
 		Tracks: tracks,
 	}

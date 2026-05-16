@@ -124,7 +124,7 @@ func (m *Model) currentSeedRecord() (seedCurationRecord, bool) {
 	if !found {
 		rec = seedCurationRecord{
 			Algo:    spec.Name,
-			Display: spec.Display,
+			Display: spec.Label(),
 			Seed:    m.seed,
 		}
 	}

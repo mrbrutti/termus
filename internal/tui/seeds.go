@@ -104,7 +104,7 @@ func resolveSavedSeedRecord(rec savedSeedRecord) (seedBookmark, string, bool) {
 		}
 		return seedBookmark{}, label, false
 	}
-	return seedBookmark{Spec: spec, Seed: rec.Seed}, spec.Display, true
+	return seedBookmark{Spec: spec, Seed: rec.Seed}, spec.Label(), true
 }
 
 func formatSavedSeedAge(now, savedAt time.Time) string {

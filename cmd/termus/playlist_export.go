@@ -79,7 +79,7 @@ func renderPlaylistOutWith(outDir string, pl *gen.Playlist, volume int, build pl
 		item := playlistManifestTrack{
 			Index:     i + 1,
 			Algo:      track.Spec.Name,
-			Display:   track.Spec.Display,
+			Display:   track.Spec.Label(),
 			Seed:      track.Seed,
 			Path:      base,
 			Frames:    frames,

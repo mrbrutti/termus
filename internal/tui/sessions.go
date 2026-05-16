@@ -117,9 +117,9 @@ func (m *Model) saveCurrentSession() {
 		return
 	}
 	rec := savedSessionRecord{
-		Label:    fmt.Sprintf("%s / %d", spec.Display, m.seed),
+		Label:    fmt.Sprintf("%s / %d", spec.Label(), m.seed),
 		Algo:     spec.Name,
-		Display:  spec.Display,
+		Display:  spec.Label(),
 		Seed:     m.seed,
 		Visual:   Visuals[m.visualIdx].Name,
 		Theme:    m.activeTheme().Name,

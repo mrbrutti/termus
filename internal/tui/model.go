@@ -180,13 +180,13 @@ func (m *Model) advancePlaylist() {
 	track := m.playlist.Tracks[m.playlistIdx]
 	algo := m.buildFn(track.Spec, track.Seed)
 	m.cmd.SwapAlgorithmFade(algo, m.playlistFade)
-	m.algo = track.Spec.Display
+	m.algo = track.Spec.Label()
 	m.seed = track.Seed
 	m.touchCurrentSeed()
 	m.trackStartedAt = time.Now()
 	m.nextTrackAt = time.Now().Add(track.Duration)
 	m.flashStatus(fmt.Sprintf("▶ %d/%d %s",
-		m.playlistIdx+1, len(m.playlist.Tracks), track.Spec.Display), 3*time.Second)
+		m.playlistIdx+1, len(m.playlist.Tracks), track.Spec.Label()), 3*time.Second)
 
 	// Keep the genre cycle index in sync if this track matches a genre.
 	for i, g := range m.genres {
@@ -213,9 +213,9 @@ func (m *Model) switchAlgo(step int) {
 	spec := m.genres[m.genreIdx]
 	algo := m.buildFn(spec, m.seed)
 	m.cmd.SwapAlgorithmFade(algo, m.morphFadeFrames())
-	m.algo = spec.Display
+	m.algo = spec.Label()
 	m.touchCurrentSeed()
-	m.flashStatus("switched: "+spec.Display, 2*time.Second)
+	m.flashStatus("switched: "+spec.Label(), 2*time.Second)
 }
 
 func (m Model) currentSpec() (gen.AlgoSpec, bool) {
@@ -234,7 +234,7 @@ func (m *Model) swapToSeed(spec gen.AlgoSpec, seed int64, status string) {
 	}
 	algo := m.buildFn(spec, seed)
 	m.cmd.SwapAlgorithmFade(algo, m.morphFadeFrames())
-	m.algo = spec.Display
+	m.algo = spec.Label()
 	m.seed = seed
 	for i, g := range m.genres {
 		if g.Name == spec.Name {
@@ -275,7 +275,7 @@ func (m *Model) storeSeed(slot string) {
 	} else {
 		m.seedB = bookmark
 	}
-	m.flashStatus(fmt.Sprintf("%s ← %s/%d", slot, spec.Display, m.seed), 2*time.Second)
+	m.flashStatus(fmt.Sprintf("%s ← %s/%d", slot, spec.Label(), m.seed), 2*time.Second)
 }
 
 func (m *Model) toggleSeedCompare() {
@@ -309,7 +309,7 @@ func (m *Model) keepSeed() {
 	m.kept[key] = seedBookmark{Spec: spec, Seed: m.seed}
 	rec := savedSeedRecord{
 		Algo:    spec.Name,
-		Display: spec.Display,
+		Display: spec.Label(),
 		Seed:    m.seed,
 		SavedAt: time.Now(),
 	}
@@ -319,7 +319,7 @@ func (m *Model) keepSeed() {
 		m.flashStatus("keep saved locally failed", 3*time.Second)
 		return
 	}
-	m.flashStatus(fmt.Sprintf("kept %s/%d (%d)", spec.Display, m.seed, len(m.kept)), 2*time.Second)
+	m.flashStatus(fmt.Sprintf("kept %s/%d (%d)", spec.Label(), m.seed, len(m.kept)), 2*time.Second)
 }
 
 func (m *Model) toggleLibrary() {
@@ -435,7 +435,7 @@ func (m *Model) refreshCurrentTake(label string) {
 		fade = 15435
 	}
 	m.cmd.SwapAlgorithmFade(algo, fade)
-	m.algo = spec.Display
+	m.algo = spec.Label()
 	m.flashStatus(label, 2*time.Second)
 }
 
@@ -1067,7 +1067,7 @@ func slotSeedLabel(mark *seedBookmark) string {
 	if mark == nil {
 		return "—"
 	}
-	return fmt.Sprintf("%s/%d", mark.Spec.Display, mark.Seed)
+	return fmt.Sprintf("%s/%d", mark.Spec.Label(), mark.Seed)
 }
 
 func inspectorDebugLabel(status gen.DebugStatus) string {

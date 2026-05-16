@@ -260,7 +260,7 @@ func TestLibraryPanelShowsSavedSeeds(t *testing.T) {
 		themes: []ColorTheme{DefaultTheme()},
 	}
 	panel := libraryPanel(m, 90, 18, DefaultTheme())
-	for _, want := range []string{"SAVED SEEDS", "Ambient", "42", "[enter] load"} {
+	for _, want := range []string{"SAVED SEEDS", "Night Drift", "42", "[enter] load"} {
 		if !strings.Contains(panel, want) {
 			t.Fatalf("library panel missing %q:\n%s", want, panel)
 		}
