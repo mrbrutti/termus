@@ -416,8 +416,16 @@ func (a *Ambient) evolveTexture() {
 	a.celestaStartDegree = a.rng.Intn(3)
 	a.bellRegisterShift = variedRegisterShift(a.rng)
 	a.celestaRegisterShift = variedRegisterShift(a.rng)
-	a.bellMotifs = a.makeBellMotifs()
-	a.celestaMotifs = a.makeCelestaMotifs()
+	if len(a.bellMotifs.A) > 0 && a.rng.Float64() < 0.55 {
+		a.bellMotifs = transformNumericMotifMemory(a.rng, a.bellMotifs)
+	} else {
+		a.bellMotifs = a.makeBellMotifs()
+	}
+	if len(a.celestaMotifs.A) > 0 && a.rng.Float64() < 0.55 {
+		a.celestaMotifs = transformNumericMotifMemory(a.rng, a.celestaMotifs)
+	} else {
+		a.celestaMotifs = a.makeCelestaMotifs()
+	}
 	if a.bellsOn != nil && a.celestaOn != nil {
 		if a.rng.Float64() < 0.5 {
 			*a.bellsOn = true

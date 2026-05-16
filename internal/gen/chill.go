@@ -301,6 +301,69 @@ func chillCadenceBundleSignature(bundle chillMotifBundle) string {
 	return phraseSignature(bundle.vibe.Cadence) + "|" + phraseSignature(bundle.guitar.Cadence) + "|" + phraseSignature(bundle.sax.Cadence)
 }
 
+func (a *Chill) transformChillPhrase(src []int, fill int) []int {
+	if len(src) == 0 {
+		return nil
+	}
+	maps := []map[int]int{
+		{
+			chillPlanThird:         chillPlanSeventh,
+			chillPlanSeventh:       chillPlanNinth,
+			chillPlanNinth:         chillPlanThirteenth,
+			chillPlanThirteenth:    chillPlanEleventh,
+			chillPlanEleventh:      chillPlanThird,
+			chillPlanPickupAbove:   chillPlanPickupBelow,
+			chillPlanPickupBelow:   chillPlanPickupAbove,
+			chillPlanSuspendFourth: chillPlanResolveThird,
+			chillPlanResolveThird:  chillPlanRoot,
+		},
+		{
+			chillPlanRoot:          chillPlanNinth,
+			chillPlanThird:         chillPlanEleventh,
+			chillPlanFifth:         chillPlanThirteenth,
+			chillPlanSeventh:       chillPlanThird,
+			chillPlanPickupAbove:   chillPlanSuspendFourth,
+			chillPlanPickupBelow:   chillPlanResolveThird,
+			chillPlanResolveThird:  chillPlanRoot,
+			chillPlanSuspendFourth: chillPlanResolveThird,
+		},
+	}
+	out := sequencePhrase(src, maps[a.rng.Intn(len(maps))])
+	switch a.rng.Intn(3) {
+	case 0:
+		out = rotatePhrase(out, 1)
+	case 1:
+		out = reversePhrase(out)
+	}
+	return trimOrRepeatPhrase(out, len(src), fill)
+}
+
+func (a *Chill) transformMotifBundle(base chillMotifBundle) chillMotifBundle {
+	return chillMotifBundle{
+		vibe: MotifMemory{
+			A:       a.transformChillPhrase(base.vibe.A, chillPlanThird),
+			Aprime:  a.transformChillPhrase(firstNonEmpty(base.vibe.Aprime, base.vibe.A), chillPlanThird),
+			B:       a.transformChillPhrase(firstNonEmpty(base.vibe.B, base.vibe.A), chillPlanThird),
+			Cadence: a.transformChillPhrase(firstNonEmpty(base.vibe.Cadence, base.vibe.A), chillPlanThird),
+			Outro:   a.transformChillPhrase(firstNonEmpty(base.vibe.Outro, base.vibe.Cadence, base.vibe.A), chillPlanThird),
+		},
+		guitar: MotifMemory{
+			A:       a.transformChillPhrase(base.guitar.A, chillPlanNinth),
+			Aprime:  a.transformChillPhrase(firstNonEmpty(base.guitar.Aprime, base.guitar.A), chillPlanNinth),
+			B:       a.transformChillPhrase(firstNonEmpty(base.guitar.B, base.guitar.A), chillPlanNinth),
+			Cadence: a.transformChillPhrase(firstNonEmpty(base.guitar.Cadence, base.guitar.A), chillPlanNinth),
+			Outro:   a.transformChillPhrase(firstNonEmpty(base.guitar.Outro, base.guitar.Cadence, base.guitar.A), chillPlanNinth),
+		},
+		sax: MotifMemory{
+			A:       a.transformChillPhrase(base.sax.A, chillPlanRest),
+			Aprime:  a.transformChillPhrase(firstNonEmpty(base.sax.Aprime, base.sax.A), chillPlanRest),
+			B:       a.transformChillPhrase(firstNonEmpty(base.sax.B, base.sax.A), chillPlanRest),
+			Cadence: a.transformChillPhrase(firstNonEmpty(base.sax.Cadence, base.sax.A), chillPlanRest),
+			Outro:   a.transformChillPhrase(firstNonEmpty(base.sax.Outro, base.sax.Cadence, base.sax.A), chillPlanRest),
+		},
+	}
+}
+
 func (a *Chill) makeEpisodeProgression(targetBars int) []chillChord {
 	if targetBars <= 0 {
 		targetBars = 8
@@ -353,6 +416,13 @@ func (a *Chill) chooseMotifBundle() chillMotifBundle {
 			guitar: a.makeGuitarMotifs(),
 			sax:    a.makeSaxMotifs(),
 		})
+	}
+	if len(a.vibeMotifs.A) > 0 || len(a.guitarMotifs.A) > 0 || len(a.saxMotifs.A) > 0 {
+		candidates = append(candidates, a.transformMotifBundle(chillMotifBundle{
+			vibe:   a.vibeMotifs,
+			guitar: a.guitarMotifs,
+			sax:    a.saxMotifs,
+		}))
 	}
 	best := candidates[0]
 	bestScore := a.motifHistory.penalty(chillMotifBundleSignature(best)) + a.cadenceHistory.penalty(chillCadenceBundleSignature(best))

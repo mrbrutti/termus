@@ -341,8 +341,16 @@ func (a *Phase) evolveTexture() {
 	a.chordRoots = append([]int(nil), rootSets[a.rng.Intn(len(rootSets))]...)
 	a.currentChordIdx %= len(a.chordRoots)
 	a.phaseFigure = rotatePhrase(a.makePhaseFigure(), a.rng.Intn(4))
-	a.phaseMotifs = a.makePhaseMotifs()
-	a.crotalesMotifs = a.makeCrotalesMotifs()
+	if len(a.phaseMotifs.A) > 0 && a.rng.Float64() < 0.55 {
+		a.phaseMotifs = transformNumericMotifMemory(a.rng, a.phaseMotifs)
+	} else {
+		a.phaseMotifs = a.makePhaseMotifs()
+	}
+	if len(a.crotalesMotifs.A) > 0 && a.rng.Float64() < 0.55 {
+		a.crotalesMotifs = transformNumericMotifMemory(a.rng, a.crotalesMotifs)
+	} else {
+		a.crotalesMotifs = a.makeCrotalesMotifs()
+	}
 	a.phaseRegisterShift = variedRegisterShift(a.rng)
 	a.padRegisterShift = variedRegisterShift(a.rng)
 	a.crotalesRegisterShift = variedRegisterShift(a.rng)

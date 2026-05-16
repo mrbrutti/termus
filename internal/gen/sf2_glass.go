@@ -398,9 +398,21 @@ func (a *SF2Glass) evolveTexture() {
 	a.bellRegisterShift = variedRegisterShift(a.rng)
 	a.celestaRegisterShift = variedRegisterShift(a.rng)
 	a.musicBoxRegisterShift = variedRegisterShift(a.rng)
-	a.bellMotifs = a.makeBellMotifs()
-	a.celestaMotifs = a.makeCelestaMotifs()
-	a.musicBoxMotifs = a.makeMusicBoxMotifs()
+	if len(a.bellMotifs.A) > 0 && a.rng.Float64() < 0.55 {
+		a.bellMotifs = transformNumericMotifMemory(a.rng, a.bellMotifs)
+	} else {
+		a.bellMotifs = a.makeBellMotifs()
+	}
+	if len(a.celestaMotifs.A) > 0 && a.rng.Float64() < 0.55 {
+		a.celestaMotifs = transformNumericMotifMemory(a.rng, a.celestaMotifs)
+	} else {
+		a.celestaMotifs = a.makeCelestaMotifs()
+	}
+	if len(a.musicBoxMotifs.A) > 0 && a.rng.Float64() < 0.55 {
+		a.musicBoxMotifs = transformNumericMotifMemory(a.rng, a.musicBoxMotifs)
+	} else {
+		a.musicBoxMotifs = a.makeMusicBoxMotifs()
+	}
 	if a.musicBoxOn != nil {
 		*a.musicBoxOn = a.rng.Float64() < 0.6
 	}

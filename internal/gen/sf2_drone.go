@@ -306,7 +306,11 @@ func (a *SF2Drone) evolveTexture() {
 	if len(a.chords) > 0 {
 		a.currentChordIdx %= len(a.chords)
 	}
-	a.shimmerMotifs = a.makeShimmerMotifs()
+	if len(a.shimmerMotifs.A) > 0 && a.rng.Float64() < 0.60 {
+		a.shimmerMotifs = transformNumericMotifMemory(a.rng, a.shimmerMotifs)
+	} else {
+		a.shimmerMotifs = a.makeShimmerMotifs()
+	}
 	a.droneRegisterShift = variedRegisterShift(a.rng)
 	a.choirRegisterShift = variedRegisterShift(a.rng)
 	a.shimmerRegisterShift = variedRegisterShift(a.rng)

@@ -122,6 +122,14 @@ func classicalProgressionSignature(prog []classicalChord) string {
 	return phraseSignature(parts)
 }
 
+func clampPhraseRange(phrase []int, low, high int) []int {
+	out := copyPhrase(phrase)
+	for i := range out {
+		out[i] = clampMidiToRange(out[i], low, high)
+	}
+	return out
+}
+
 func (a *SF2Markov) makeEpisodeProgression() []classicalChord {
 	candidates := make([][]classicalChord, 0, 4)
 	for i := 0; i < 4; i++ {
@@ -155,6 +163,9 @@ func (a *SF2Markov) chooseViolinPhrase(numSlots int) []int {
 	candidates := make([][]int, 0, 4)
 	for i := 0; i < 4; i++ {
 		candidates = append(candidates, a.makeClassicalMelody(numSlots))
+	}
+	if len(a.violinPhrase) > 0 {
+		candidates = append(candidates, clampPhraseRange(transformNumericPhrase(a.rng, a.violinPhrase), 67, 88))
 	}
 	best := candidates[0]
 	bestScore := a.motifHistory.penalty(phraseSignature(best)) + a.cadenceHistory.penalty(phraseSignature(best[maxInt(0, len(best)-4):]))

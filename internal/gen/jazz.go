@@ -255,6 +255,49 @@ func jazzMotifSignature(m MotifMemory) string {
 	return phraseSignature(m.A) + "|" + phraseSignature(m.B)
 }
 
+func (a *Jazz) transformSaxPhrase(src []int) []int {
+	if len(src) == 0 {
+		return nil
+	}
+	maps := []map[int]int{
+		{
+			jazzPlanThird:              jazzPlanSeventh,
+			jazzPlanSeventh:            jazzPlanNinth,
+			jazzPlanNinth:              jazzPlanThird,
+			jazzPlanApproachBelow:      jazzPlanApproachAbove,
+			jazzPlanApproachAbove:      jazzPlanApproachBelow,
+			jazzPlanResolveThird:       jazzPlanRoot,
+			jazzPlanRoot:               jazzPlanResolveThird,
+			jazzPlanAnticipateNextRoot: jazzPlanApproachBelow,
+		},
+		{
+			jazzPlanThird:         jazzPlanSuspendFourth,
+			jazzPlanSuspendFourth: jazzPlanResolveThird,
+			jazzPlanResolveThird:  jazzPlanThird,
+			jazzPlanFifth:         jazzPlanNinth,
+			jazzPlanNinth:         jazzPlanFifth,
+		},
+	}
+	out := sequencePhrase(src, maps[a.rng.Intn(len(maps))])
+	switch a.rng.Intn(3) {
+	case 0:
+		out = rotatePhrase(out, 1)
+	case 1:
+		out = reversePhrase(out)
+	}
+	return trimOrRepeatPhrase(out, len(src), jazzPlanRest)
+}
+
+func (a *Jazz) transformSaxMotifs(base MotifMemory) MotifMemory {
+	return MotifMemory{
+		A:       a.transformSaxPhrase(base.A),
+		Aprime:  a.transformSaxPhrase(firstNonEmpty(base.Aprime, base.A)),
+		B:       a.transformSaxPhrase(firstNonEmpty(base.B, base.A)),
+		Cadence: a.transformSaxPhrase(firstNonEmpty(base.Cadence, base.A)),
+		Outro:   a.transformSaxPhrase(firstNonEmpty(base.Outro, base.Cadence, base.A)),
+	}
+}
+
 func (a *Jazz) episodeProgressionPalette() [][]jazzChord {
 	switch a.horizon.HarmonyFamily {
 	case "modal-minor":
@@ -327,6 +370,9 @@ func (a *Jazz) chooseSaxMotifs() MotifMemory {
 	candidates := make([]MotifMemory, 0, 4)
 	for i := 0; i < 4; i++ {
 		candidates = append(candidates, a.makeSaxMotifs())
+	}
+	if len(a.saxMotifs.A) > 0 {
+		candidates = append(candidates, a.transformSaxMotifs(a.saxMotifs))
 	}
 	best := candidates[0]
 	bestScore := a.motifHistory.penalty(jazzMotifSignature(best)) + a.cadenceHistory.penalty(phraseSignature(best.Cadence))
