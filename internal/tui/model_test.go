@@ -222,10 +222,31 @@ func TestSplashPanelShowsStartupLoading(t *testing.T) {
 		themes:         []ColorTheme{DefaultTheme()},
 	}
 	panel := splashPanel(m, 90, 18, DefaultTheme())
-	for _, want := range []string{"Loading MAX palette", "50%", "ready 1/2"} {
+	for _, want := range []string{"TERMUS", "Play", "Open"} {
 		if !strings.Contains(panel, want) {
-			t.Fatalf("startup splash missing %q:\n%s", want, panel)
+			t.Fatalf("onboarding splash missing %q:\n%s", want, panel)
 		}
+	}
+}
+
+func TestStartupLoadingViewShowsBrailleStyleProgress(t *testing.T) {
+	m := Model{
+		width:          90,
+		height:         18,
+		startupLoading: true,
+		startupTitle:   "Loading MAX palette · Dusty Swing · jazz",
+		startupDetail:  "ready 1/2 · last sgm",
+		startupPercent: 0.5,
+		themes:         []ColorTheme{DefaultTheme()},
+	}
+	view := startupLoadingView(m, 90, 18, DefaultTheme(), time.Unix(0, 0))
+	for _, want := range []string{"Loading MAX palette", "50%", "ready 1/2"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("startup loading view missing %q:\n%s", want, view)
+		}
+	}
+	if !strings.ContainsAny(view, "⠄⡀⠤⠶⠒⠂⠦") {
+		t.Fatalf("startup loading view should use braille texture:\n%s", view)
 	}
 }
 
@@ -241,6 +262,22 @@ func TestStartupLoadingBlocksDismissal(t *testing.T) {
 	got := next.(Model)
 	if !got.splashVisible || !got.startupLoading {
 		t.Fatal("startup loading should keep splash visible until loading completes")
+	}
+}
+
+func TestStartupLoadingViewBypassesChrome(t *testing.T) {
+	m := Model{
+		width:          90,
+		height:         18,
+		startupLoading: true,
+		startupTitle:   "Loading MAX palette · Dusty Swing · jazz",
+		startupDetail:  "loading sgm, tyros4",
+		startupPercent: 0.2,
+		themes:         []ColorTheme{DefaultTheme()},
+	}
+	view := m.View()
+	if strings.Contains(view, "?  m") || strings.Contains(view, "termus ·") {
+		t.Fatalf("startup loading should bypass normal chrome:\n%s", view)
 	}
 }
 

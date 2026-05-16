@@ -855,6 +855,10 @@ func (m Model) View() string {
 		return centerBox(m.width, m.height, "terminal too small — resize to ≥ 40 × 10")
 	}
 	now := time.Now()
+	theme := m.activeTheme()
+	if m.startupLoading {
+		return startupLoadingView(m, m.width, m.height, theme, now)
+	}
 	compact := useCompactLayout(m.width, m.height)
 	chromeH := 3 // top + now-playing + bottom bars
 	if m.reducedChrome {
@@ -871,7 +875,6 @@ func (m Model) View() string {
 	// Snapshot scope and render with the active visual + theme.
 	samples := make([]float64, innerW*2)
 	m.ring.Snapshot(samples)
-	theme := m.activeTheme()
 	peak, rms := sampleStats(samples)
 	pulse := clamp01(0.55*peak + 0.45*rms)
 	phase := float64(now.UnixNano()) / float64(time.Second)
@@ -1319,33 +1322,6 @@ func filterHelpLines(lines []string, m Model) []string {
 func splashPanel(m Model, w, h int, theme ColorTheme) string {
 	bodyW := maxInt(30, minInt(w-6, 72))
 	bodyH := maxInt(12, minInt(h-2, 16))
-	if m.startupLoading || m.startupTitle != "" {
-		title := m.startupTitle
-		if title == "" {
-			title = "TERMUS"
-		}
-		pct := int(clamp01(m.startupPercent) * 100)
-		barW := maxInt(18, minInt(bodyW-8, 36))
-		filled := int(clamp01(m.startupPercent) * float64(barW))
-		bar := strings.Repeat("█", filled) + strings.Repeat("░", maxInt(0, barW-filled))
-		lines := []string{
-			lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render(title),
-			"",
-			lipgloss.NewStyle().Foreground(theme.BarHi).Render(fmt.Sprintf("%3d%%", pct)),
-			bar,
-		}
-		if m.startupDetail != "" {
-			lines = append(lines, "", lipgloss.NewStyle().Faint(true).Render(m.startupDetail))
-		}
-		panel := lipgloss.NewStyle().
-			Width(bodyW).
-			Height(bodyH).
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(theme.BarFg).
-			Padding(1, 2).
-			Render(strings.Join(lines, "\n"))
-		return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, panel)
-	}
 	lines := []string{
 		lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render("TERMUS"),
 		"",
@@ -1363,6 +1339,82 @@ func splashPanel(m Model, w, h int, theme ColorTheme) string {
 		Padding(1, 2).
 		Render(strings.Join(lines, "\n"))
 	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, panel)
+}
+
+func startupLoadingView(m Model, w, h int, theme ColorTheme, now time.Time) string {
+	title := m.startupTitle
+	if title == "" {
+		title = "Loading termus"
+	}
+	barW := maxInt(26, minInt(w-10, 72))
+	barH := 3
+	phase := float64(now.UnixNano()) / float64(time.Second)
+	bar := renderStartupBrailleBar(barW, barH, clamp01(m.startupPercent), phase, theme)
+	pct := lipgloss.NewStyle().Foreground(theme.BarHi).Render(fmt.Sprintf("%3d%%", int(clamp01(m.startupPercent)*100)))
+	titleLine := lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render(title)
+	detail := ""
+	if m.startupDetail != "" {
+		detail = lipgloss.NewStyle().Foreground(theme.BarFg).Faint(true).Render(m.startupDetail)
+	}
+	content := lipgloss.JoinVertical(
+		lipgloss.Center,
+		titleLine,
+		"",
+		bar,
+		pct,
+		"",
+		detail,
+	)
+	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, content)
+}
+
+func renderStartupBrailleBar(wCells, hCells int, progress, phase float64, theme ColorTheme) string {
+	grid := newDotGrid(wCells, hCells)
+	if len(grid) == 0 || len(grid[0]) == 0 {
+		return ""
+	}
+	dotsX := len(grid[0])
+	dotsY := len(grid)
+	centerY := dotsY / 2
+	for px := 0; px < dotsX; px++ {
+		grid[centerY][px] = true
+	}
+	activeDots := int(clamp01(progress) * float64(maxInt(1, dotsX-1)))
+	prevX, prevY := 0, centerY
+	for px := 0; px <= activeDots; px++ {
+		t := float64(px) / float64(maxInt(1, dotsX-1))
+		env := math.Sin(math.Pi * t)
+		wobble := math.Sin(phase*4.5+t*9.0)*0.55 + math.Sin(phase*2.1+t*4.0)*0.25
+		head := math.Exp(-math.Pow(float64(px-activeDots)/8.0, 2))
+		y := centerY - int((wobble*env+head*0.6)*float64(maxInt(1, dotsY/3)))
+		y = clampInt(y, 0, dotsY-1)
+		if px > 0 {
+			drawLine(grid, prevX, prevY, px, y)
+		}
+		plotDot(grid, px, y)
+		prevX, prevY = px, y
+	}
+	var b strings.Builder
+	activeCell := activeDots / 2
+	for cy := 0; cy < hCells; cy++ {
+		for cx := 0; cx < wCells; cx++ {
+			r := brailleCell(grid, cx, cy)
+			switch {
+			case r == '\u2800':
+				b.WriteRune(' ')
+			case cx <= activeCell:
+				b.WriteString(renderCell(r, cx, cy, wCells, hCells, RenderContext{
+					Theme: theme,
+					Pulse: 0.35 + 0.65*progress,
+					Phase: phase,
+				}))
+			default:
+				b.WriteString(lipgloss.NewStyle().Foreground(theme.BarFg).Faint(true).Render(string(r)))
+			}
+		}
+		b.WriteByte('\n')
+	}
+	return b.String()
 }
 
 func inspectorPanel(m Model, w, h int, theme ColorTheme) string {
