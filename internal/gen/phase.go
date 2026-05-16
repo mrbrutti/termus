@@ -41,11 +41,16 @@ type Phase struct {
 	phaseMotifs     MotifMemory
 	crotalesMotifs  MotifMemory
 
-	samplesElapsed int64
-	nextChordAt    int64
-	nextDriftAt    int64
-	section        FormSection
-	profile        ControlProfile
+	samplesElapsed  int64
+	nextChordAt     int64
+	nextDriftAt     int64
+	nextEvolutionAt int64
+	section         FormSection
+	profile         ControlProfile
+
+	phaseRegisterShift    int
+	padRegisterShift      int
+	crotalesRegisterShift int
 }
 
 func NewPhase(sf *meltysynth.SoundFont) *Phase { return &Phase{sf: sf} }
@@ -64,6 +69,7 @@ func (a *Phase) Seed(seedVal int64) {
 	a.keyOffset = 0
 	a.samplesElapsed = 0
 	a.scheduleNextDrift()
+	a.scheduleNextEvolution()
 
 	// 4-chord harmonic bed cycling slowly — chord roots are scale degrees
 	// from pentatonic minor (so all melodic notes always fit).
@@ -76,6 +82,9 @@ func (a *Phase) Seed(seedVal int64) {
 	a.phaseFigure = a.makePhaseFigure()
 	a.phaseMotifs = a.makePhaseMotifs()
 	a.crotalesMotifs = a.makeCrotalesMotifs()
+	a.phaseRegisterShift = variedRegisterShift(a.rng)
+	a.padRegisterShift = variedRegisterShift(a.rng)
+	a.crotalesRegisterShift = variedRegisterShift(a.rng)
 	a.currentChordIdx = 0
 	a.scheduleNextChord()
 	phraseScale := a.phraseScale()
@@ -250,7 +259,7 @@ func (a *Phase) makePhaseFigure() []int {
 
 func (a *Phase) phaseFigureNote(slot int) int {
 	scale := []int{0, 2, 3, 5, 7, 8, 10}
-	root := a.currentRoot() + a.chordRoots[a.currentChordIdx] + 24
+	root := a.currentRoot() + a.chordRoots[a.currentChordIdx] + 24 + a.phaseRegisterShift
 	key := scaleNoteAt(a.phaseMotifs.PhraseFor(a.section.Kind), slot, scale, root, 0, 0)
 	return clampMidiToRange(key, 72, 88)
 }
@@ -262,7 +271,7 @@ func (a *Phase) padTone(voice int) int {
 	}
 	cr := a.chordRoots[a.currentChordIdx]
 	// Add octave bump per voice so 3 voices spread across the register.
-	key := a.currentRoot() + cr + scalePentatonicMinor[voice%len(scalePentatonicMinor)] + 12 + 12*voice
+	key := a.currentRoot() + cr + scalePentatonicMinor[voice%len(scalePentatonicMinor)] + 12 + 12*voice + a.padRegisterShift
 	for key < 60 {
 		key += 12
 	}
@@ -302,7 +311,7 @@ func (a *Phase) crotalesNote(slot int) int {
 		return -1
 	}
 	cr := a.chordRoots[a.currentChordIdx]
-	key := scaleNoteAt(phrase, slot, scalePentatonicMinor, a.currentRoot()+cr+36, 1, 0)
+	key := scaleNoteAt(phrase, slot, scalePentatonicMinor, a.currentRoot()+cr+36+a.crotalesRegisterShift, 1, 0)
 	return clampMidiToRange(key, 84, 96)
 }
 
@@ -318,12 +327,37 @@ func (a *Phase) scheduleNextDrift() {
 	a.nextDriftAt = a.samplesElapsed + int64(mins*60*44100)
 }
 
+func (a *Phase) scheduleNextEvolution() {
+	secs := (220.0 + 160.0*a.rng.Float64()) * a.phraseScale()
+	a.nextEvolutionAt = a.samplesElapsed + int64(secs*44100)
+}
+
+func (a *Phase) evolveTexture() {
+	rootSets := [][]int{
+		{0, scalePentatonicMinor[2], scalePentatonicMinor[3], scalePentatonicMinor[1]},
+		{0, scalePentatonicMinor[1], scalePentatonicMinor[4], scalePentatonicMinor[2]},
+		{0, scalePentatonicMinor[3], scalePentatonicMinor[2], scalePentatonicMinor[4]},
+	}
+	a.chordRoots = append([]int(nil), rootSets[a.rng.Intn(len(rootSets))]...)
+	a.currentChordIdx %= len(a.chordRoots)
+	a.phaseFigure = rotatePhrase(a.makePhaseFigure(), a.rng.Intn(4))
+	a.phaseMotifs = a.makePhaseMotifs()
+	a.crotalesMotifs = a.makeCrotalesMotifs()
+	a.phaseRegisterShift = variedRegisterShift(a.rng)
+	a.padRegisterShift = variedRegisterShift(a.rng)
+	a.crotalesRegisterShift = variedRegisterShift(a.rng)
+	a.scheduleNextEvolution()
+}
+
 func (a *Phase) advance() {
 	chordAdvanced := false
 	if a.samplesElapsed >= a.nextChordAt {
 		a.currentChordIdx = (a.currentChordIdx + 1) % len(a.chordRoots)
 		a.scheduleNextChord()
 		chordAdvanced = true
+	}
+	if chordAdvanced && a.samplesElapsed >= a.nextEvolutionAt {
+		a.evolveTexture()
 	}
 	if chordAdvanced && a.samplesElapsed >= a.nextDriftAt {
 		drift := []int{-2, -1, 1, 2}[a.rng.Intn(4)]

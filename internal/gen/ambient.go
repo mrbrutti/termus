@@ -42,23 +42,26 @@ type Ambient struct {
 	chords          []ambientChord
 	currentChordIdx int
 
-	samplesElapsed int64
-	nextChordAt    int64
-	nextSectionAt  int64
-	section        FormSection
+	samplesElapsed  int64
+	nextChordAt     int64
+	nextSectionAt   int64
+	nextEvolutionAt int64
+	section         FormSection
 
 	bellsOn   *bool
 	celestaOn *bool
 
 	// Contours are fixed per seed, but their concrete notes are resolved
 	// against the current chord at fire time so the harmony actually moves.
-	bellContour        []int
-	bellStartDegree    int
-	bellMotifs         MotifMemory
-	celestaContour     []int
-	celestaStartDegree int
-	celestaMotifs      MotifMemory
-	profile            ControlProfile
+	bellContour          []int
+	bellStartDegree      int
+	bellRegisterShift    int
+	bellMotifs           MotifMemory
+	celestaContour       []int
+	celestaStartDegree   int
+	celestaRegisterShift int
+	celestaMotifs        MotifMemory
+	profile              ControlProfile
 }
 
 // ambientChord is one harmonic center: a root offset from the key center,
@@ -123,10 +126,12 @@ func (a *Ambient) Seed(seedVal int64) {
 	a.samplesElapsed = 0
 	a.currentChordIdx = 0
 	a.chords = ambientCycles[a.rng.Intn(len(ambientCycles))]
-	a.bellContour = append([]int(nil), melodicPhrases[2]...)
+	a.bellContour = variedContour(a.rng, 6, 8)
 	a.bellStartDegree = a.rng.Intn(3)
-	a.celestaContour = append([]int(nil), melodicPhrases[3][:4]...)
+	a.bellRegisterShift = variedRegisterShift(a.rng)
+	a.celestaContour = variedContour(a.rng, 4, 6)
 	a.celestaStartDegree = 1 + a.rng.Intn(2)
+	a.celestaRegisterShift = variedRegisterShift(a.rng)
 	a.bellMotifs = a.makeBellMotifs()
 	a.celestaMotifs = a.makeCelestaMotifs()
 	a.scheduleNextChord()
@@ -137,6 +142,7 @@ func (a *Ambient) Seed(seedVal int64) {
 	a.bellsOn = &bellsStart
 	a.celestaOn = &celestaStart
 	a.scheduleNextSection()
+	a.scheduleNextEvolution()
 	a.syncSection()
 
 	core, err := newSF2Core(a.sf, 3.2, seedVal)
@@ -345,7 +351,7 @@ func (a *Ambient) bellNoteAt(voice, slot int) int {
 	}
 	c := a.chords[a.currentChordIdx]
 	phrase := a.bellMotifs.PhraseFor(a.section.Kind)
-	key := scaleNoteAt(phrase, slot+voice*2, c.tones, a.currentRoot()+c.rootSemi+36, a.bellStartDegree, 0)
+	key := scaleNoteAt(phrase, slot+voice*2, c.tones, a.currentRoot()+c.rootSemi+36+a.bellRegisterShift, a.bellStartDegree, 0)
 	return clampMidiToRange(key, 72, 96)
 }
 
@@ -362,7 +368,7 @@ func (a *Ambient) celestaNote(slot int) int {
 		return -1
 	}
 	c := a.chords[a.currentChordIdx]
-	key := scaleNoteAt(phrase, slot, c.tones, a.currentRoot()+c.rootSemi+48, a.celestaStartDegree, 0)
+	key := scaleNoteAt(phrase, slot, c.tones, a.currentRoot()+c.rootSemi+48+a.celestaRegisterShift, a.celestaStartDegree, 0)
 	return clampMidiToRange(key, 84, 96)
 }
 
@@ -394,12 +400,45 @@ func (a *Ambient) scheduleNextSection() {
 	a.nextSectionAt = a.samplesElapsed + int64(secs*44100)
 }
 
+func (a *Ambient) scheduleNextEvolution() {
+	secs := (240.0 + 180.0*a.rng.Float64()) * a.phraseScale()
+	a.nextEvolutionAt = a.samplesElapsed + int64(secs*44100)
+}
+
+func (a *Ambient) evolveTexture() {
+	a.chords = ambientCycles[a.rng.Intn(len(ambientCycles))]
+	if len(a.chords) > 0 {
+		a.currentChordIdx %= len(a.chords)
+	}
+	a.bellContour = variedContour(a.rng, 5, 8)
+	a.celestaContour = variedContour(a.rng, 4, 6)
+	a.bellStartDegree = a.rng.Intn(3)
+	a.celestaStartDegree = a.rng.Intn(3)
+	a.bellRegisterShift = variedRegisterShift(a.rng)
+	a.celestaRegisterShift = variedRegisterShift(a.rng)
+	a.bellMotifs = a.makeBellMotifs()
+	a.celestaMotifs = a.makeCelestaMotifs()
+	if a.bellsOn != nil && a.celestaOn != nil {
+		if a.rng.Float64() < 0.5 {
+			*a.bellsOn = true
+			*a.celestaOn = false
+		} else {
+			*a.bellsOn = false
+			*a.celestaOn = true
+		}
+	}
+	a.scheduleNextEvolution()
+}
+
 func (a *Ambient) advance() {
 	chordAdvanced := false
 	if a.samplesElapsed >= a.nextChordAt {
 		a.currentChordIdx = (a.currentChordIdx + 1) % len(a.chords)
 		a.scheduleNextChord()
 		chordAdvanced = true
+	}
+	if chordAdvanced && a.samplesElapsed >= a.nextEvolutionAt {
+		a.evolveTexture()
 	}
 	if chordAdvanced && a.samplesElapsed >= a.nextSectionAt {
 		// Toggle one of the ornament layers.

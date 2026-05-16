@@ -38,12 +38,17 @@ type SF2Drone struct {
 	chords          []droneChord
 	currentChordIdx int
 
-	samplesElapsed int64
-	nextChordAt    int64
-	section        FormSection
+	samplesElapsed  int64
+	nextChordAt     int64
+	nextEvolutionAt int64
+	section         FormSection
 
 	shimmerMotifs MotifMemory
 	profile       ControlProfile
+
+	droneRegisterShift   int
+	choirRegisterShift   int
+	shimmerRegisterShift int
 }
 
 // droneChord is one harmonic center as a set of semitone offsets from the
@@ -93,6 +98,10 @@ func (a *SF2Drone) Seed(seedVal int64) {
 	a.chords = droneCycles[a.rng.Intn(len(droneCycles))]
 	a.shimmerMotifs = a.makeShimmerMotifs()
 	a.scheduleNextChord()
+	a.scheduleNextEvolution()
+	a.droneRegisterShift = variedRegisterShift(a.rng)
+	a.choirRegisterShift = variedRegisterShift(a.rng)
+	a.shimmerRegisterShift = variedRegisterShift(a.rng)
 	phraseScale := a.phraseScale()
 	a.syncSection()
 
@@ -231,7 +240,7 @@ func (a *SF2Drone) droneTone(voice, bumpSemis int) int {
 	}
 	c := a.chords[a.currentChordIdx]
 	idx := voice % len(c.tones)
-	key := a.currentRoot() + c.tones[idx] + 24 + bumpSemis
+	key := a.currentRoot() + c.tones[idx] + 24 + bumpSemis + a.droneRegisterShift
 	for key < 36 {
 		key += 12
 	}
@@ -263,7 +272,7 @@ func (a *SF2Drone) choirTone(voice int) int {
 	if a.section.Kind == FormIntro && voice > 0 {
 		voice = 0
 	}
-	return a.droneTone(voice, 24)
+	return clampMidiToRange(a.droneTone(voice, 24)+a.choirRegisterShift, 60, 96)
 }
 
 func (a *SF2Drone) shimmerNote(slot int) int {
@@ -277,7 +286,7 @@ func (a *SF2Drone) shimmerNote(slot int) int {
 		return -1
 	}
 	chord := a.chords[a.currentChordIdx]
-	key := scaleNoteAt(phrase, slot, chord.tones, a.currentRoot()+24, 1, 24)
+	key := scaleNoteAt(phrase, slot, chord.tones, a.currentRoot()+24+a.shimmerRegisterShift, 1, 24)
 	return clampMidiToRange(key, 78, 98)
 }
 
@@ -287,10 +296,30 @@ func (a *SF2Drone) scheduleNextChord() {
 	a.nextChordAt = a.samplesElapsed + int64(secs*44100)
 }
 
+func (a *SF2Drone) scheduleNextEvolution() {
+	secs := (260.0 + 220.0*a.rng.Float64()) * a.phraseScale()
+	a.nextEvolutionAt = a.samplesElapsed + int64(secs*44100)
+}
+
+func (a *SF2Drone) evolveTexture() {
+	a.chords = droneCycles[a.rng.Intn(len(droneCycles))]
+	if len(a.chords) > 0 {
+		a.currentChordIdx %= len(a.chords)
+	}
+	a.shimmerMotifs = a.makeShimmerMotifs()
+	a.droneRegisterShift = variedRegisterShift(a.rng)
+	a.choirRegisterShift = variedRegisterShift(a.rng)
+	a.shimmerRegisterShift = variedRegisterShift(a.rng)
+	a.scheduleNextEvolution()
+}
+
 func (a *SF2Drone) advance() {
 	if a.samplesElapsed >= a.nextChordAt {
 		a.currentChordIdx = (a.currentChordIdx + 1) % len(a.chords)
 		a.scheduleNextChord()
+		if a.samplesElapsed >= a.nextEvolutionAt {
+			a.evolveTexture()
+		}
 		a.syncSection()
 	}
 }

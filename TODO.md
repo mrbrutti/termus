@@ -89,7 +89,7 @@
 - [x] Split scheduling into explicit note, bar, section, and episode layers so local phrasing and long-form reinvention stop fighting each other.
 
 ### Ambient Evolution
-- [ ] Give the ambient-family generators slow contour, register, loop-length, and foreground/background regeneration so they evolve over hours instead of circling one constellation.
+- [x] Give the ambient-family generators slow contour, register, loop-length, and foreground/background regeneration so they evolve over hours instead of circling one constellation.
 
 ### Movement Mode
 - [ ] Add a higher-level movement sequence for long listening so one piece can drift through establish, deepen, subtract, brighten/darken, and near-return phases.

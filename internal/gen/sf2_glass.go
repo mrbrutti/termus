@@ -37,22 +37,26 @@ type SF2Glass struct {
 	chordOffsets    []int
 	currentChordIdx int
 
-	samplesElapsed int64
-	nextChordAt    int64
-	nextSectionAt  int64
-	section        FormSection
-	musicBoxOn     *bool
+	samplesElapsed  int64
+	nextChordAt     int64
+	nextSectionAt   int64
+	nextEvolutionAt int64
+	section         FormSection
+	musicBoxOn      *bool
 
-	bellContour         []int
-	bellStartDegree     int
-	bellMotifs          MotifMemory
-	celestaContour      []int
-	celestaStartDegree  int
-	celestaMotifs       MotifMemory
-	musicBoxContour     []int
-	musicBoxStartDegree int
-	musicBoxMotifs      MotifMemory
-	profile             ControlProfile
+	bellContour           []int
+	bellStartDegree       int
+	bellRegisterShift     int
+	bellMotifs            MotifMemory
+	celestaContour        []int
+	celestaStartDegree    int
+	celestaRegisterShift  int
+	celestaMotifs         MotifMemory
+	musicBoxContour       []int
+	musicBoxStartDegree   int
+	musicBoxRegisterShift int
+	musicBoxMotifs        MotifMemory
+	profile               ControlProfile
 }
 
 // majorPentatonic: 0, 2, 4, 7, 9 (the "happy" pentatonic).
@@ -90,12 +94,15 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	a.chordOffsets = []int{0, 5, 0, 7}
 	a.currentChordIdx = 0
 	a.samplesElapsed = 0
-	a.bellContour = append([]int(nil), pickMelodicPhrase(a.rng)...)
+	a.bellContour = variedContour(a.rng, 6, 8)
 	a.bellStartDegree = a.rng.Intn(2)
-	a.celestaContour = append([]int(nil), pickMelodicPhrase(a.rng)...)
+	a.bellRegisterShift = variedRegisterShift(a.rng)
+	a.celestaContour = variedContour(a.rng, 5, 8)
 	a.celestaStartDegree = 1 + a.rng.Intn(2)
-	a.musicBoxContour = append([]int(nil), melodicPhrases[5][:4]...)
+	a.celestaRegisterShift = variedRegisterShift(a.rng)
+	a.musicBoxContour = variedContour(a.rng, 3, 5)
 	a.musicBoxStartDegree = a.rng.Intn(3)
+	a.musicBoxRegisterShift = variedRegisterShift(a.rng)
 	a.bellMotifs = a.makeBellMotifs()
 	a.celestaMotifs = a.makeCelestaMotifs()
 	a.musicBoxMotifs = a.makeMusicBoxMotifs()
@@ -105,6 +112,7 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	musicBoxStart := true
 	a.musicBoxOn = &musicBoxStart
 	a.scheduleNextSection()
+	a.scheduleNextEvolution()
 	a.syncSection()
 
 	// Master gain raised aggressively (3.0 → 4.2) — bell content is sparse
@@ -281,7 +289,7 @@ func (a *SF2Glass) phraseNoteAt(slot int, contour []int, startDegree, octaveBump
 }
 
 func (a *SF2Glass) bellPhraseNote(slot int) int {
-	return a.phraseNoteAt(slot, a.bellMotifs.PhraseFor(a.section.Kind), a.bellStartDegree, 12, 60, 96)
+	return a.phraseNoteAt(slot, a.bellMotifs.PhraseFor(a.section.Kind), a.bellStartDegree, 12+a.bellRegisterShift, 60, 96)
 }
 
 func (a *SF2Glass) celestaPhraseNote(slot int) int {
@@ -292,7 +300,7 @@ func (a *SF2Glass) celestaPhraseNote(slot int) int {
 	if a.section.Kind != FormB && slot%len(phrase) < len(phrase)/2 {
 		return -1
 	}
-	return a.phraseNoteAt(slot, phrase, a.celestaStartDegree, 24, 72, 96)
+	return a.phraseNoteAt(slot, phrase, a.celestaStartDegree, 24+a.celestaRegisterShift, 72, 96)
 }
 
 func (a *SF2Glass) musicBoxPhraseNote(slot int) int {
@@ -303,7 +311,7 @@ func (a *SF2Glass) musicBoxPhraseNote(slot int) int {
 	if a.section.Kind != FormCadence && slot%len(phrase) < len(phrase)/2 {
 		return -1
 	}
-	return a.phraseNoteAt(slot, phrase, a.musicBoxStartDegree, 12, 72, 92)
+	return a.phraseNoteAt(slot, phrase, a.musicBoxStartDegree, 12+a.musicBoxRegisterShift, 72, 92)
 }
 
 // bellNote returns a pentatonic-scale MIDI key for a bell voice. voice picks
@@ -363,12 +371,51 @@ func (a *SF2Glass) scheduleNextSection() {
 	a.nextSectionAt = a.samplesElapsed + int64(secs*44100)
 }
 
+func (a *SF2Glass) scheduleNextEvolution() {
+	secs := (210.0 + 180.0*a.rng.Float64()) * a.phraseScale()
+	a.nextEvolutionAt = a.samplesElapsed + int64(secs*44100)
+}
+
+func (a *SF2Glass) evolveTexture() {
+	progressions := [][]int{
+		{0, 5, 0, 7},
+		{0, 7, 5, 0},
+		{0, 10, 5, 7},
+	}
+	a.chordOffsets = append([]int(nil), progressions[a.rng.Intn(len(progressions))]...)
+	a.currentChordIdx %= len(a.chordOffsets)
+	if a.rng.Float64() < 0.5 {
+		a.scale = majorPentatonic
+	} else {
+		a.scale = minorPentatonic
+	}
+	a.bellContour = variedContour(a.rng, 5, 8)
+	a.celestaContour = variedContour(a.rng, 4, 7)
+	a.musicBoxContour = variedContour(a.rng, 3, 5)
+	a.bellStartDegree = a.rng.Intn(2)
+	a.celestaStartDegree = a.rng.Intn(3)
+	a.musicBoxStartDegree = a.rng.Intn(3)
+	a.bellRegisterShift = variedRegisterShift(a.rng)
+	a.celestaRegisterShift = variedRegisterShift(a.rng)
+	a.musicBoxRegisterShift = variedRegisterShift(a.rng)
+	a.bellMotifs = a.makeBellMotifs()
+	a.celestaMotifs = a.makeCelestaMotifs()
+	a.musicBoxMotifs = a.makeMusicBoxMotifs()
+	if a.musicBoxOn != nil {
+		*a.musicBoxOn = a.rng.Float64() < 0.6
+	}
+	a.scheduleNextEvolution()
+}
+
 func (a *SF2Glass) advance() {
 	chordAdvanced := false
 	if a.samplesElapsed >= a.nextChordAt {
 		a.currentChordIdx = (a.currentChordIdx + 1) % len(a.chordOffsets)
 		a.scheduleNextChord()
 		chordAdvanced = true
+	}
+	if chordAdvanced && a.samplesElapsed >= a.nextEvolutionAt {
+		a.evolveTexture()
 	}
 	if chordAdvanced && a.samplesElapsed >= a.nextSectionAt {
 		*a.musicBoxOn = !*a.musicBoxOn
