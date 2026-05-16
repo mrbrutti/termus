@@ -123,6 +123,15 @@ func (a *SF2Glass) Seed(seedVal int64) {
 		a.core = nil
 		return
 	}
+	if core.usingMaxPalette() {
+		core.routeChannelPreset(0, "fairy-tale")
+		core.routeChannelPreset(1, "fairy-tale")
+		core.routeChannelPreset(2, "fairy-tale")
+		core.routeChannelPreset(3, "fairy-tale")
+		core.routeChannelPreset(4, "arachno")
+		core.routeChannelPreset(5, "timbres-of-heaven")
+		core.routeChannelPreset(6, "fm-dx")
+	}
 
 	// Channel layout:
 	//   0 — Tubular Bells   (program 14)  main bell motif

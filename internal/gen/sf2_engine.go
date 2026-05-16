@@ -175,11 +175,14 @@ type sf2TrackState struct {
 //     compressor, soft-clip safety
 //   - float32 ↔ float64 conversion at the go-meltysynth boundary
 type sf2Core struct {
-	syn        *meltysynth.Synthesizer
-	tracks     []*sf2TrackState
-	t          int64
-	masterGain float64
-	rng        *rand.Rand // for mutation; lives on the audio goroutine only
+	primary       *sf2RenderEngine
+	engines       []*sf2RenderEngine
+	enginesByName map[string]*sf2RenderEngine
+	channelEngine map[int32]*sf2RenderEngine
+	tracks        []*sf2TrackState
+	t             int64
+	masterGain    float64
+	rng           *rand.Rand // for mutation; lives on the audio goroutine only
 
 	eqLowL, eqLowR   *synth.LowShelf
 	eqHighL, eqHighR *synth.HighShelf
@@ -229,6 +232,14 @@ type sf2Core struct {
 
 	capture       *midiCapture
 	bootstrapMIDI []capturedMIDIMessage
+}
+
+type sf2RenderEngine struct {
+	name string
+	sf   *meltysynth.SoundFont
+	syn  *meltysynth.Synthesizer
+	bufL []float32
+	bufR []float32
 }
 
 // configureSidechain installs a duck envelope. floorDB is the depth of the
@@ -283,16 +294,16 @@ func (e *sf2Core) stepDuck() float64 {
 // mutation RNG; pass the same value Seed() uses for note generation to keep
 // the mutation sequence deterministic with the rest of the algorithm.
 func newSF2Core(sf *meltysynth.SoundFont, masterGain float64, mutationSeed int64) (*sf2Core, error) {
-	settings := meltysynth.NewSynthesizerSettings(synth.SampleRate)
-	settings.EnableReverbAndChorus = true
-	settings.MaximumPolyphony = 96
-	syn, err := meltysynth.NewSynthesizer(sf, settings)
+	primary, err := newSF2RenderEngine("primary", sf)
 	if err != nil {
 		return nil, err
 	}
-	return &sf2Core{
-		syn:        syn,
-		masterGain: masterGain,
+	core := &sf2Core{
+		primary:       primary,
+		engines:       []*sf2RenderEngine{primary},
+		enginesByName: map[string]*sf2RenderEngine{"primary": primary},
+		channelEngine: make(map[int32]*sf2RenderEngine),
+		masterGain:    masterGain,
 		// Distinct seed offset so the mutation stream doesn't correlate with
 		// the note-generation stream (which would make mutations feel
 		// "predictable" alongside the initial figure).
@@ -302,7 +313,55 @@ func newSF2Core(sf *meltysynth.SoundFont, masterGain float64, mutationSeed int64
 		eqHighL: synth.NewHighShelf(7500, 3.0, 0.707),
 		eqHighR: synth.NewHighShelf(7500, 3.0, 0.707),
 		comp:    synth.NewStereoCompressor(-14, 3.0, 8, 250, 6, 4),
-	}, nil
+	}
+	runtime := currentSF2Runtime()
+	if runtime.strategy == "max" {
+		for name, loaded := range runtime.fonts {
+			if loaded == nil {
+				continue
+			}
+			if existing := core.engineBySoundFont(loaded); existing != nil {
+				core.enginesByName[name] = existing
+				if loaded == sf {
+					core.primary = existing
+				}
+				continue
+			}
+			engine, err := newSF2RenderEngine(name, loaded)
+			if err != nil {
+				return nil, err
+			}
+			core.engines = append(core.engines, engine)
+			core.enginesByName[name] = engine
+			if loaded == sf {
+				core.primary = engine
+			}
+		}
+		if core.primary != nil {
+			core.enginesByName["primary"] = core.primary
+		}
+	}
+	return core, nil
+}
+
+func newSF2RenderEngine(name string, sf *meltysynth.SoundFont) (*sf2RenderEngine, error) {
+	settings := meltysynth.NewSynthesizerSettings(synth.SampleRate)
+	settings.EnableReverbAndChorus = true
+	settings.MaximumPolyphony = 96
+	syn, err := meltysynth.NewSynthesizer(sf, settings)
+	if err != nil {
+		return nil, err
+	}
+	return &sf2RenderEngine{name: name, sf: sf, syn: syn}, nil
+}
+
+func (e *sf2Core) engineBySoundFont(sf *meltysynth.SoundFont) *sf2RenderEngine {
+	for _, engine := range e.engines {
+		if engine != nil && engine.sf == sf {
+			return engine
+		}
+	}
+	return nil
 }
 
 type sf2SynthSink struct {
@@ -353,7 +412,7 @@ func (e *sf2Core) recordMIDI(sample int64, status, data1, data2 byte) {
 }
 
 func (e *sf2Core) processMIDIAt(sample int64, channel int32, command int32, data1 int32, data2 int32) {
-	e.syn.ProcessMidiMessage(channel, command, data1, data2)
+	e.engineForChannel(channel).syn.ProcessMidiMessage(channel, command, data1, data2)
 	e.recordMIDI(sample, byte(command)|byte(channel&0x0F), byte(data1), byte(data2))
 }
 
@@ -362,13 +421,36 @@ func (e *sf2Core) processMIDI(channel int32, command int32, data1 int32, data2 i
 }
 
 func (e *sf2Core) noteOn(channel int32, key int32, velocity int32) {
-	e.syn.NoteOn(channel, key, velocity)
+	e.engineForChannel(channel).syn.NoteOn(channel, key, velocity)
 	e.recordMIDI(e.t, 0x90|byte(channel&0x0F), byte(key), byte(velocity))
 }
 
 func (e *sf2Core) noteOff(channel int32, key int32) {
-	e.syn.NoteOff(channel, key)
+	e.engineForChannel(channel).syn.NoteOff(channel, key)
 	e.recordMIDI(e.t, 0x80|byte(channel&0x0F), byte(key), 0)
+}
+
+func (e *sf2Core) engineForChannel(channel int32) *sf2RenderEngine {
+	if engine, ok := e.channelEngine[channel]; ok && engine != nil {
+		return engine
+	}
+	return e.primary
+}
+
+func (e *sf2Core) routeChannelPreset(channel int32, preset string) {
+	if preset == "" {
+		delete(e.channelEngine, channel)
+		return
+	}
+	engine, ok := e.enginesByName[preset]
+	if !ok || engine == nil || len(e.engines) <= 1 {
+		return
+	}
+	e.channelEngine[channel] = engine
+}
+
+func (e *sf2Core) usingMaxPalette() bool {
+	return len(e.engines) > 1
 }
 
 // setProgram changes the GM program on a MIDI channel.
@@ -1135,9 +1217,29 @@ func (e *sf2Core) renderInto(left, right []float64) {
 			if len(e.lfos) > 0 {
 				e.updateLFOs(ahead)
 			}
-			e.syn.Render(e.bufF32L[pos:pos+int(ahead)], e.bufF32R[pos:pos+int(ahead)])
+			renderLen := int(ahead)
+			for i := 0; i < renderLen; i++ {
+				e.bufF32L[pos+i] = 0
+				e.bufF32R[pos+i] = 0
+			}
+			for _, engine := range e.engines {
+				if engine == nil || engine.syn == nil {
+					continue
+				}
+				if cap(engine.bufL) < renderLen {
+					engine.bufL = make([]float32, renderLen)
+					engine.bufR = make([]float32, renderLen)
+				}
+				engine.bufL = engine.bufL[:renderLen]
+				engine.bufR = engine.bufR[:renderLen]
+				engine.syn.Render(engine.bufL, engine.bufR)
+				for i := 0; i < renderLen; i++ {
+					e.bufF32L[pos+i] += engine.bufL[i]
+					e.bufF32R[pos+i] += engine.bufR[i]
+				}
+			}
 			e.t += ahead
-			pos += int(ahead)
+			pos += renderLen
 		}
 		if pos < n {
 			for _, s := range e.tracks {

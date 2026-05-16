@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/sinshu/go-meltysynth/meltysynth"
@@ -204,12 +205,21 @@ func EnsurePreset(presetName string, progress func(done, total int64)) (string, 
 
 func presetNamesJoined() string {
 	out := ""
-	for k := range Presets {
+	for _, k := range AllPresetNames() {
 		if out != "" {
 			out += ", "
 		}
 		out += k
 	}
+	return out
+}
+
+func AllPresetNames() []string {
+	out := make([]string, 0, len(Presets))
+	for name := range Presets {
+		out = append(out, name)
+	}
+	sort.Strings(out)
 	return out
 }
 

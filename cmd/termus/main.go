@@ -37,7 +37,8 @@ func main() {
 		"SoundFont preset: 'general' (32 MB GeneralUser-GS, balanced) | 'sgm' (325 MB, much better piano/guitar/bass)")
 	sf2Strategy := flag.String("sf2-strategy", "single",
 		"how to pick SoundFonts: 'single' (use --sf2-preset for everything) | "+
-			"'optimal' (download each algorithm's preferred preset; uses more disk)")
+			"'pro' (load each algorithm's preferred preset) | "+
+			"'max' (load the full curated catalog). 'optimal' is accepted as a legacy alias for 'pro'")
 	irPath := flag.String("ir", "", "convolution IR: WAV file path, or preset name: room | hall | cathedral | plate")
 	irWet := flag.Float64("ir-wet", 0.40, "convolution wet mix 0..1 when --ir is provided")
 	playlistMode := flag.String("playlist", "",
@@ -59,6 +60,11 @@ func main() {
 	listenMode, ok := gen.ResolveListeningMode(*listenModeName)
 	if !ok {
 		fmt.Fprintf(os.Stderr, "unknown listen mode %q (available: endless, album-side, hour-stream, radio)\n", *listenModeName)
+		os.Exit(2)
+	}
+	sfStrategy, ok := normalizeSF2Strategy(*sf2Strategy)
+	if !ok {
+		fmt.Fprintf(os.Stderr, "unknown sf2 strategy %q (available: single, pro, max)\n", *sf2Strategy)
 		os.Exit(2)
 	}
 
@@ -135,7 +141,7 @@ func main() {
 			sfByPreset[""] = loaded
 			sf = loaded
 		} else {
-			needed := neededPresets(*sf2Strategy, *sf2Preset, spec)
+			needed := neededPresets(sfStrategy, *sf2Preset, spec)
 			paths, err := sf2.EnsureAll(os.Stderr, needed)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "sf2 setup failed:", err)
@@ -153,6 +159,7 @@ func main() {
 			sf = pickSF(sfByPreset, spec, *sf2Preset)
 		}
 	}
+	gen.SetSF2Runtime(sfStrategy, sfByPreset)
 	algo := spec.Build(sf)
 	algo.Seed(*seed)
 	controlProfile := gen.DefaultControlProfile()
@@ -248,6 +255,9 @@ func main() {
 		if !s.RequiresSF2 {
 			return "synth"
 		}
+		if sfStrategy == "max" {
+			return "max"
+		}
 		if *sf2Path != "" {
 			return filepath.Base(*sf2Path)
 		}
@@ -333,11 +343,14 @@ func main() {
 
 // neededPresets returns the deduped list of SoundFont preset names the app
 // must have available given the strategy. In "single" mode, that's just the
-// user's chosen preset. In "optimal", we collect every SF2-backed algorithm's
-// PreferredSF2 so cycling and playlists can hot-swap to the right SF.
+// user's chosen preset. In "pro", we collect every SF2-backed algorithm's
+// PreferredSF2 so cycling and playlists can hot-swap to the right SF. In
+// "max", we load the full curated catalog.
 func neededPresets(strategy, fallbackPreset string, initial gen.AlgoSpec) []string {
 	switch strategy {
-	case "optimal":
+	case "max":
+		return sf2.AllPresetNames()
+	case "pro":
 		seen := map[string]bool{}
 		out := []string{}
 		// Ensure we have the initially-chosen preset even if no algo prefers it.
@@ -356,8 +369,21 @@ func neededPresets(strategy, fallbackPreset string, initial gen.AlgoSpec) []stri
 			}
 		}
 		return out
-	default: // "single" or anything else
+	default: // "single"
 		return []string{fallbackPreset}
+	}
+}
+
+func normalizeSF2Strategy(name string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "", "single":
+		return "single", true
+	case "pro", "optimal":
+		return "pro", true
+	case "max":
+		return "max", true
+	default:
+		return "", false
 	}
 }
 

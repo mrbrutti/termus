@@ -492,6 +492,14 @@ func (a *Chill) Seed(seedVal int64) {
 		a.core = nil
 		return
 	}
+	if core.usingMaxPalette() {
+		core.routeChannelPreset(0, "fatboy")
+		core.routeChannelPreset(1, "sgm")
+		core.routeChannelPreset(2, "dsound4")
+		core.routeChannelPreset(3, "tyros4")
+		core.routeChannelPreset(4, "sgm")
+		core.routeChannelPreset(drumChannel, "fatboy")
+	}
 
 	// Melodic channels.
 	core.setProgram(0, 5)  // Electric Piano 2 (chorused Rhodes)  center

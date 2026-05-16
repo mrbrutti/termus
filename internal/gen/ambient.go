@@ -150,6 +150,14 @@ func (a *Ambient) Seed(seedVal int64) {
 		a.core = nil
 		return
 	}
+	if core.usingMaxPalette() {
+		core.routeChannelPreset(0, "merlin-symphony")
+		core.routeChannelPreset(1, "arachno")
+		core.routeChannelPreset(2, "musescore-general")
+		core.routeChannelPreset(3, "fairy-tale")
+		core.routeChannelPreset(4, "fairy-tale")
+		core.routeChannelPreset(5, "fm-dx")
+	}
 
 	// Channel layout — all sustained, sparse trigger rate. Mapping:
 	//   0 — String Ensemble 1   (program 48)  pad bed

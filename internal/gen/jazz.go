@@ -426,6 +426,12 @@ func (a *Jazz) Seed(seedVal int64) {
 		a.core = nil
 		return
 	}
+	if core.usingMaxPalette() {
+		core.routeChannelPreset(0, "sgm")
+		core.routeChannelPreset(1, "sgm")
+		core.routeChannelPreset(2, "tyros4")
+		core.routeChannelPreset(drumChannel, "tyros4")
+	}
 
 	// Channel layout:
 	//   0 — Acoustic Grand Piano (program 0)        comping

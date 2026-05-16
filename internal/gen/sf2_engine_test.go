@@ -41,6 +41,25 @@ func testTrackState(cfg SF2Track, periodSamples int64) *sf2TrackState {
 	}
 }
 
+func TestSF2CoreRouteChannelPresetRequiresMappedMaxEngine(t *testing.T) {
+	primary := &sf2RenderEngine{name: "primary"}
+	alt := &sf2RenderEngine{name: "alt"}
+	core := &sf2Core{
+		primary:       primary,
+		engines:       []*sf2RenderEngine{primary, alt},
+		enginesByName: map[string]*sf2RenderEngine{"primary": primary, "alt": alt},
+		channelEngine: map[int32]*sf2RenderEngine{},
+	}
+	core.routeChannelPreset(2, "alt")
+	if got := core.engineForChannel(2); got != alt {
+		t.Fatalf("engineForChannel(2) = %+v, want alt", got)
+	}
+	core.routeChannelPreset(2, "")
+	if got := core.engineForChannel(2); got != primary {
+		t.Fatalf("engineForChannel(2) after reset = %+v, want primary", got)
+	}
+}
+
 func TestSF2TrackStateTieRepeatsKeepsSingleNoteOn(t *testing.T) {
 	sink := &fakeSF2Sink{}
 	state := testTrackState(SF2Track{

@@ -110,6 +110,13 @@ func (a *SF2Drone) Seed(seedVal int64) {
 		a.core = nil
 		return
 	}
+	if core.usingMaxPalette() {
+		core.routeChannelPreset(0, "arachno")
+		core.routeChannelPreset(1, "merlin-symphony")
+		core.routeChannelPreset(2, "musescore-general")
+		core.routeChannelPreset(3, "fm-dx")
+		core.routeChannelPreset(4, "fatboy")
+	}
 
 	// Channel layout:
 	//   0 — Bowed Glass     (program 92)  primary drone bed (mid)

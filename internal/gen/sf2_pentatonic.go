@@ -129,6 +129,13 @@ func (a *SF2Pentatonic) Seed(seedVal int64) {
 		a.core = nil
 		return
 	}
+	if core.usingMaxPalette() {
+		core.routeChannelPreset(0, "musescore-general")
+		core.routeChannelPreset(1, "fairy-tale")
+		core.routeChannelPreset(2, "fairy-tale")
+		core.routeChannelPreset(3, "fairy-tale")
+		core.routeChannelPreset(4, "timbres-of-heaven")
+	}
 
 	// Channel layout:
 	//   0 — Orchestral Harp (program 46)  bass on beat 1
