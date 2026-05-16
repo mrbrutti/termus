@@ -20,6 +20,11 @@ import (
 	"github.com/mrbrutti/termus/internal/tui"
 )
 
+const (
+	defaultRenderSeconds  = 180.0
+	defaultPlaylistTracks = 6
+)
+
 func main() {
 	seed := flag.Int64("seed", time.Now().UnixNano(), "RNG seed (default: time-based)")
 	algoName := flag.String("algo", "ambient",
@@ -38,34 +43,63 @@ func main() {
 	playlistMode := flag.String("playlist", "",
 		"playlist mode: 'same' (multiple seeds of --algo) | 'mixed' (random genres). "+
 			"Default empty = single track.")
-	playlistTracks := flag.Int("playlist-tracks", 6, "number of tracks in the playlist")
+	playlistTracks := flag.Int("playlist-tracks", defaultPlaylistTracks, "number of tracks in the playlist")
 	playlistDur := flag.Duration("playlist-duration", 5*time.Minute,
 		"how long each playlist track plays before the crossfade")
+	listenModeName := flag.String("listen-mode", string(gen.ListeningModeEndless),
+		"listening mode: endless | album-side | hour-stream | radio")
 	outPath := flag.String("out", "", "render directly to a WAV file instead of launching live playback")
 	playlistOut := flag.String("playlist-out", "", "render a playlist to a directory of WAVs plus manifest.json")
 	exportStems := flag.Bool("stems", false, "with --out/--playlist-out, also export per-stem WAVs when supported")
 	exportMIDI := flag.Bool("midi", false, "with --out/--playlist-out, also export captured MIDI files when supported")
 	debugView := flag.Bool("debug", false, "show the musical debug inspector in the TUI")
-	renderSeconds := flag.Float64("seconds", 180, "render duration in seconds when --out is provided")
+	renderSeconds := flag.Float64("seconds", defaultRenderSeconds, "render duration in seconds when --out is provided")
 	flag.Parse()
+
+	listenMode, ok := gen.ResolveListeningMode(*listenModeName)
+	if !ok {
+		fmt.Fprintf(os.Stderr, "unknown listen mode %q (available: endless, album-side, hour-stream, radio)\n", *listenModeName)
+		os.Exit(2)
+	}
+
+	effectivePlaylistMode := *playlistMode
+	effectivePlaylistTracks := *playlistTracks
+	effectivePlaylistDuration := *playlistDur
+	effectiveRenderSeconds := *renderSeconds
+	if *outPath != "" && *renderSeconds == defaultRenderSeconds && listenMode.DefaultRenderSeconds > 0 {
+		effectiveRenderSeconds = listenMode.DefaultRenderSeconds
+	}
+	if listenMode.AutoPlaylistMode != "" && effectivePlaylistMode == "" {
+		effectivePlaylistMode = listenMode.AutoPlaylistMode
+		if *playlistTracks == defaultPlaylistTracks && listenMode.DefaultPlaylistTracks > 0 {
+			effectivePlaylistTracks = listenMode.DefaultPlaylistTracks
+		}
+		if *playlistDur == 5*time.Minute && listenMode.DefaultPlaylistDuration > 0 {
+			effectivePlaylistDuration = listenMode.DefaultPlaylistDuration
+		}
+	}
 
 	if *initialVol < 0 || *initialVol > 100 {
 		fmt.Fprintf(os.Stderr, "volume must be 0..100, got %d\n", *initialVol)
 		os.Exit(2)
 	}
-	if *outPath != "" && *renderSeconds <= 0 {
-		fmt.Fprintf(os.Stderr, "--seconds must be > 0 when --out is used, got %.3f\n", *renderSeconds)
+	if *outPath != "" && effectiveRenderSeconds <= 0 {
+		fmt.Fprintf(os.Stderr, "--seconds must be > 0 when --out is used, got %.3f\n", effectiveRenderSeconds)
 		os.Exit(2)
 	}
 	if *outPath != "" && *playlistOut != "" {
 		fmt.Fprintln(os.Stderr, "--out and --playlist-out are mutually exclusive")
 		os.Exit(2)
 	}
-	if *outPath != "" && *playlistMode != "" {
+	if *outPath != "" && effectivePlaylistMode != "" {
 		fmt.Fprintln(os.Stderr, "--out does not support --playlist; use --playlist-out for batch rendering")
 		os.Exit(2)
 	}
-	if *playlistOut != "" && *playlistMode == "" {
+	if *outPath != "" && listenMode.Name == gen.ListeningModeRadio {
+		fmt.Fprintln(os.Stderr, "--listen-mode radio requires live playback or --playlist-out")
+		os.Exit(2)
+	}
+	if *playlistOut != "" && effectivePlaylistMode == "" {
 		fmt.Fprintln(os.Stderr, "--playlist-out requires --playlist same|mixed")
 		os.Exit(2)
 	}
@@ -73,8 +107,8 @@ func main() {
 		fmt.Fprintln(os.Stderr, "--stems/--midi require --out or --playlist-out")
 		os.Exit(2)
 	}
-	if *playlistMode != "" && *playlistDur <= 0 {
-		fmt.Fprintf(os.Stderr, "--playlist-duration must be > 0, got %s\n", *playlistDur)
+	if effectivePlaylistMode != "" && effectivePlaylistDuration <= 0 {
+		fmt.Fprintf(os.Stderr, "--playlist-duration must be > 0, got %s\n", effectivePlaylistDuration)
 		os.Exit(2)
 	}
 
@@ -159,7 +193,7 @@ func main() {
 	}
 	if *outPath != "" {
 		renderAlgo := buildRenderedAlgo(spec, *seed)
-		plan := audio.PlanRender(renderAlgo, *renderSeconds)
+		plan := audio.PlanRender(renderAlgo, effectiveRenderSeconds)
 		frames, err := audio.RenderToWAVWithPlan(*outPath, renderAlgo, plan, *initialVol)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "render failed:", err)
@@ -168,10 +202,10 @@ func main() {
 		actualSeconds := float64(frames) / 44100.0
 		if plan.SnapLabel != "" {
 			fmt.Fprintf(os.Stderr, "rendered %s: requested %.1fs, landed on %s, wrote %.1fs (%d frames) -> %s\n",
-				renderAlgo.Name(), *renderSeconds, plan.SnapLabel, actualSeconds, frames, *outPath)
+				renderAlgo.Name(), effectiveRenderSeconds, plan.SnapLabel, actualSeconds, frames, *outPath)
 		} else {
 			fmt.Fprintf(os.Stderr, "rendered %s: requested %.1fs, wrote %.1fs (%d frames) -> %s\n",
-				renderAlgo.Name(), *renderSeconds, actualSeconds, frames, *outPath)
+				renderAlgo.Name(), effectiveRenderSeconds, actualSeconds, frames, *outPath)
 		}
 		exportBase := strings.TrimSuffix(*outPath, filepath.Ext(*outPath))
 		if *exportMIDI || *exportStems {
@@ -220,7 +254,7 @@ func main() {
 		return pickSFName(sfByPreset, s, *sf2Preset)
 	}
 	if *playlistOut != "" {
-		pl, err := buildPlaylist(*playlistMode, spec, genres, *playlistTracks, *seed, *playlistDur)
+		pl, err := buildPlaylist(effectivePlaylistMode, spec, genres, effectivePlaylistTracks, *seed, effectivePlaylistDuration, listenMode.Name)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "playlist:", err)
 			os.Exit(2)
@@ -255,6 +289,7 @@ func main() {
 
 	model := tui.New(ring, root, spec.Label(), "Cmin", *seed, *initialVol).
 		WithDebug(*debugView).
+		WithListeningMode(listenMode.Label).
 		WithControlProfile(&controlProfile).
 		WithExportController(makeTUIExporter(buildAlgo, *initialVol)).
 		WithSwitcher(genres, startIdx, buildFn)
@@ -262,16 +297,16 @@ func main() {
 	// Optional playlist. When set, the TUI auto-advances tracks with a
 	// crossfade. The first track is whichever genre is currently playing —
 	// we leave the speaker alone and just arm the timer for the next swap.
-	if *playlistMode != "" {
-		pl, err := buildPlaylist(*playlistMode, spec, genres, *playlistTracks, *seed, *playlistDur)
+	if effectivePlaylistMode != "" {
+		pl, err := buildPlaylist(effectivePlaylistMode, spec, genres, effectivePlaylistTracks, *seed, effectivePlaylistDuration, listenMode.Name)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "playlist:", err)
 			os.Exit(2)
 		}
 		// 2s crossfade at 44.1 kHz between tracks.
 		model = model.WithPlaylist(pl, 0, 88200)
-		fmt.Fprintf(os.Stderr, "playlist %q · %d tracks · %s each\n",
-			pl.Name, len(pl.Tracks), *playlistDur)
+		fmt.Fprintf(os.Stderr, "playlist %q · %d tracks · %s each · mode %s\n",
+			pl.Name, len(pl.Tracks), effectivePlaylistDuration, listenMode.Label)
 	}
 
 	// Start the live audio backend asynchronously so a bad CoreAudio/default-
@@ -373,7 +408,7 @@ func pickSFName(by map[string]*meltysynth.SoundFont, s gen.AlgoSpec, fallback st
 // The first track keeps the currently-playing seed/spec so playback doesn't
 // jolt at startup.
 func buildPlaylist(mode string, currentSpec gen.AlgoSpec, available []gen.AlgoSpec,
-	count int, baseSeed int64, dur time.Duration) (*gen.Playlist, error) {
+	count int, baseSeed int64, dur time.Duration, listenMode gen.ListeningMode) (*gen.Playlist, error) {
 	if count < 1 {
 		return nil, fmt.Errorf("--playlist-tracks must be >= 1, got %d", count)
 	}
@@ -392,6 +427,7 @@ func buildPlaylist(mode string, currentSpec gen.AlgoSpec, available []gen.AlgoSp
 	// Pin track 0 to the currently-playing spec + seed so the initial swap
 	// happens at the *first* duration boundary, not immediately at startup.
 	pl.Tracks[0] = gen.Track{Spec: currentSpec, Seed: baseSeed, Duration: dur}
+	pl.ListenMode = listenMode
 	return &pl, nil
 }
 

@@ -24,9 +24,10 @@ type Track struct {
 
 // Playlist is an ordered list of Tracks with a human-readable display name.
 type Playlist struct {
-	Name   string
-	Mode   PlaylistMode
-	Tracks []Track
+	Name       string
+	Mode       PlaylistMode
+	ListenMode ListeningMode
+	Tracks     []Track
 }
 
 // SameGenrePlaylist builds a playlist of `count` tracks, all using the same

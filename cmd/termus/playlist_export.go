@@ -18,6 +18,7 @@ type playlistRenderer func(path string, algo gen.Algorithm, plan audio.RenderPla
 type playlistManifest struct {
 	Name           string                  `json:"name"`
 	Mode           string                  `json:"mode"`
+	ListeningMode  string                  `json:"listening_mode,omitempty"`
 	TrackCount     int                     `json:"track_count"`
 	TotalDurationS float64                 `json:"total_duration_s"`
 	Tracks         []playlistManifestTrack `json:"tracks"`
@@ -60,10 +61,11 @@ func renderPlaylistOutWith(outDir string, pl *gen.Playlist, volume int, build pl
 
 	digits := len(strconv.Itoa(len(pl.Tracks)))
 	manifest := &playlistManifest{
-		Name:       pl.Name,
-		Mode:       playlistModeLabel(pl.Mode),
-		TrackCount: len(pl.Tracks),
-		Tracks:     make([]playlistManifestTrack, 0, len(pl.Tracks)),
+		Name:          pl.Name,
+		Mode:          playlistModeLabel(pl.Mode),
+		ListeningMode: string(pl.ListenMode),
+		TrackCount:    len(pl.Tracks),
+		Tracks:        make([]playlistManifestTrack, 0, len(pl.Tracks)),
 	}
 
 	for i, track := range pl.Tracks {

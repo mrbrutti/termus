@@ -128,6 +128,10 @@ func (m Model) nowControlItems() []controlItem {
 		trackValue = fmt.Sprintf("%s · %d/%d", m.algo, m.playlistIdx+1, len(m.playlist.Tracks))
 		trackHint = shortDuration(time.Until(m.nextTrackAt)) + " to next"
 	}
+	modeValue := m.listeningMode
+	if modeValue == "" {
+		modeValue = "endless"
+	}
 	return []controlItem{
 		{
 			Title: "playback",
@@ -143,6 +147,12 @@ func (m Model) nowControlItems() []controlItem {
 				}
 				return nil
 			},
+		},
+		{
+			Title:    "mode",
+			Value:    modeValue,
+			Hint:     "session profile",
+			Disabled: true,
 		},
 		{
 			Title:    "current track",

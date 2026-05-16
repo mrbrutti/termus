@@ -91,6 +91,7 @@ type Model struct {
 	startedAt       time.Time
 	splashUntil     time.Time
 	recordStartedAt time.Time
+	listeningMode   string
 }
 
 // New constructs a Model. keyName is e.g. "Cmin".
@@ -137,6 +138,11 @@ func (m Model) WithSwitcher(genres []gen.AlgoSpec, startIdx int, buildFn BuildAl
 // WithDebug controls whether the dedicated debug inspector starts visible.
 func (m Model) WithDebug(visible bool) Model {
 	m.debugVisible = visible
+	return m
+}
+
+func (m Model) WithListeningMode(label string) Model {
+	m.listeningMode = label
 	return m
 }
 
@@ -941,6 +947,9 @@ func (m Model) seedSlotsLabel() string {
 
 func playbackBar(m Model, w int, theme ColorTheme, samples []float64, compact bool) string {
 	leftParts := []string{formatElapsed("live", time.Since(m.startedAt))}
+	if m.listeningMode != "" {
+		leftParts = append(leftParts, m.listeningMode)
+	}
 	if m.playlist != nil && m.playlistIdx < len(m.playlist.Tracks) {
 		track := m.playlist.Tracks[m.playlistIdx]
 		if compact {
