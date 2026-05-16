@@ -23,6 +23,13 @@ type AudioControl struct {
 	RenderOnly func()
 }
 
+type StartupLoadMsg struct {
+	Title   string
+	Detail  string
+	Percent float64
+	Done    bool
+}
+
 type seedBookmark struct {
 	Spec gen.AlgoSpec
 	Seed int64
@@ -51,6 +58,10 @@ type Model struct {
 	exportBusy         bool
 	reducedChrome      bool
 	splashVisible      bool
+	startupLoading     bool
+	startupTitle       string
+	startupDetail      string
+	startupPercent     float64
 	status             string
 	statusTTL          time.Time
 	stickyStatus       string
@@ -162,6 +173,15 @@ func (m Model) WithControlProfile(profile *gen.ControlProfile) Model {
 
 func (m Model) WithAudioControl(control *AudioControl) Model {
 	m.audioControl = control
+	return m
+}
+
+func (m Model) WithStartupLoading(title, detail string, percent float64) Model {
+	m.startupLoading = true
+	m.startupTitle = title
+	m.startupDetail = detail
+	m.startupPercent = clamp01(percent)
+	m.splashVisible = true
 	return m
 }
 
@@ -642,6 +662,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case audio.BackendState:
 		m.applyAudioState(msg)
 		return m, nil
+	case StartupLoadMsg:
+		m.applyStartupLoad(msg)
+		return m, nil
 	case exportResultMsg:
 		m.exportBusy = false
 		if msg.err != nil {
@@ -652,6 +675,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tea.KeyMsg:
+		if m.startupLoading {
+			switch msg.String() {
+			case "q", "ctrl+c":
+				return m, tea.Quit
+			}
+			return m, nil
+		}
 		if m.splashVisible {
 			m.splashVisible = false
 		}
@@ -953,14 +983,37 @@ func (m Model) currentStatus(now time.Time) string {
 func (m *Model) applyAudioState(state audio.BackendState) {
 	switch state.Kind {
 	case audio.BackendStateStarting:
+		if m.startupLoading {
+			m.startupDetail = state.StatusText()
+		}
 		m.setStickyStatus(state.StatusText())
 	case audio.BackendStateReady:
+		if m.startupLoading {
+			m.startupLoading = false
+			m.splashVisible = false
+		}
 		m.setStickyStatus("")
 		m.flashStatus(state.StatusText(), 2*time.Second)
 	case audio.BackendStateNoDefaultDevice, audio.BackendStateHung,
 		audio.BackendStateRenderOnly, audio.BackendStateInitFailed:
+		if m.startupLoading {
+			m.startupLoading = false
+			m.splashVisible = false
+		}
 		m.setStickyStatus(state.StatusText())
 	}
+}
+
+func (m *Model) applyStartupLoad(msg StartupLoadMsg) {
+	m.startupLoading = !msg.Done
+	if msg.Title != "" {
+		m.startupTitle = msg.Title
+	}
+	if msg.Detail != "" {
+		m.startupDetail = msg.Detail
+	}
+	m.startupPercent = clamp01(msg.Percent)
+	m.splashVisible = true
 }
 
 func topBar(m Model, w int, theme ColorTheme, compact bool) string {
@@ -1266,6 +1319,33 @@ func filterHelpLines(lines []string, m Model) []string {
 func splashPanel(m Model, w, h int, theme ColorTheme) string {
 	bodyW := maxInt(30, minInt(w-6, 72))
 	bodyH := maxInt(12, minInt(h-2, 16))
+	if m.startupLoading || m.startupTitle != "" {
+		title := m.startupTitle
+		if title == "" {
+			title = "TERMUS"
+		}
+		pct := int(clamp01(m.startupPercent) * 100)
+		barW := maxInt(18, minInt(bodyW-8, 36))
+		filled := int(clamp01(m.startupPercent) * float64(barW))
+		bar := strings.Repeat("█", filled) + strings.Repeat("░", maxInt(0, barW-filled))
+		lines := []string{
+			lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render(title),
+			"",
+			lipgloss.NewStyle().Foreground(theme.BarHi).Render(fmt.Sprintf("%3d%%", pct)),
+			bar,
+		}
+		if m.startupDetail != "" {
+			lines = append(lines, "", lipgloss.NewStyle().Faint(true).Render(m.startupDetail))
+		}
+		panel := lipgloss.NewStyle().
+			Width(bodyW).
+			Height(bodyH).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(theme.BarFg).
+			Padding(1, 2).
+			Render(strings.Join(lines, "\n"))
+		return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, panel)
+	}
 	lines := []string{
 		lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render("TERMUS"),
 		"",

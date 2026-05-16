@@ -212,6 +212,38 @@ func TestSplashPanelShowsOnboarding(t *testing.T) {
 	}
 }
 
+func TestSplashPanelShowsStartupLoading(t *testing.T) {
+	m := Model{
+		splashVisible:  true,
+		startupLoading: true,
+		startupTitle:   "Loading MAX palette · Dusty Swing · jazz",
+		startupDetail:  "ready 1/2 · last sgm",
+		startupPercent: 0.5,
+		themes:         []ColorTheme{DefaultTheme()},
+	}
+	panel := splashPanel(m, 90, 18, DefaultTheme())
+	for _, want := range []string{"Loading MAX palette", "50%", "ready 1/2"} {
+		if !strings.Contains(panel, want) {
+			t.Fatalf("startup splash missing %q:\n%s", want, panel)
+		}
+	}
+}
+
+func TestStartupLoadingBlocksDismissal(t *testing.T) {
+	cmd := &tuiCommanderStub{}
+	m := Model{
+		cmd:            cmd,
+		splashVisible:  true,
+		startupLoading: true,
+		themes:         []ColorTheme{DefaultTheme()},
+	}
+	next, _ := m.Update(keyMsg("c"))
+	got := next.(Model)
+	if !got.splashVisible || !got.startupLoading {
+		t.Fatal("startup loading should keep splash visible until loading completes")
+	}
+}
+
 func TestHelpBlocksNonHelpKeys(t *testing.T) {
 	cmd := &tuiCommanderStub{}
 	m := Model{

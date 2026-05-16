@@ -1,10 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"os"
+	"sort"
+	"strings"
 	"sync"
-	"time"
 
 	"github.com/sinshu/go-meltysynth/meltysynth"
 
@@ -21,6 +23,13 @@ type soundFontCatalog struct {
 	byName map[string]*meltysynth.SoundFont
 
 	warmOnce sync.Once
+}
+
+type catalogLoadUpdate struct {
+	Ready   int
+	Total   int
+	Percent float64
+	Detail  string
 }
 
 func newSoundFontCatalog(strategy, fallback string) *soundFontCatalog {
@@ -67,24 +76,9 @@ func (c *soundFontCatalog) WarmMaxAsync() {
 	}
 	c.warmOnce.Do(func() {
 		go func() {
-			_ = c.ensurePresets(io.Discard, sf2.AllPresetNames())
+			_ = c.ensurePresetsParallel(sf2.AllPresetNames(), 2, nil)
 		}()
 	})
-}
-
-func (c *soundFontCatalog) WarmCurrentSpecMaxAsync(spec gen.AlgoSpec, onReady func()) {
-	if c == nil || c.strategy != "max" || !spec.RequiresSF2 {
-		return
-	}
-	go func() {
-		if err := c.ensurePresets(io.Discard, gen.MaxSF2PresetsForSpec(spec)); err != nil {
-			logCatalogEnsureError(spec, err)
-			return
-		}
-		if onReady != nil {
-			onReady()
-		}
-	}()
 }
 
 func (c *soundFontCatalog) Pick(spec gen.AlgoSpec) *meltysynth.SoundFont {
@@ -169,6 +163,93 @@ func (c *soundFontCatalog) ensurePresets(progress io.Writer, presets []string) e
 	return nil
 }
 
+func (c *soundFontCatalog) ensurePresetsParallel(presets []string, concurrency int, update func(catalogLoadUpdate)) error {
+	missing := c.missingPresets(presets)
+	if len(missing) == 0 {
+		if update != nil {
+			update(catalogLoadUpdate{Ready: 0, Total: 0, Percent: 1.0, Detail: "ready"})
+		}
+		return nil
+	}
+	c.loadMu.Lock()
+	defer c.loadMu.Unlock()
+
+	missing = c.missingPresets(presets)
+	if len(missing) == 0 {
+		if update != nil {
+			update(catalogLoadUpdate{Ready: 0, Total: 0, Percent: 1.0, Detail: "ready"})
+		}
+		return nil
+	}
+	if concurrency < 1 {
+		concurrency = 1
+	}
+	if concurrency > len(missing) {
+		concurrency = len(missing)
+	}
+	type result struct {
+		name string
+		sf   *meltysynth.SoundFont
+		err  error
+	}
+	totalWeight := 0
+	for _, name := range missing {
+		totalWeight += presetLoadWeight(name)
+	}
+	sort.Strings(missing)
+	if update != nil {
+		update(catalogLoadUpdate{
+			Ready:   0,
+			Total:   len(missing),
+			Percent: 0,
+			Detail:  "loading " + strings.Join(missing, ", "),
+		})
+	}
+	jobs := make(chan string, len(missing))
+	results := make(chan result, len(missing))
+	for i := 0; i < concurrency; i++ {
+		go func() {
+			for name := range jobs {
+				path, err := sf2.EnsurePreset(name, nil)
+				if err != nil {
+					results <- result{name: name, err: err}
+					continue
+				}
+				loaded, err := sf2.Open(path)
+				results <- result{name: name, sf: loaded, err: err}
+			}
+		}()
+	}
+	for _, name := range missing {
+		jobs <- name
+	}
+	close(jobs)
+
+	ready := 0
+	doneWeight := 0
+	for range missing {
+		res := <-results
+		if res.err != nil {
+			return res.err
+		}
+		c.mu.Lock()
+		c.byName[res.name] = res.sf
+		c.mu.Unlock()
+		gen.SetSF2Runtime(c.strategy, c.snapshot())
+		ready++
+		doneWeight += presetLoadWeight(res.name)
+		if update != nil {
+			update(catalogLoadUpdate{
+				Ready:   ready,
+				Total:   len(missing),
+				Percent: float64(doneWeight) / float64(totalWeight),
+				Detail:  fmt.Sprintf("ready %d/%d · last %s", ready, len(missing), res.name),
+			})
+		}
+	}
+	return nil
+}
+
 func (c *soundFontCatalog) missingPresets(presets []string) []string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -195,48 +276,11 @@ func loadInitialSoundFontCatalog(spec gen.AlgoSpec, strategy, fallbackPreset, cu
 		return newPinnedSoundFontCatalog(customPath)
 	}
 	catalog := newSoundFontCatalog(strategy, fallbackPreset)
-	loaded, err := catalog.ensureForStartup(spec, progress)
+	loaded, err := catalog.EnsureForSpec(spec, progress)
 	if err != nil {
 		return nil, nil, err
 	}
 	return catalog, loaded, nil
-}
-
-func (c *soundFontCatalog) ensureForStartup(spec gen.AlgoSpec, progress io.Writer) (*meltysynth.SoundFont, error) {
-	if !spec.RequiresSF2 {
-		return nil, nil
-	}
-	var presets []string
-	switch c.strategy {
-	case "max":
-		presets = startupPresetsForMax(spec, c.fallback)
-	default:
-		presets = neededPresets(c.strategy, c.fallback, spec)
-	}
-	if err := c.ensurePresets(progress, presets); err != nil {
-		return nil, err
-	}
-	if c.strategy == "max" {
-		if c.fallback != "" {
-			c.mu.RLock()
-			fallback := c.byName[c.fallback]
-			c.mu.RUnlock()
-			if fallback != nil {
-				return fallback, nil
-			}
-		}
-	}
-	return c.pick(spec), nil
-}
-
-func startupPresetsForMax(spec gen.AlgoSpec, fallback string) []string {
-	if fallback != "" {
-		return []string{fallback}
-	}
-	if spec.PreferredSF2 != "" {
-		return []string{spec.PreferredSF2}
-	}
-	return gen.MaxSF2PresetsForSpec(spec)
 }
 
 func logCatalogEnsureError(spec gen.AlgoSpec, err error) {
@@ -246,25 +290,9 @@ func logCatalogEnsureError(spec gen.AlgoSpec, err error) {
 	_, _ = io.WriteString(os.Stderr, "sf2 warm for "+spec.Name+" failed: "+err.Error()+"\n")
 }
 
-func fastForwardAlgorithm(algo gen.Algorithm, elapsed time.Duration) {
-	if algo == nil || elapsed <= 0 {
-		return
+func presetLoadWeight(name string) int {
+	if preset, ok := sf2.Presets[name]; ok && preset.SizeMB > 0 {
+		return preset.SizeMB
 	}
-	const sampleRate = 44100
-	const block = 2048
-	const maxCatchup = 8 * time.Second
-	if elapsed > maxCatchup {
-		elapsed = maxCatchup
-	}
-	frames := int(float64(sampleRate) * elapsed.Seconds())
-	left := make([]float64, block)
-	right := make([]float64, block)
-	for frames > 0 {
-		n := block
-		if frames < n {
-			n = frames
-		}
-		algo.Next(left[:n], right[:n])
-		frames -= n
-	}
+	return 1
 }

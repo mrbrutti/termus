@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -25,6 +26,23 @@ const (
 	defaultRenderSeconds  = 180.0
 	defaultPlaylistTracks = 6
 )
+
+type silentAlgorithm struct{}
+
+func (silentAlgorithm) Name() string               { return "silent" }
+func (silentAlgorithm) Seed(int64)                 {}
+func (silentAlgorithm) Next(left, right []float64) {}
+
+func startupLabel(spec gen.AlgoSpec) string {
+	label := spec.Label()
+	if spec.Name == "" || strings.EqualFold(label, spec.Name) {
+		return label
+	}
+	if label == "" {
+		return spec.Name
+	}
+	return fmt.Sprintf("%s · %s", label, spec.Name)
+}
 
 func main() {
 	seed := flag.Int64("seed", time.Now().UnixNano(), "RNG seed (default: time-based)")
@@ -125,21 +143,36 @@ func main() {
 			*algoName, gen.AllAlgoNames())
 		os.Exit(2)
 	}
-	catalog, sf, err := loadInitialSoundFontCatalog(spec, sfStrategy, *sf2Preset, *sf2Path, os.Stderr)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "sf2 setup failed:", err)
-		os.Exit(1)
+	liveStartupMax := *outPath == "" && *playlistOut == "" && sfStrategy == "max" && *sf2Path == "" && spec.RequiresSF2
+	var (
+		catalog *soundFontCatalog
+		sf      *meltysynth.SoundFont
+		err     error
+	)
+	if liveStartupMax {
+		catalog = newSoundFontCatalog("max", *sf2Preset)
+		gen.SetSF2Runtime("max", catalog.snapshot())
+	} else {
+		catalog, sf, err = loadInitialSoundFontCatalog(spec, sfStrategy, *sf2Preset, *sf2Path, os.Stderr)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "sf2 setup failed:", err)
+			os.Exit(1)
+		}
 	}
-	algo := spec.Build(sf)
-	algo.Seed(*seed)
+	var algo gen.Algorithm
+	if liveStartupMax {
+		algo = silentAlgorithm{}
+	} else {
+		algo = spec.Build(sf)
+		algo.Seed(*seed)
+	}
 	controlProfile := gen.DefaultControlProfile()
 
 	var ir []float64
 	var irLabel string
 	// Optional convolution IR.
 	if *irPath != "" {
-		rev, ok := algo.(gen.SF2Reverberator)
-		if !ok {
+		if !spec.RequiresSF2 {
 			fmt.Fprintf(os.Stderr, "--ir requires an sf2-mode algorithm; ignoring\n")
 		} else {
 			loadedIR, label, err := loadIR(*irPath, *seed)
@@ -149,9 +182,13 @@ func main() {
 			}
 			ir = loadedIR
 			irLabel = label
-			rev.SetReverbIR(ir, *irWet)
-			fmt.Fprintf(os.Stderr, "IR %s: %d samples (%.1f ms) at wet=%.2f\n",
-				irLabel, len(ir), float64(len(ir))*1000.0/44100.0, *irWet)
+			if !liveStartupMax {
+				if rev, ok := algo.(gen.SF2Reverberator); ok {
+					rev.SetReverbIR(ir, *irWet)
+				}
+				fmt.Fprintf(os.Stderr, "IR %s: %d samples (%.1f ms) at wet=%.2f\n",
+					irLabel, len(ir), float64(len(ir))*1000.0/44100.0, *irWet)
+			}
 		}
 	}
 	buildRenderedAlgo := func(s gen.AlgoSpec, algoSeed int64) gen.Algorithm {
@@ -223,7 +260,7 @@ func main() {
 	// Build the switchable algorithm list. If we have a SoundFont loaded
 	// we expose all SF2-backed genres; otherwise we fall back to the
 	// pure-synth variants so cycling never crashes on a nil SoundFont.
-	genres, startIdx := buildGenreList(sf, spec.Name)
+	genres, startIdx := buildGenreList(sf != nil || catalog != nil, spec.Name)
 
 	// Closure used by the TUI to build a fresh algorithm on swap. We
 	// re-seed with the original --seed so the same key stays deterministic
@@ -284,6 +321,9 @@ func main() {
 		WithControlProfile(&controlProfile).
 		WithExportController(makeTUIExporter(buildAlgo, *initialVol)).
 		WithSwitcher(genres, startIdx, buildFn)
+	if liveStartupMax {
+		model = model.WithStartupLoading(fmt.Sprintf("Loading MAX palette · %s", startupLabel(spec)), "preparing soundfonts", 0)
+	}
 
 	// Optional playlist. When set, the TUI auto-advances tracks with a
 	// crossfade. The first track is whichever genre is currently playing —
@@ -300,39 +340,85 @@ func main() {
 			pl.Name, len(pl.Tracks), effectivePlaylistDuration, listenMode.Label)
 	}
 
-	// Start the live audio backend asynchronously so a bad CoreAudio/default-
-	// device state does not block the TUI from launching.
-	launchStartedAt := time.Now()
-	if catalog != nil {
-		if sfStrategy == "max" && *sf2Path == "" && spec.RequiresSF2 {
-			catalog.WarmCurrentSpecMaxAsync(spec, func() {
-				upgraded := gen.WrapDebugStatus(buildLiveAlgo(spec, *seed), presetLabel(spec))
-				fastForwardAlgorithm(upgraded, time.Since(launchStartedAt))
-				root.SwapAlgorithmFade(upgraded, 4410)
-				catalog.WarmMaxAsync()
+	sr := beep.SampleRate(44100)
+	var (
+		liveMu sync.Mutex
+		live   *audio.LiveBackend
+	)
+	model = model.WithAudioControl(&tui.AudioControl{
+		Retry: func() {
+			liveMu.Lock()
+			current := live
+			liveMu.Unlock()
+			if current != nil {
+				current.Retry()
+			}
+		},
+		RenderOnly: func() {
+			liveMu.Lock()
+			current := live
+			liveMu.Unlock()
+			if current != nil {
+				current.SetRenderOnly()
+			}
+		},
+	})
+	p := tea.NewProgram(model, tea.WithAltScreen())
+	startLive := func() {
+		next := audio.StartLive(root, sr, sr.N(time.Second/20), 3*time.Second)
+		liveMu.Lock()
+		live = next
+		liveMu.Unlock()
+		go func() {
+			for state := range next.States() {
+				p.Send(state)
+			}
+		}()
+	}
+	if liveStartupMax {
+		go func() {
+			update := func(progress catalogLoadUpdate) {
+				p.Send(tui.StartupLoadMsg{
+					Title:   fmt.Sprintf("Loading MAX palette · %s", startupLabel(spec)),
+					Detail:  progress.Detail,
+					Percent: progress.Percent,
+				})
+			}
+			if err := catalog.ensurePresetsParallel(gen.MaxSF2PresetsForSpec(spec), 2, update); err != nil {
+				p.Send(audio.BackendState{Kind: audio.BackendStateInitFailed, Detail: err.Error()})
+				p.Send(tui.StartupLoadMsg{
+					Title:   fmt.Sprintf("Loading MAX palette · %s", startupLabel(spec)),
+					Detail:  "load failed: " + err.Error(),
+					Percent: 0,
+					Done:    true,
+				})
+				return
+			}
+			readyAlgo := gen.WrapDebugStatus(buildLiveAlgo(spec, *seed), presetLabel(spec))
+			root.SwapAlgorithmFade(readyAlgo, 0)
+			p.Send(tui.StartupLoadMsg{
+				Title:   fmt.Sprintf("Loading MAX palette · %s", startupLabel(spec)),
+				Detail:  "starting audio...",
+				Percent: 1,
 			})
-		} else {
+			startLive()
+			catalog.WarmMaxAsync()
+		}()
+	} else {
+		if catalog != nil {
 			catalog.WarmMaxAsync()
 		}
+		startLive()
 	}
-	sr := beep.SampleRate(44100)
-	live := audio.StartLive(root, sr, sr.N(time.Second/20), 3*time.Second)
-	defer live.Close()
-	model = model.WithAudioControl(&tui.AudioControl{
-		Retry:      live.Retry,
-		RenderOnly: live.SetRenderOnly,
-	})
-
-	p := tea.NewProgram(model, tea.WithAltScreen())
-	go func() {
-		for state := range live.States() {
-			p.Send(state)
-		}
-	}()
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "tui error:", err)
 		os.Exit(1)
 	}
+	liveMu.Lock()
+	if live != nil {
+		live.Close()
+	}
+	liveMu.Unlock()
 }
 
 // neededPresets returns the deduped list of SoundFont preset names the app
@@ -455,16 +541,16 @@ func buildPlaylist(mode string, currentSpec gen.AlgoSpec, available []gen.AlgoSp
 // through, filtered by SoundFont availability, plus the index of the
 // currently-playing algorithm. Falls back to the first entry if the current
 // name isn't in the filtered list.
-func buildGenreList(sf *meltysynth.SoundFont, currentName string) ([]gen.AlgoSpec, int) {
+func buildGenreList(sfAvailable bool, currentName string) ([]gen.AlgoSpec, int) {
 	var out []gen.AlgoSpec
 	for _, name := range gen.AllAlgoNames() {
 		spec, _ := gen.Resolve(name)
-		if spec.RequiresSF2 && sf == nil {
+		if spec.RequiresSF2 && !sfAvailable {
 			continue
 		}
 		// Hide the -synth siblings when a SoundFont is loaded — they
 		// would just duplicate the genre list and confuse cycling.
-		if sf != nil && !spec.RequiresSF2 {
+		if sfAvailable && !spec.RequiresSF2 {
 			continue
 		}
 		out = append(out, spec)
