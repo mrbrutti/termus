@@ -11,8 +11,8 @@ type ColorTheme struct {
 	ColorAt func(cx, cy, w, h int) lipgloss.Color
 	// Accent colors used for the top/bottom bar text. The renderer doesn't
 	// use these — Model does, so the chrome matches the scope.
-	BarFg  lipgloss.Color
-	BarHi  lipgloss.Color // highlight color (currently-active state, e.g. PAUSED)
+	BarFg lipgloss.Color
+	BarHi lipgloss.Color // highlight color (currently-active state, e.g. PAUSED)
 }
 
 // verticalGradient builds a ColorTheme whose color depends only on the row,
@@ -154,4 +154,55 @@ func hex6(r, g, b int) string {
 		hex[g>>4], hex[g&0xf],
 		hex[b>>4], hex[b&0xf],
 	})
+}
+
+func blendColor(base, accent lipgloss.Color, mix float64) lipgloss.Color {
+	if mix <= 0 {
+		return base
+	}
+	if mix > 1 {
+		mix = 1
+	}
+	br, bg, bb, ok := parseHexColor(base)
+	if !ok {
+		return base
+	}
+	ar, ag, ab, ok := parseHexColor(accent)
+	if !ok {
+		return base
+	}
+	return lipgloss.Color(hex6(
+		lerpInt(br, ar, mix),
+		lerpInt(bg, ag, mix),
+		lerpInt(bb, ab, mix),
+	))
+}
+
+func parseHexColor(color lipgloss.Color) (r, g, b int, ok bool) {
+	s := string(color)
+	if len(s) != 7 || s[0] != '#' {
+		return 0, 0, 0, false
+	}
+	parse := func(ch byte) (int, bool) {
+		switch {
+		case ch >= '0' && ch <= '9':
+			return int(ch - '0'), true
+		case ch >= 'a' && ch <= 'f':
+			return int(ch-'a') + 10, true
+		case ch >= 'A' && ch <= 'F':
+			return int(ch-'A') + 10, true
+		default:
+			return 0, false
+		}
+	}
+	parts := []*int{&r, &g, &b}
+	for i, part := range parts {
+		hi, okHi := parse(s[1+i*2])
+		lo, okLo := parse(s[2+i*2])
+		if !okHi || !okLo {
+			return 0, 0, 0, false
+		}
+		*part = hi<<4 | lo
+	}
+	return r, g, b, true
 }

@@ -91,6 +91,7 @@ func TestPlaybackBarShowsTimingAndMeter(t *testing.T) {
 	now := time.Now()
 	m := Model{
 		recording:       true,
+		listeningMode:   "hour stream",
 		startedAt:       now.Add(-95 * time.Second),
 		recordStartedAt: now.Add(-17 * time.Second),
 		playlist: &gen.Playlist{Tracks: []gen.Track{
@@ -104,10 +105,21 @@ func TestPlaybackBarShowsTimingAndMeter(t *testing.T) {
 	}
 	samples := []float64{0.1, 0.3, 0.85, -0.4}
 	bar := playbackBar(m, 120, DefaultTheme(), samples, false)
-	for _, want := range []string{"live 01:35", "track 00:32/05:00", "next 04:28", "fade 00:02", "rec 00:17", "lvl"} {
+	for _, want := range []string{"live 01:35", "hour stream", "track 00:32/05:00", "next 04:28", "fade 00:02", "rec 00:17", "lvl"} {
 		if !strings.Contains(bar, want) {
 			t.Fatalf("playback bar missing %q: %q", want, bar)
 		}
+	}
+}
+
+func TestStartVisualTransitionTracksPreviousVisual(t *testing.T) {
+	m := Model{visualIdx: 1, visualPrevIdx: -1}
+	m.startVisualTransition(3)
+	if m.visualIdx != 3 || m.visualPrevIdx != 1 {
+		t.Fatalf("transition state = (%d,%d), want current=3 previous=1", m.visualIdx, m.visualPrevIdx)
+	}
+	if !m.visualTransitionActive(time.Now()) {
+		t.Fatal("expected active visual transition")
 	}
 }
 

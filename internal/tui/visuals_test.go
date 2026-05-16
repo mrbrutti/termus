@@ -43,7 +43,7 @@ func TestContourQuietSignalIsMostlyEmpty(t *testing.T) {
 }
 
 func TestVisualNamesMatchNewMinimalSet(t *testing.T) {
-	want := []string{"scope", "contour", "vector", "drift"}
+	want := []string{"scope", "contour", "vector", "signal", "drift"}
 	if len(Visuals) != len(want) {
 		t.Fatalf("visual count = %d, want %d", len(Visuals), len(want))
 	}
@@ -51,6 +51,19 @@ func TestVisualNamesMatchNewMinimalSet(t *testing.T) {
 		if v.Name != want[i] {
 			t.Fatalf("visual %d = %q, want %q", i, v.Name, want[i])
 		}
+	}
+}
+
+func TestBlendVisualFramesTransitionsFromCenter(t *testing.T) {
+	previous := "prev0\nprev1\nprev2\nprev3\nprev4\n"
+	current := "curr0\ncurr1\ncurr2\ncurr3\ncurr4\n"
+	mid := blendVisualFrames(previous, current, 0.5)
+	lines := strings.Split(strings.TrimRight(mid, "\n"), "\n")
+	if lines[0] != "prev0" || lines[4] != "prev4" {
+		t.Fatalf("outer lines should remain previous mid-transition: %q", mid)
+	}
+	if lines[2] != "curr2" {
+		t.Fatalf("center line should switch first mid-transition: %q", mid)
 	}
 }
 

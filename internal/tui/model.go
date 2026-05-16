@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -55,13 +56,15 @@ type Model struct {
 	stickyStatus       string
 	volumeOverlayUntil time.Time
 
-	themeIdx     int // index into Themes
-	visualIdx    int // index into Visuals
-	themes       []ColorTheme
-	ui           AdaptiveUI
-	musicProfile *gen.ControlProfile
-	morphMode    int
-	audioControl *AudioControl
+	themeIdx          int // index into Themes
+	visualIdx         int // index into Visuals
+	visualPrevIdx     int
+	visualSwitchUntil time.Time
+	themes            []ColorTheme
+	ui                AdaptiveUI
+	musicProfile      *gen.ControlProfile
+	morphMode         int
+	audioControl      *AudioControl
 
 	// Algorithm switching ([n]/[p]).
 	genres          []gen.AlgoSpec // ordered list of switchable algorithms
@@ -119,6 +122,7 @@ func New(ring *scope.Ring, cmd audio.Commander, algo, keyName string, seed int64
 		startedAt:     time.Now(),
 		splashUntil:   time.Now().Add(5 * time.Second),
 		splashVisible: true,
+		visualPrevIdx: -1,
 	}
 	m.touchCurrentSeed()
 	return m
@@ -732,6 +736,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tickMsg:
 		m.debug = m.cmd.DebugStatus()
+		if m.visualPrevIdx >= 0 && time.Now().After(m.visualSwitchUntil) {
+			m.visualPrevIdx = -1
+		}
 		if m.splashVisible && time.Now().After(m.splashUntil) {
 			m.splashVisible = false
 		}
@@ -765,10 +772,21 @@ func (m Model) View() string {
 	samples := make([]float64, innerW*2)
 	m.ring.Snapshot(samples)
 	theme := m.activeTheme()
-	visual := Visuals[m.visualIdx]
-	scopeStr := visual.Render(samples, innerW, innerH, RenderContext{
+	peak, rms := sampleStats(samples)
+	pulse := clamp01(0.55*peak + 0.45*rms)
+	phase := float64(now.UnixNano()) / float64(time.Second)
+	ctx := RenderContext{
 		Theme: theme,
-	})
+		Pulse: pulse,
+		Phase: phase + 0.35*math.Sin(phase*0.35),
+	}
+	visual := Visuals[m.visualIdx]
+	scopeStr := visual.Render(samples, innerW, innerH, ctx)
+	if m.visualTransitionActive(now) {
+		prev := Visuals[m.visualPrevIdx].Render(samples, innerW, innerH, ctx)
+		progress := 1 - float64(time.Until(m.visualSwitchUntil))/float64(visualSwitchDuration)
+		scopeStr = blendVisualFrames(prev, scopeStr, clamp01(progress))
+	}
 
 	top := topBar(m, innerW, theme, compact)
 	playback := playbackBar(m, innerW, theme, samples, compact)
@@ -818,6 +836,28 @@ func (m Model) activeTheme() ColorTheme {
 		return m.themes[0]
 	}
 	return m.themes[m.themeIdx]
+}
+
+const visualSwitchDuration = 340 * time.Millisecond
+
+func (m *Model) startVisualTransition(next int) {
+	if len(Visuals) == 0 {
+		return
+	}
+	next = (next + len(Visuals)) % len(Visuals)
+	if next == m.visualIdx {
+		return
+	}
+	m.visualPrevIdx = m.visualIdx
+	m.visualIdx = next
+	m.visualSwitchUntil = time.Now().Add(visualSwitchDuration)
+}
+
+func (m Model) visualTransitionActive(now time.Time) bool {
+	return m.visualPrevIdx >= 0 &&
+		m.visualPrevIdx < len(Visuals) &&
+		m.visualPrevIdx != m.visualIdx &&
+		now.Before(m.visualSwitchUntil)
 }
 
 func (m *Model) flashStatus(text string, ttl time.Duration) {

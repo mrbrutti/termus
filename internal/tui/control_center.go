@@ -205,7 +205,7 @@ func (m Model) lookControlItems() []controlItem {
 			Value: Visuals[m.visualIdx].Name,
 			Hint:  "left/right cycle",
 			Adjust: func(m *Model, delta int) {
-				m.visualIdx = (m.visualIdx + delta + len(Visuals)) % len(Visuals)
+				m.startVisualTransition(m.visualIdx + delta)
 				m.flashStatus("visual: "+Visuals[m.visualIdx].Name, 2*time.Second)
 			},
 		},

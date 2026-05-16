@@ -18,6 +18,8 @@ type VisualStyle struct {
 // RenderContext bundles the non-audio styling inputs shared by all visuals.
 type RenderContext struct {
 	Theme ColorTheme
+	Pulse float64
+	Phase float64
 }
 
 // Visuals is the ordered list of selectable visualization styles. [C] in the
@@ -26,6 +28,7 @@ var Visuals = []VisualStyle{
 	{Name: "scope", Render: RenderBrailleWithContext},
 	{Name: "contour", Render: RenderContour},
 	{Name: "vector", Render: RenderVector},
+	{Name: "signal", Render: RenderSignal},
 	{Name: "drift", Render: RenderDrift},
 }
 
@@ -100,6 +103,54 @@ func RenderVector(samples []float64, w, h int, ctx RenderContext) string {
 			plotDot(grid, x, y)
 		}
 		prevX, prevY = x, y
+	}
+	return renderBrailleGrid(grid, w, h, ctx)
+}
+
+// RenderSignal is a termus-native visual: one centered carrier trace with
+// restrained ghost echoes above and below it. It keeps the same minimal line
+// language as the scope, but feels more like a radio signal than a waveform.
+func RenderSignal(samples []float64, w, h int, ctx RenderContext) string {
+	if w < 4 || h < 1 || len(samples) == 0 {
+		return blankCells(w, h)
+	}
+	grid := newDotGrid(w, h)
+	dotsX := len(grid[0])
+	dotsY := len(grid)
+	centerY := dotsY / 2
+	peak, rms := sampleStats(samples)
+	energy := clamp01(0.55*peak + 0.45*rms)
+	mainSpan := maxInt(3, dotsY/7)
+	echoSpan := maxInt(2, dotsY/10)
+	echoOffset := maxInt(4, int(float64(dotsY)*(0.14+0.05*energy)))
+	lagA := maxInt(2, len(samples)/56)
+	lagB := maxInt(3, len(samples)/34)
+	prevMainX, prevMainY := 0, centerY
+	prevUpperX, prevUpperY := 0, centerY-echoOffset
+	prevLowerX, prevLowerY := 0, centerY+echoOffset
+	for px := 0; px < dotsX; px++ {
+		si := px * len(samples) / dotsX
+		main := clamp1(samples[si])
+		upperSrc := clamp1(0.62*samples[(si+lagA)%len(samples)] + 0.18*main)
+		lowerSrc := clamp1(0.58*samples[(si+lagB)%len(samples)] - 0.16*main)
+		mainY := centerY - int(main*float64(mainSpan))
+		upperY := centerY - echoOffset - int(upperSrc*float64(echoSpan))
+		lowerY := centerY + echoOffset - int(lowerSrc*float64(echoSpan))
+		drawLine(grid, prevMainX, prevMainY, px, mainY)
+		if px%2 == 0 {
+			drawLine(grid, prevUpperX, prevUpperY, px, upperY)
+			drawLine(grid, prevLowerX, prevLowerY, px, lowerY)
+		}
+		if px%9 == 0 {
+			plotDot(grid, px, mainY)
+		}
+		if px%15 == 0 && energy > 0.12 {
+			plotDot(grid, px, upperY)
+			plotDot(grid, px, lowerY)
+		}
+		prevMainX, prevMainY = px, mainY
+		prevUpperX, prevUpperY = px, upperY
+		prevLowerX, prevLowerY = px, lowerY
 	}
 	return renderBrailleGrid(grid, w, h, ctx)
 }
@@ -388,9 +439,60 @@ func sampleStats(samples []float64) (peak, rms float64) {
 }
 
 func renderCell(ch rune, cx, cy, w, h int, ctx RenderContext) string {
+	fg := ctx.Theme.ColorAt(cx, cy, w, h)
+	if ch != ' ' && ch != '\u2800' {
+		fg = pulseColor(ctx, fg, cx, cy, w, h)
+	}
 	return lipgloss.NewStyle().
-		Foreground(ctx.Theme.ColorAt(cx, cy, w, h)).
+		Foreground(fg).
 		Render(string(ch))
+}
+
+func pulseColor(ctx RenderContext, base lipgloss.Color, cx, cy, w, h int) lipgloss.Color {
+	if ctx.Pulse <= 0 {
+		return base
+	}
+	centerY := float64(h-1) / 2
+	rowDistance := 0.0
+	if centerY > 0 {
+		rowDistance = math.Abs(float64(cy)-centerY) / centerY
+	}
+	rowWeight := 1.0 - 0.30*rowDistance
+	shimmer := 0.5 + 0.5*math.Sin(ctx.Phase*2.4+float64(cx)*0.12-float64(cy)*0.17)
+	mix := clamp01((0.03 + 0.11*ctx.Pulse) * rowWeight * (0.70 + 0.30*shimmer))
+	return blendColor(base, ctx.Theme.BarHi, mix)
+}
+
+func blendVisualFrames(previous, current string, progress float64) string {
+	if progress <= 0 {
+		return previous
+	}
+	if progress >= 1 {
+		return current
+	}
+	prevLines := strings.Split(strings.TrimRight(previous, "\n"), "\n")
+	curLines := strings.Split(strings.TrimRight(current, "\n"), "\n")
+	height := len(prevLines)
+	if len(curLines) < height {
+		height = len(curLines)
+	}
+	if height == 0 {
+		return current
+	}
+	out := make([]string, height)
+	center := float64(height-1) / 2
+	radius := progress * (center + 1.5)
+	phase := int(progress * 10)
+	for i := 0; i < height; i++ {
+		dist := math.Abs(float64(i) - center)
+		useCurrent := dist <= radius || (dist <= radius+1.0 && (i+phase)%2 == 0)
+		if useCurrent {
+			out[i] = curLines[i]
+		} else {
+			out[i] = prevLines[i]
+		}
+	}
+	return strings.Join(out, "\n") + "\n"
 }
 
 // blankCells returns an empty w×h grid as the renderer's "nothing to draw"

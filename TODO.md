@@ -106,4 +106,4 @@
 - [x] Add explicit long-form listening modes such as `endless`, `album side`, `hour stream`, and `radio`, and wire them into live playback plus offline render/export defaults.
 
 ### Visual Polish
-- [ ] Give the TUI one more signature visualization pass with subtle color breathing, smoother visual switching, and at least one uniquely `termus` visual mode that still matches the minimal line language.
+- [x] Give the TUI one more signature visualization pass with subtle color breathing, smoother visual switching, and at least one uniquely `termus` visual mode that still matches the minimal line language.
