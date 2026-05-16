@@ -51,6 +51,10 @@ type SF2Markov struct {
 	violinPhrase []int
 	profile      ControlProfile
 	horizon      LongHorizonState
+
+	progressionHistory recentPatternMemory
+	motifHistory       recentPatternMemory
+	cadenceHistory     recentPatternMemory
 }
 
 // classicalChord is one bar of harmony — diatonic only.
@@ -110,24 +114,66 @@ func (a *SF2Markov) ApplyControlProfile(profile ControlProfile) {
 
 func (a *SF2Markov) currentRoot() int { return a.rootMidi + a.keyOffset }
 
-func (a *SF2Markov) makeEpisodeProgression() []classicalChord {
-	var base []classicalChord
-	switch a.horizon.HarmonyFamily {
-	case "answer":
-		base = classicalProgressions[0]
-	case "subdominant-arc":
-		base = classicalProgressions[1]
-	case "cadential-return":
-		base = classicalProgressions[2]
-	default:
-		base = classicalProgressions[a.rng.Intn(len(classicalProgressions))]
+func classicalProgressionSignature(prog []classicalChord) string {
+	parts := make([]int, 0, len(prog)*2)
+	for _, chord := range prog {
+		parts = append(parts, chord.rootSemi, len(chord.tones))
 	}
-	return append([]classicalChord(nil), base...)
+	return phraseSignature(parts)
+}
+
+func (a *SF2Markov) makeEpisodeProgression() []classicalChord {
+	candidates := make([][]classicalChord, 0, 4)
+	for i := 0; i < 4; i++ {
+		var base []classicalChord
+		switch a.horizon.HarmonyFamily {
+		case "answer":
+			base = classicalProgressions[0]
+		case "subdominant-arc":
+			base = classicalProgressions[1]
+		case "cadential-return":
+			base = classicalProgressions[2]
+		default:
+			base = classicalProgressions[a.rng.Intn(len(classicalProgressions))]
+		}
+		candidates = append(candidates, append([]classicalChord(nil), base...))
+	}
+	best := candidates[0]
+	bestScore := a.progressionHistory.penalty(classicalProgressionSignature(best))
+	for i := 1; i < len(candidates); i++ {
+		score := a.progressionHistory.penalty(classicalProgressionSignature(candidates[i]))
+		if score < bestScore || (score == bestScore && a.rng.Float64() < 0.5) {
+			best = candidates[i]
+			bestScore = score
+		}
+	}
+	a.progressionHistory.remember(classicalProgressionSignature(best))
+	return best
+}
+
+func (a *SF2Markov) chooseViolinPhrase(numSlots int) []int {
+	candidates := make([][]int, 0, 4)
+	for i := 0; i < 4; i++ {
+		candidates = append(candidates, a.makeClassicalMelody(numSlots))
+	}
+	best := candidates[0]
+	bestScore := a.motifHistory.penalty(phraseSignature(best)) + a.cadenceHistory.penalty(phraseSignature(best[maxInt(0, len(best)-4):]))
+	for i := 1; i < len(candidates); i++ {
+		cadence := phraseSignature(candidates[i][maxInt(0, len(candidates[i])-4):])
+		score := a.motifHistory.penalty(phraseSignature(candidates[i])) + a.cadenceHistory.penalty(cadence)
+		if score < bestScore || (score == bestScore && a.rng.Float64() < 0.5) {
+			best = candidates[i]
+			bestScore = score
+		}
+	}
+	a.motifHistory.remember(phraseSignature(best))
+	a.cadenceHistory.remember(phraseSignature(best[maxInt(0, len(best)-4):]))
+	return best
 }
 
 func (a *SF2Markov) rebuildEpisodeMaterials() {
 	a.progression = a.makeEpisodeProgression()
-	a.violinPhrase = a.makeClassicalMelody(2 * len(a.progression))
+	a.violinPhrase = a.chooseViolinPhrase(2 * len(a.progression))
 }
 
 func (a *SF2Markov) Seed(seedVal int64) {
@@ -188,6 +234,9 @@ func (a *SF2Markov) Seed(seedVal int64) {
 	a.form = NewEpisodePlan(a.rng, a.barSamples, "classical")
 	a.section = a.form.SectionAt(0)
 	a.horizon = NewLongHorizonState(a.rng, "classical", a.form.MovementAt(0))
+	a.progressionHistory = newRecentPatternMemory(8)
+	a.motifHistory = newRecentPatternMemory(8)
+	a.cadenceHistory = newRecentPatternMemory(8)
 	a.rebuildEpisodeMaterials()
 	numBars := len(a.progression)
 	cycleSec := barSec * float64(numBars)

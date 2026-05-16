@@ -70,6 +70,10 @@ type Chill struct {
 	saxMotifs    MotifMemory
 	profile      ControlProfile
 	horizon      LongHorizonState
+
+	progressionHistory recentPatternMemory
+	motifHistory       recentPatternMemory
+	cadenceHistory     recentPatternMemory
 }
 
 // chillChord is one chord in the loop, expressed as semitone offsets from
@@ -79,6 +83,12 @@ type Chill struct {
 type chillChord struct {
 	tones []int  // 4-note voicing: root, 3rd, 5th, 7th of the chord
 	label string // human label, for debug/logging
+}
+
+type chillMotifBundle struct {
+	vibe   MotifMemory
+	guitar MotifMemory
+	sax    MotifMemory
 }
 
 func chillMaj7(rootSemi int, label string) chillChord {
@@ -275,34 +285,87 @@ func (a *Chill) currentRoot() int { return a.rootMidi + a.keyOffset }
 
 func (a *Chill) ApplyControlProfile(profile ControlProfile) { a.profile = profileOrDefault(profile) }
 
+func chillProgressionSignature(prog []chillChord) string {
+	parts := make([]int, 0, len(prog)*2)
+	for _, chord := range prog {
+		parts = append(parts, chordRootSemi(chord), len(chord.tones))
+	}
+	return phraseSignature(parts)
+}
+
+func chillMotifBundleSignature(bundle chillMotifBundle) string {
+	return phraseSignature(bundle.vibe.A) + "|" + phraseSignature(bundle.guitar.A) + "|" + phraseSignature(bundle.sax.A)
+}
+
+func chillCadenceBundleSignature(bundle chillMotifBundle) string {
+	return phraseSignature(bundle.vibe.Cadence) + "|" + phraseSignature(bundle.guitar.Cadence) + "|" + phraseSignature(bundle.sax.Cadence)
+}
+
 func (a *Chill) makeEpisodeProgression(targetBars int) []chillChord {
 	if targetBars <= 0 {
 		targetBars = 8
 	}
-	var base []chillChord
-	switch a.horizon.HarmonyFamily {
-	case "minor-haze":
-		if a.rng.Float64() < 0.8 {
-			base = markovWalkChords(a.rng, chillMinorChordGrammar, targetBars)
-		} else {
-			base = repeatChillProgression(chillProgressions[3+a.rng.Intn(2)], targetBars)
+	candidates := make([][]chillChord, 0, 4)
+	for i := 0; i < 4; i++ {
+		var base []chillChord
+		switch a.horizon.HarmonyFamily {
+		case "minor-haze":
+			if a.rng.Float64() < 0.8 {
+				base = markovWalkChords(a.rng, chillMinorChordGrammar, targetBars)
+			} else {
+				base = repeatChillProgression(chillProgressions[3+a.rng.Intn(2)], targetBars)
+			}
+		case "borrowed-loop":
+			base = repeatChillProgression(chillProgressions[a.rng.Intn(len(chillProgressions))], targetBars)
+		case "modal-wander":
+			grammar := chillMajorChordGrammar
+			if a.rng.Float64() < 0.55 {
+				grammar = chillMinorChordGrammar
+			}
+			base = markovWalkChords(a.rng, grammar, targetBars)
+		default:
+			grammar := chillMajorChordGrammar
+			if a.rng.Float64() < 0.35 {
+				grammar = chillMinorChordGrammar
+			}
+			base = markovWalkChords(a.rng, grammar, targetBars)
 		}
-	case "borrowed-loop":
-		base = repeatChillProgression(chillProgressions[a.rng.Intn(len(chillProgressions))], targetBars)
-	case "modal-wander":
-		grammar := chillMajorChordGrammar
-		if a.rng.Float64() < 0.55 {
-			grammar = chillMinorChordGrammar
-		}
-		base = markovWalkChords(a.rng, grammar, targetBars)
-	default:
-		grammar := chillMajorChordGrammar
-		if a.rng.Float64() < 0.35 {
-			grammar = chillMinorChordGrammar
-		}
-		base = markovWalkChords(a.rng, grammar, targetBars)
+		candidates = append(candidates, a.reharmonizeProgression(repeatChillProgression(base, targetBars)))
 	}
-	return a.reharmonizeProgression(repeatChillProgression(base, targetBars))
+	best := candidates[0]
+	bestScore := a.progressionHistory.penalty(chillProgressionSignature(best))
+	for i := 1; i < len(candidates); i++ {
+		score := a.progressionHistory.penalty(chillProgressionSignature(candidates[i]))
+		if score < bestScore || (score == bestScore && a.rng.Float64() < 0.5) {
+			best = candidates[i]
+			bestScore = score
+		}
+	}
+	a.progressionHistory.remember(chillProgressionSignature(best))
+	return best
+}
+
+func (a *Chill) chooseMotifBundle() chillMotifBundle {
+	candidates := make([]chillMotifBundle, 0, 4)
+	for i := 0; i < 4; i++ {
+		candidates = append(candidates, chillMotifBundle{
+			vibe:   a.makeVibeMotifs(),
+			guitar: a.makeGuitarMotifs(),
+			sax:    a.makeSaxMotifs(),
+		})
+	}
+	best := candidates[0]
+	bestScore := a.motifHistory.penalty(chillMotifBundleSignature(best)) + a.cadenceHistory.penalty(chillCadenceBundleSignature(best))
+	for i := 1; i < len(candidates); i++ {
+		score := a.motifHistory.penalty(chillMotifBundleSignature(candidates[i])) + a.cadenceHistory.penalty(chillCadenceBundleSignature(candidates[i]))
+		if score < bestScore || (score == bestScore && a.rng.Float64() < 0.5) {
+			best = candidates[i]
+			bestScore = score
+		}
+	}
+	a.motifHistory.remember(chillMotifBundleSignature(best))
+	a.cadenceHistory.remember(chillCadenceBundleSignature(best))
+	return best
 }
 
 func (a *Chill) rebuildEpisodeMaterials() {
@@ -312,9 +375,10 @@ func (a *Chill) rebuildEpisodeMaterials() {
 	}
 	a.progression = a.makeEpisodeProgression(targetBars)
 	numBars := len(a.progression)
-	a.vibeMotifs = a.makeVibeMotifs()
-	a.guitarMotifs = a.makeGuitarMotifs()
-	a.saxMotifs = a.makeSaxMotifs()
+	bundle := a.chooseMotifBundle()
+	a.vibeMotifs = bundle.vibe
+	a.guitarMotifs = bundle.guitar
+	a.saxMotifs = bundle.sax
 	a.vibePlan = a.makeVibePlan(numBars)
 	a.guitarPlan = a.makeGuitarPlan(numBars)
 	a.saxPlan = a.makeSaxPlan(numBars)
@@ -452,8 +516,10 @@ func (a *Chill) Seed(seedVal int64) {
 	a.form = NewEpisodePlan(a.rng, a.barSamples, "lofi")
 	a.section = a.form.SectionAt(0)
 	a.horizon = NewLongHorizonState(a.rng, "lofi", a.form.MovementAt(0))
+	a.progressionHistory = newRecentPatternMemory(8)
+	a.motifHistory = newRecentPatternMemory(8)
+	a.cadenceHistory = newRecentPatternMemory(8)
 	a.scheduleNextDrift()
-	a.progression = a.makeEpisodeProgression(8)
 	a.rebuildEpisodeMaterials()
 	numBars := len(a.progression)
 	cycleSec := barSec * float64(len(a.progression))

@@ -60,6 +60,11 @@ type Jazz struct {
 	saxMotifs   MotifMemory
 	profile     ControlProfile
 	horizon     LongHorizonState
+
+	progressionHistory recentPatternMemory
+	motifHistory       recentPatternMemory
+	cadenceHistory     recentPatternMemory
+	fillHistory        recentPatternMemory
 }
 
 // jazzChord is one bar of harmony. tones are MIDI semitone offsets from
@@ -188,6 +193,12 @@ const (
 	jazzVoicingB
 )
 
+type jazzAccentPattern struct {
+	and2  []bool
+	beat4 []bool
+	and4  []bool
+}
+
 // NewJazz constructs a Jazz algorithm bound to the given SoundFont. Seed must
 // be called before Next.
 func NewJazz(sf *meltysynth.SoundFont) *Jazz { return &Jazz{sf: sf} }
@@ -228,6 +239,22 @@ func repeatJazzProgression(base []jazzChord, n int) []jazzChord {
 	return out
 }
 
+func jazzProgressionSignature(prog []jazzChord) string {
+	parts := make([]int, 0, len(prog)*2)
+	for _, chord := range prog {
+		parts = append(parts, chord.rootSemi, len(chord.tones))
+	}
+	return phraseSignature(parts)
+}
+
+func jazzAccentSignature(pattern jazzAccentPattern) string {
+	return boolSignature(pattern.and2) + "|" + boolSignature(pattern.beat4) + "|" + boolSignature(pattern.and4)
+}
+
+func jazzMotifSignature(m MotifMemory) string {
+	return phraseSignature(m.A) + "|" + phraseSignature(m.B)
+}
+
 func (a *Jazz) episodeProgressionPalette() [][]jazzChord {
 	switch a.horizon.HarmonyFamily {
 	case "modal-minor":
@@ -257,9 +284,62 @@ func (a *Jazz) episodeProgressionPalette() [][]jazzChord {
 
 func (a *Jazz) makeEpisodeProgression(targetBars int) []jazzChord {
 	palette := a.episodeProgressionPalette()
-	base := palette[a.rng.Intn(len(palette))]
-	base = a.reharmonizeProgression(base)
-	return repeatJazzProgression(base, maxInt(8, targetBars))
+	targetBars = maxInt(8, targetBars)
+	candidates := make([][]jazzChord, 0, 4)
+	for i := 0; i < 4; i++ {
+		base := palette[a.rng.Intn(len(palette))]
+		base = a.reharmonizeProgression(base)
+		candidates = append(candidates, repeatJazzProgression(base, targetBars))
+	}
+	best := candidates[0]
+	bestScore := a.progressionHistory.penalty(jazzProgressionSignature(best))
+	for i := 1; i < len(candidates); i++ {
+		score := a.progressionHistory.penalty(jazzProgressionSignature(candidates[i]))
+		if score < bestScore || (score == bestScore && a.rng.Float64() < 0.5) {
+			best = candidates[i]
+			bestScore = score
+		}
+	}
+	a.progressionHistory.remember(jazzProgressionSignature(best))
+	return best
+}
+
+func (a *Jazz) chooseAccentPattern(numBars int) jazzAccentPattern {
+	patterns := make([]jazzAccentPattern, 0, 4)
+	for i := 0; i < 4; i++ {
+		and2, beat4, and4 := a.makeCompAccentPlans(numBars)
+		patterns = append(patterns, jazzAccentPattern{and2: and2, beat4: beat4, and4: and4})
+	}
+	best := patterns[0]
+	bestScore := a.fillHistory.penalty(jazzAccentSignature(best))
+	for i := 1; i < len(patterns); i++ {
+		score := a.fillHistory.penalty(jazzAccentSignature(patterns[i]))
+		if score < bestScore || (score == bestScore && a.rng.Float64() < 0.5) {
+			best = patterns[i]
+			bestScore = score
+		}
+	}
+	a.fillHistory.remember(jazzAccentSignature(best))
+	return best
+}
+
+func (a *Jazz) chooseSaxMotifs() MotifMemory {
+	candidates := make([]MotifMemory, 0, 4)
+	for i := 0; i < 4; i++ {
+		candidates = append(candidates, a.makeSaxMotifs())
+	}
+	best := candidates[0]
+	bestScore := a.motifHistory.penalty(jazzMotifSignature(best)) + a.cadenceHistory.penalty(phraseSignature(best.Cadence))
+	for i := 1; i < len(candidates); i++ {
+		score := a.motifHistory.penalty(jazzMotifSignature(candidates[i])) + a.cadenceHistory.penalty(phraseSignature(candidates[i].Cadence))
+		if score < bestScore || (score == bestScore && a.rng.Float64() < 0.5) {
+			best = candidates[i]
+			bestScore = score
+		}
+	}
+	a.motifHistory.remember(jazzMotifSignature(best))
+	a.cadenceHistory.remember(phraseSignature(best.Cadence))
+	return best
 }
 
 func (a *Jazz) rebuildEpisodeMaterials() {
@@ -273,8 +353,9 @@ func (a *Jazz) rebuildEpisodeMaterials() {
 		7: a.buildCompLine(7, numBars),
 		9: a.buildCompLine(9, numBars),
 	}
-	a.accentAnd2, a.accentBeat4, a.accentAnd4 = a.makeCompAccentPlans(numBars)
-	a.saxMotifs = a.makeSaxMotifs()
+	pattern := a.chooseAccentPattern(numBars)
+	a.accentAnd2, a.accentBeat4, a.accentAnd4 = pattern.and2, pattern.beat4, pattern.and4
+	a.saxMotifs = a.chooseSaxMotifs()
 	a.saxPlan = a.makeSaxPlan(2 * numBars)
 }
 
@@ -341,6 +422,10 @@ func (a *Jazz) Seed(seedVal int64) {
 	a.form = NewEpisodePlan(a.rng, a.barSamples, "jazz")
 	a.section = a.form.SectionAt(0)
 	a.horizon = NewLongHorizonState(a.rng, "jazz", a.form.MovementAt(0))
+	a.progressionHistory = newRecentPatternMemory(8)
+	a.motifHistory = newRecentPatternMemory(8)
+	a.cadenceHistory = newRecentPatternMemory(8)
+	a.fillHistory = newRecentPatternMemory(8)
 	a.scheduleNextDrift()
 	a.rebuildEpisodeMaterials()
 	numBars := len(a.progression)

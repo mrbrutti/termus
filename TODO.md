@@ -83,7 +83,7 @@
 - [x] Regenerate progressions, motifs, comp/drum plans, and orchestration choices at episode boundaries instead of replaying one frozen cycle forever.
 
 ### Anti-Repetition Memory
-- [ ] Add recent-history memory and penalties for reused progressions, motif shapes, fills, and cadence types so long playback avoids obvious returns.
+- [x] Add recent-history memory and penalties for reused progressions, motif shapes, fills, and cadence types so long playback avoids obvious returns.
 
 ### Time Layers
 - [ ] Split scheduling into explicit note, bar, section, and episode layers so local phrasing and long-form reinvention stop fighting each other.
