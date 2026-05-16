@@ -1023,11 +1023,10 @@ func (a *Jazz) scheduleNextDrift() {
 	a.nextDriftAt = scheduleQuantizedAfter(a.samplesElapsed, mins*60.0, step)
 }
 
-// applyMacroMutations is called once per render block. Currently handles
-// section toggles and key drift.
-func (a *Jazz) applyMacroMutations(prev int64) {
-	a.applyArrangement()
-	if a.samplesElapsed >= a.nextDriftAt {
+// applyMacroMutations advances the higher-level bar / section / episode
+// layers after one render step.
+func (a *Jazz) applyMacroMutations(layers TimeLayerWindow) {
+	if layers.BarChanged && a.samplesElapsed >= a.nextDriftAt {
 		// ±1 or ±2 semitones to the key, occasionally.
 		drift := []int{-2, -1, 1, 2}[a.rng.Intn(4)]
 		a.keyOffset += drift
@@ -1040,12 +1039,12 @@ func (a *Jazz) applyMacroMutations(prev int64) {
 		}
 		a.scheduleNextDrift()
 	}
-	if a.form.EpisodeBoundaryCrossed(prev, a.samplesElapsed) {
-		a.horizon = AdvanceLongHorizonState(a.rng, a.horizon, "jazz", a.form.MovementAt(a.samplesElapsed))
+	if layers.EpisodeChanged {
+		a.horizon = AdvanceLongHorizonState(a.rng, a.horizon, "jazz", layers.Movement)
 		a.rebuildEpisodeMaterials()
 		a.applyArrangement()
 	}
-	if a.form.SectionBoundaryCrossed(prev, a.samplesElapsed) {
+	if layers.SectionChanged {
 		a.applyArrangement()
 	}
 }
@@ -1066,10 +1065,12 @@ func (a *Jazz) Next(left, right []float64) {
 		}
 		return
 	}
+	a.applyArrangement()
 	prev := a.samplesElapsed
 	a.core.renderInto(left, right)
 	a.samplesElapsed += int64(len(left))
-	a.applyMacroMutations(prev)
+	layers := ComputeTimeLayerWindow(&a.form, prev, a.samplesElapsed)
+	a.applyMacroMutations(layers)
 }
 
 func (a *Jazz) applyArrangement() {

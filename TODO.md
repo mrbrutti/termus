@@ -86,7 +86,7 @@
 - [x] Add recent-history memory and penalties for reused progressions, motif shapes, fills, and cadence types so long playback avoids obvious returns.
 
 ### Time Layers
-- [ ] Split scheduling into explicit note, bar, section, and episode layers so local phrasing and long-form reinvention stop fighting each other.
+- [x] Split scheduling into explicit note, bar, section, and episode layers so local phrasing and long-form reinvention stop fighting each other.
 
 ### Ambient Evolution
 - [ ] Give the ambient-family generators slow contour, register, loop-length, and foreground/background regeneration so they evolve over hours instead of circling one constellation.

@@ -491,6 +491,17 @@ func (a *SF2Markov) SetReverbIR(ir []float64, wet float64) {
 	}
 }
 
+func (a *SF2Markov) applyTimeLayers(layers TimeLayerWindow) {
+	if layers.EpisodeChanged {
+		a.horizon = AdvanceLongHorizonState(a.rng, a.horizon, "classical", layers.Movement)
+		a.rebuildEpisodeMaterials()
+		a.applyArrangement()
+	}
+	if layers.SectionChanged {
+		a.applyArrangement()
+	}
+}
+
 func (a *SF2Markov) Next(left, right []float64) {
 	if a.core == nil {
 		for i := range left {
@@ -502,14 +513,8 @@ func (a *SF2Markov) Next(left, right []float64) {
 	prev := a.samplesElapsed
 	a.core.renderInto(left, right)
 	a.samplesElapsed += int64(len(left))
-	if a.form.EpisodeBoundaryCrossed(prev, a.samplesElapsed) {
-		a.horizon = AdvanceLongHorizonState(a.rng, a.horizon, "classical", a.form.MovementAt(a.samplesElapsed))
-		a.rebuildEpisodeMaterials()
-		a.applyArrangement()
-	}
-	if a.form.SectionBoundaryCrossed(prev, a.samplesElapsed) {
-		a.applyArrangement()
-	}
+	layers := ComputeTimeLayerWindow(&a.form, prev, a.samplesElapsed)
+	a.applyTimeLayers(layers)
 }
 
 func (a *SF2Markov) applyArrangement() {

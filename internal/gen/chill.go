@@ -1101,6 +1101,21 @@ func (a *Chill) SetReverbIR(ir []float64, wet float64) {
 	}
 }
 
+func (a *Chill) applyTimeLayers(layers TimeLayerWindow) {
+	if layers.BarChanged && a.samplesElapsed >= a.nextDriftAt {
+		a.shiftKey()
+		a.scheduleNextDrift()
+	}
+	if layers.EpisodeChanged {
+		a.horizon = AdvanceLongHorizonState(a.rng, a.horizon, "lofi", layers.Movement)
+		a.rebuildEpisodeMaterials()
+		a.applyArrangement()
+	}
+	if layers.SectionChanged {
+		a.applyArrangement()
+	}
+}
+
 func (a *Chill) Next(left, right []float64) {
 	if a.core == nil {
 		for i := range left {
@@ -1113,18 +1128,8 @@ func (a *Chill) Next(left, right []float64) {
 	a.core.renderInto(left, right)
 	prev := a.samplesElapsed
 	a.samplesElapsed += int64(len(left))
-	if a.samplesElapsed >= a.nextDriftAt {
-		a.shiftKey()
-		a.scheduleNextDrift()
-	}
-	if a.form.EpisodeBoundaryCrossed(prev, a.samplesElapsed) {
-		a.horizon = AdvanceLongHorizonState(a.rng, a.horizon, "lofi", a.form.MovementAt(a.samplesElapsed))
-		a.rebuildEpisodeMaterials()
-		a.applyArrangement()
-	}
-	if a.form.SectionBoundaryCrossed(prev, a.samplesElapsed) {
-		a.applyArrangement()
-	}
+	layers := ComputeTimeLayerWindow(&a.form, prev, a.samplesElapsed)
+	a.applyTimeLayers(layers)
 }
 
 func (a *Chill) currentBar() int {
