@@ -92,7 +92,7 @@
 - [x] Give the ambient-family generators slow contour, register, loop-length, and foreground/background regeneration so they evolve over hours instead of circling one constellation.
 
 ### Movement Mode
-- [ ] Add a higher-level movement sequence for long listening so one piece can drift through establish, deepen, subtract, brighten/darken, and near-return phases.
+- [x] Add a higher-level movement sequence for long listening so one piece can drift through establish, deepen, subtract, brighten/darken, and near-return phases.
 
 ### Motif Transformation
 - [ ] Revisit motifs by transforming them over time (transpose, invert, stretch, reharmonize, re-orchestrate) instead of only repeating or replacing them outright.

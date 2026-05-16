@@ -534,8 +534,11 @@ func (a *SF2Markov) applyArrangement() {
 	reverbDelta := ReverbDelta(profile)
 	brightDelta := BrightnessDelta(profile)
 	densityDelta := int32(ProfileCentered(profile.Density) * 8)
+	moveDensity, moveBright := movementArrangementBias(a.horizon.Movement)
 	densityDelta += int32(a.horizon.DensityBias * 5)
+	densityDelta += moveDensity
 	brightDelta += int32(a.horizon.RegisterBias * 4)
+	brightDelta += moveBright
 	droneDelta := DroneDepthDelta(profile)
 	a.core.setReverbSend(0, SectionCC(84, lead.ReverbDelta+reverbDelta))
 	a.core.setReverbSend(1, SectionCC(56, bass.ReverbDelta+reverbDelta/3))

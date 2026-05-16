@@ -1089,8 +1089,11 @@ func (a *Jazz) applyArrangement() {
 	reverbDelta := ReverbDelta(profile)
 	brightDelta := BrightnessDelta(profile)
 	densityDelta := int32(ProfileCentered(profile.Density) * 8)
+	moveDensity, moveBright := movementArrangementBias(a.horizon.Movement)
 	densityDelta += int32(a.horizon.DensityBias * 5)
+	densityDelta += moveDensity
 	brightDelta += int32(a.horizon.RegisterBias * 4)
+	brightDelta += moveBright
 	a.core.setReverbSend(0, SectionCC(48, comp.ReverbDelta+reverbDelta))
 	a.core.setReverbSend(1, SectionCC(18, bass.ReverbDelta+reverbDelta/2))
 	a.core.setReverbSend(2, SectionCC(86, lead.ReverbDelta+reverbDelta))
