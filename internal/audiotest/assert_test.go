@@ -14,10 +14,7 @@ func TestAssertRMSDBPasses(t *testing.T) {
 func TestAssertRMSDBFails(t *testing.T) {
 	s := Sine(440, 1.0, 44100, 44100)
 	stub := &testing.T{}
-	func() {
-		defer func() { recover() }()
-		AssertRMSDB(stub, s, -12.0, 0.1)
-	}()
+	AssertRMSDB(stub, s, -12.0, 0.1)
 	if !stub.Failed() {
 		t.Fatal("expected AssertRMSDB to fail when actual RMS is far from target")
 	}
