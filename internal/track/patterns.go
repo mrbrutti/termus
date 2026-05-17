@@ -3,6 +3,7 @@ package track
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -58,4 +59,54 @@ func validateRole(name string, role Role) error {
 		return fmt.Errorf("roles.%s.register: invalid register %q", name, role.Register)
 	}
 	return nil
+}
+
+func validateEvent(sectionIndex, eventIndex int, event Event) error {
+	path := fmt.Sprintf("sections[%d].events[%d]", sectionIndex, eventIndex)
+	kind := strings.ToLower(strings.TrimSpace(event.Kind))
+	switch kind {
+	case "drop", "stop", "fill", "pickup", "stab":
+	default:
+		return fmt.Errorf("%s.kind: unsupported event kind %q", path, event.Kind)
+	}
+	if event.Bar < 0 {
+		return fmt.Errorf("%s.bar: must be >= 0", path)
+	}
+	if event.Bars < 0 {
+		return fmt.Errorf("%s.bars: must be >= 0", path)
+	}
+	if event.Slot < 0 || event.Slot > authoredSlotsPerBar {
+		return fmt.Errorf("%s.slot: must be within 0..%d", path, authoredSlotsPerBar)
+	}
+	if err := validatePattern(event.Pattern, "rhythm"); err != nil {
+		return fmt.Errorf("%s.pattern: %w", path, err)
+	}
+	if err := validatePattern(event.Motif, "melody"); err != nil {
+		return fmt.Errorf("%s.motif: %w", path, err)
+	}
+	for i, role := range event.Roles {
+		role = strings.TrimSpace(role)
+		if role == "" {
+			return fmt.Errorf("%s.roles[%d]: role name cannot be empty", path, i)
+		}
+		if strings.Contains(role, " ") || strings.Contains(role, "\t") || strings.Contains(role, "|") {
+			return fmt.Errorf("%s.roles[%d]: invalid role name %q", path, i, role)
+		}
+	}
+	return nil
+}
+
+func baseRoleName(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ""
+	}
+	idx := strings.LastIndex(name, "-")
+	if idx <= 0 || idx == len(name)-1 {
+		return name
+	}
+	if _, err := strconv.Atoi(name[idx+1:]); err == nil {
+		return name[:idx]
+	}
+	return name
 }

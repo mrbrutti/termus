@@ -85,6 +85,14 @@ sections:
         motif: "9 . 7 5 6 . 5 3 | 5 . 2 . 1 . . ."
       organ:
         active: true
+    events:
+      - kind: pickup
+        bar: 8
+        roles: [trumpet]
+        motif: "5 6 7 9"
+      - kind: fill
+        bar: 8
+        roles: [snare, ride, kick]
   - id: bridge
     title: gate change
     duration: 55s
@@ -103,6 +111,14 @@ sections:
         pattern: "x..x.x.. | .x..x..."
       snare:
         pattern: "....x... | ..x.xx.."
+    events:
+      - kind: stop
+        bar: 5
+        bars: 1
+        roles: [trumpet, organ, bass, kick]
+      - kind: fill
+        bar: 8
+        roles: [snare, ride]
   - id: release
     title: luggage belt
     duration: 40s
@@ -114,6 +130,11 @@ sections:
         motif: "9 . 7 . 5 . 3 2 | 1 . . . . . . ."
       organ:
         active: false
+    events:
+      - kind: drop
+        bar: 2
+        bars: 1
+        roles: [ride, rim]
   - id: outro
     title: wheels down
     duration: 35s
@@ -126,3 +147,10 @@ sections:
     roles:
       trumpet:
         motif: "3 . 2 . 1 . . . | . . . . . . . ."
+      ride:
+        pattern: "x...x... | x..x...."
+    events:
+      - kind: stab
+        bar: 3
+        roles: [organ]
+        pattern: "x... ...."

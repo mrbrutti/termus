@@ -93,6 +93,14 @@ sections:
         active: false
       vibes:
         pattern: "x..x.x.. | .x..x..x"
+    events:
+      - kind: pickup
+        bar: 8
+        roles: [tenor]
+        motif: "5 6 7 9"
+      - kind: fill
+        bar: 8
+        roles: [ride, snare, kick]
   - id: chorus
     title: room opens
     duration: 55s
@@ -113,6 +121,14 @@ sections:
         pattern: ".x..x... | ..x.x..."
       snare:
         pattern: "....x... | ..x.xx.."
+    events:
+      - kind: stop
+        bar: 5
+        bars: 1
+        roles: [tenor, vibes, bass, kick]
+      - kind: fill
+        bar: 8
+        roles: [ride, snare]
   - id: outro
     title: bar stools empty
     duration: 35s

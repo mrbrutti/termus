@@ -3,6 +3,7 @@ package track
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mrbrutti/termus/internal/gen"
@@ -86,6 +87,124 @@ sections:
 	}
 	if _, err := Compile(file, 1, gen.ListeningModeEndless); err == nil {
 		t.Fatal("expected compile error for bad melody token")
+	}
+}
+
+func TestCompileAppliesSectionEvents(t *testing.T) {
+	const src = `
+title: Eventful
+style: jazz
+seed: 17
+roles:
+  piano:
+    family: acoustic_piano
+    pattern: "x..x.x.. | .x..x..x"
+  kick:
+    family: drums
+    pattern: "x...x... | x...x..."
+  snare:
+    family: drums
+    pattern: "....x... | ....x..."
+  lead:
+    family: reed_lead
+    motif: "5 . 6 7 | 3 . 2 1"
+sections:
+  - id: head
+    duration: 16s
+    harmony: "Dm7 G7 | Cmaj7 A7 | Dm7 G7 | Cmaj7 Cmaj7"
+    roles:
+      lead:
+        active: true
+    events:
+      - kind: fill
+        bar: 2
+        roles: [snare]
+      - kind: drop
+        bar: 3
+        roles: [kick]
+      - kind: pickup
+        bar: 4
+        roles: [lead]
+        motif: "3 5 6 9"
+      - kind: stab
+        bar: 1
+        roles: [piano]
+        pattern: "x... ...."
+`
+	file, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	compiled, err := Compile(file, 17, gen.ListeningModeEndless)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	if len(compiled.Plans) != 1 {
+		t.Fatalf("plan count = %d, want 1", len(compiled.Plans))
+	}
+	var plan gen.AuthoredTrackPlan
+	for _, got := range compiled.Plans {
+		plan = got
+	}
+	findTrack := func(name string) *gen.AuthoredRenderTrack {
+		for i := range plan.Tracks {
+			if plan.Tracks[i].Name == name {
+				return &plan.Tracks[i]
+			}
+		}
+		return nil
+	}
+	findPrefix := func(prefix string) *gen.AuthoredRenderTrack {
+		for i := range plan.Tracks {
+			if strings.HasPrefix(plan.Tracks[i].Name, prefix) {
+				return &plan.Tracks[i]
+			}
+		}
+		return nil
+	}
+	snare := findTrack("snare")
+	if snare == nil {
+		t.Fatal("expected snare track")
+	}
+	fillHasHit := false
+	for i := 8; i < 16; i++ {
+		if snare.Notes[i] >= 0 {
+			fillHasHit = true
+			break
+		}
+	}
+	if !fillHasHit {
+		t.Fatal("expected fill event to add a snare hit in bar 2")
+	}
+	kick := findTrack("kick")
+	if kick == nil {
+		t.Fatal("expected kick track")
+	}
+	for i := 16; i < 24; i++ {
+		if kick.Notes[i] != -1 {
+			t.Fatalf("expected dropped kick at slot %d, got %d", i, kick.Notes[i])
+		}
+	}
+	lead := findTrack("lead")
+	if lead == nil {
+		t.Fatal("expected lead track")
+	}
+	pickupHasNote := false
+	for i := 28; i < 32; i++ {
+		if lead.Notes[i] >= 0 {
+			pickupHasNote = true
+			break
+		}
+	}
+	if !pickupHasNote {
+		t.Fatal("expected pickup event to add lead notes near the section close")
+	}
+	piano := findPrefix("piano-")
+	if piano == nil {
+		t.Fatal("expected piano voice track")
+	}
+	if got := piano.Notes[1]; got != -1 {
+		t.Fatalf("expected stabbed piano slot 1 to be muted, got %d", got)
 	}
 }
 

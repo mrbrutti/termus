@@ -34,6 +34,7 @@ type Section struct {
 	Variation  string          `yaml:"variation,omitempty"`
 	Profile    Profile         `yaml:"profile,omitempty"`
 	Roles      map[string]Role `yaml:"roles,omitempty"`
+	Events     []Event         `yaml:"events,omitempty"`
 }
 
 type Role struct {
@@ -46,6 +47,16 @@ type Role struct {
 	Motif        string   `yaml:"motif,omitempty"`
 	Harmony      string   `yaml:"harmony,omitempty"`
 	Active       *bool    `yaml:"active,omitempty"`
+}
+
+type Event struct {
+	Kind    string   `yaml:"kind"`
+	Bar     int      `yaml:"bar,omitempty"`
+	Bars    int      `yaml:"bars,omitempty"`
+	Slot    int      `yaml:"slot,omitempty"`
+	Roles   []string `yaml:"roles,omitempty"`
+	Pattern string   `yaml:"pattern,omitempty"`
+	Motif   string   `yaml:"motif,omitempty"`
 }
 
 type Profile struct {

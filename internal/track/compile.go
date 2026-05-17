@@ -76,6 +76,11 @@ func Compile(file *File, defaultSeed int64, defaultListenMode gen.ListeningMode)
 				return nil, fmt.Errorf("sections[%d]: %w", i, err)
 			}
 		}
+		for eventIdx, event := range section.Events {
+			if err := validateEvent(i, eventIdx, event); err != nil {
+				return nil, err
+			}
+		}
 		seed := baseSeed + int64(i)*1009
 		if section.Seed != nil {
 			seed = *section.Seed + int64(i)*1009

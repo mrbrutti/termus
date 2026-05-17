@@ -105,6 +105,7 @@ func buildAuthoredPlan(spec gen.AlgoSpec, file *File, section Section, roles map
 		}
 		plan.Tracks = append(plan.Tracks, rendered...)
 	}
+	applySectionEvents(ctx, section.Events, harmonyBars, &plan)
 	if len(plan.Tracks) == 0 {
 		return gen.AuthoredTrackPlan{}, fmt.Errorf("no active authored role tracks compiled")
 	}
@@ -196,6 +197,234 @@ func (c authoredSectionContext) shouldThin(slot int) bool {
 
 func (c authoredSectionContext) shouldLift() bool {
 	return c.registerShift() > 0
+}
+
+func eventSlotRange(event Event, totalBars int) (int, int) {
+	bar := event.Bar
+	if bar <= 0 {
+		bar = totalBars
+	}
+	if bar > totalBars {
+		bar = totalBars
+	}
+	start := (bar - 1) * authoredSlotsPerBar
+	if event.Slot > 0 {
+		start += clampInt(event.Slot-1, 0, authoredSlotsPerBar-1)
+	}
+	spanBars := event.Bars
+	if spanBars <= 0 {
+		spanBars = 1
+	}
+	end := start + spanBars*authoredSlotsPerBar
+	maxSlots := totalBars * authoredSlotsPerBar
+	if end > maxSlots {
+		end = maxSlots
+	}
+	if start < 0 {
+		start = 0
+	}
+	return start, end
+}
+
+func eventRoleSelected(event Event, trackName string) bool {
+	if len(event.Roles) == 0 {
+		return true
+	}
+	base := baseRoleName(trackName)
+	for _, role := range event.Roles {
+		if strings.EqualFold(strings.TrimSpace(role), base) || strings.EqualFold(strings.TrimSpace(role), trackName) {
+			return true
+		}
+	}
+	return false
+}
+
+func muteSlots(track *gen.AuthoredRenderTrack, start, end int) {
+	if track == nil {
+		return
+	}
+	limit := minInt(len(track.Notes), end)
+	for i := maxInt(0, start); i < limit; i++ {
+		track.Notes[i] = -1
+		if i < len(track.VelocityPattern) {
+			track.VelocityPattern[i] = 0
+		}
+		if i < len(track.TimingOffsets) {
+			track.TimingOffsets[i] = 0
+		}
+	}
+}
+
+func applyFill(track *gen.AuthoredRenderTrack, ctx authoredSectionContext, event Event, start, end int) {
+	base := baseRoleName(track.Name)
+	pattern := strings.TrimSpace(event.Pattern)
+	if pattern == "" {
+		pattern = defaultFillPattern(base)
+	}
+	notes := compileDrumPattern(ctx, pattern, base, maxInt(1, (end-start+authoredSlotsPerBar-1)/authoredSlotsPerBar))
+	for i := start; i < end && i < len(track.Notes); i++ {
+		local := i - start
+		if local >= 0 && local < len(notes) {
+			track.Notes[i] = notes[local]
+			if i < len(track.VelocityPattern) && track.Notes[i] >= 0 {
+				track.VelocityPattern[i] += 8
+			}
+		}
+	}
+}
+
+func applyPickup(track *gen.AuthoredRenderTrack, ctx authoredSectionContext, bars []authoredHarmonyBar, event Event, start, end int) {
+	motif := strings.TrimSpace(event.Motif)
+	if motif == "" {
+		motif = defaultPickupMotif(baseRoleName(track.Name))
+	}
+	tokens := normalizeMelodyTokens(strings.Fields(strings.TrimSpace(strings.ReplaceAll(motif, "|", " "))))
+	if len(tokens) == 0 {
+		return
+	}
+	writeStart := maxInt(start, end-len(tokens))
+	last := -1
+	for i := writeStart; i < end && i < len(track.Notes); i++ {
+		token := strings.TrimSpace(tokens[i-writeStart])
+		if token == "" || token == "." || token == "r" {
+			track.Notes[i] = -1
+			continue
+		}
+		if token == "-" {
+			if last >= 0 {
+				track.Notes[i] = last
+			}
+			continue
+		}
+		chord := chordForSlot(bars, i)
+		center := trackCenterFromRenderTrack(*track, ctx.style)
+		note := melodyTokenToMidi(chord, token, center, last)
+		track.Notes[i] = note
+		last = note
+		if i < len(track.VelocityPattern) {
+			track.VelocityPattern[i] += 10
+		}
+		if i < len(track.TimingOffsets) {
+			track.TimingOffsets[i] = -0.006
+		}
+	}
+}
+
+func applyStab(track *gen.AuthoredRenderTrack, ctx authoredSectionContext, event Event, start, end int) {
+	pattern := strings.TrimSpace(event.Pattern)
+	if pattern == "" {
+		pattern = "x... ...."
+	}
+	grid := expandRhythmPattern(pattern, maxInt(1, (end-start+authoredSlotsPerBar-1)/authoredSlotsPerBar), "x... ....")
+	last := -1
+	for i := start; i < end && i < len(track.Notes); i++ {
+		local := i - start
+		if local >= 0 && local < len(grid) && grid[local] {
+			if track.Notes[i] < 0 && last >= 0 {
+				track.Notes[i] = last
+			}
+			if track.Notes[i] >= 0 {
+				last = track.Notes[i]
+				if i < len(track.VelocityPattern) {
+					track.VelocityPattern[i] += 6
+				}
+			}
+			continue
+		}
+		if track.Notes[i] >= 0 {
+			last = track.Notes[i]
+		}
+		track.Notes[i] = -1
+	}
+}
+
+func defaultFillPattern(role string) string {
+	switch strings.ToLower(strings.TrimSpace(role)) {
+	case "kick":
+		return "x.xxxxxx"
+	case "snare":
+		return "..x.xx.x"
+	case "ride":
+		return "xxxxxxxx"
+	case "hat", "hihat":
+		return "xxxxxxxx"
+	case "rim":
+		return "...x.x.x"
+	default:
+		return "x..xx..x"
+	}
+}
+
+func defaultPickupMotif(role string) string {
+	switch strings.ToLower(strings.TrimSpace(role)) {
+	case "trumpet", "alto", "tenor", "clarinet", "lead":
+		return "5 6 7 9"
+	default:
+		return "3 5 6 7"
+	}
+}
+
+func trackCenterFromRenderTrack(track gen.AuthoredRenderTrack, style string) int {
+	return roleRegisterCenter(track.Register, style, baseRoleName(track.Name))
+}
+
+func applySectionEvents(ctx authoredSectionContext, events []Event, bars []authoredHarmonyBar, plan *gen.AuthoredTrackPlan) {
+	if plan == nil || len(plan.Tracks) == 0 || len(events) == 0 {
+		return
+	}
+	for _, event := range events {
+		start, end := eventSlotRange(event, plan.BarCount)
+		if start >= end {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(event.Kind)) {
+		case "drop":
+			for idx := range plan.Tracks {
+				if !eventRoleSelected(event, plan.Tracks[idx].Name) {
+					continue
+				}
+				muteSlots(&plan.Tracks[idx], start, end)
+			}
+		case "stop":
+			for idx := range plan.Tracks {
+				if eventRoleSelected(event, plan.Tracks[idx].Name) {
+					continue
+				}
+				muteSlots(&plan.Tracks[idx], start, end)
+			}
+		case "fill":
+			for idx := range plan.Tracks {
+				if !eventRoleSelected(event, plan.Tracks[idx].Name) {
+					continue
+				}
+				if authoredRoleKind(plan.Tracks[idx].Name, Role{Family: plan.Tracks[idx].Family}) == "drum" {
+					applyFill(&plan.Tracks[idx], ctx, event, start, end)
+				}
+			}
+		case "pickup":
+			for idx := range plan.Tracks {
+				roleKind := authoredRoleKind(plan.Tracks[idx].Name, Role{Family: plan.Tracks[idx].Family})
+				if roleKind != "melody" {
+					continue
+				}
+				if !eventRoleSelected(event, plan.Tracks[idx].Name) {
+					continue
+				}
+				applyPickup(&plan.Tracks[idx], ctx, bars, event, start, end)
+			}
+		case "stab":
+			for idx := range plan.Tracks {
+				roleKind := authoredRoleKind(plan.Tracks[idx].Name, Role{Family: plan.Tracks[idx].Family})
+				if roleKind != "comp" && roleKind != "pad" {
+					continue
+				}
+				if !eventRoleSelected(event, plan.Tracks[idx].Name) {
+					continue
+				}
+				applyStab(&plan.Tracks[idx], ctx, event, start, end)
+			}
+		}
+	}
 }
 
 func parseHarmonyBars(src string) ([]authoredHarmonyBar, error) {
@@ -1559,6 +1788,16 @@ func maxInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func clampInt(v, low, high int) int {
+	if v < low {
+		return low
+	}
+	if v > high {
+		return high
+	}
+	return v
 }
 
 func maxInt32(a, b int32) int32 {

@@ -78,6 +78,14 @@ sections:
       alto:
         active: true
         motif: "9 . 7 5 6 . 5 3 | 5 . 2 . 1 . . ."
+    events:
+      - kind: pickup
+        bar: 8
+        roles: [alto]
+        motif: "3 5 6 9"
+      - kind: fill
+        bar: 8
+        roles: [snare, kick, ride]
   - id: solo
     title: back booth lift
     duration: 60s
@@ -95,6 +103,14 @@ sections:
         pattern: "x.x..x.. | .x.x.x.."
       snare:
         pattern: "....x... | ..x.xx.."
+    events:
+      - kind: drop
+        bar: 3
+        bars: 1
+        roles: [ride]
+      - kind: fill
+        bar: 8
+        roles: [snare, ride]
   - id: shout
     title: room answer
     duration: 45s
@@ -111,6 +127,11 @@ sections:
         pattern: "x...x..x | x...x..."
       piano:
         pattern: "x.x..x.x | .x.x.x.."
+    events:
+      - kind: stop
+        bar: 3
+        bars: 1
+        roles: [alto, bass, kick]
   - id: outro
     title: last call
     duration: 35s
