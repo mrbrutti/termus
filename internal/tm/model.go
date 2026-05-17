@@ -63,9 +63,10 @@ type Warning struct {
 }
 
 type Compiled struct {
-	Playlist  gen.Playlist
-	Overrides map[string]gen.ControlProfile
-	Warnings  []Warning
+	Playlist   gen.Playlist
+	Overrides  map[string]gen.ControlProfile
+	Blueprints map[string]gen.ScoreBlueprint
+	Warnings   []Warning
 }
 
 func overrideKey(spec gen.AlgoSpec, seed int64) string {

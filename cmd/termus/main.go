@@ -251,7 +251,13 @@ func main() {
 			}
 			chosen = loaded
 		}
-		a := gen.ConfigureControlProfile(s.Build(chosen), profileFor(s, algoSeed))
+		a := s.Build(chosen)
+		if compiledTM != nil {
+			if blueprint, ok := compiledTM.Blueprints[fmt.Sprintf("%s:%d", s.Name, algoSeed)]; ok {
+				a = gen.ApplyScoreBlueprint(a, blueprint)
+			}
+		}
+		a = gen.ConfigureControlProfile(a, profileFor(s, algoSeed))
 		a.Seed(algoSeed)
 		if len(ir) > 0 {
 			if rev, ok := a.(gen.SF2Reverberator); ok {

@@ -40,7 +40,8 @@ func Compile(score *Score, defaultSeed int64, defaultListenMode gen.ListeningMod
 			ListenMode: listenMode,
 			Tracks:     make([]gen.Track, 0, len(score.Sections)),
 		},
-		Overrides: make(map[string]gen.ControlProfile, len(score.Sections)),
+		Overrides:  make(map[string]gen.ControlProfile, len(score.Sections)),
+		Blueprints: make(map[string]gen.ScoreBlueprint, len(score.Sections)),
 	}
 	globalProfile, err := score.Globals.resolve(gen.DefaultControlProfile())
 	if err != nil {
@@ -78,7 +79,17 @@ func Compile(score *Score, defaultSeed int64, defaultListenMode gen.ListeningMod
 			Duration: dur,
 			Title:    title,
 		})
-		compiled.Overrides[overrideKey(spec, seed)] = profile
+		key := overrideKey(spec, seed)
+		compiled.Overrides[key] = profile
+		compiled.Blueprints[key] = gen.ScoreBlueprint{
+			Form:      section.Audit.Form,
+			Harmony:   section.Audit.Harmony,
+			Lead:      section.Audit.Lead,
+			Comp:      section.Audit.Comp,
+			Drums:     section.Audit.Drums,
+			Arrange:   section.Audit.Arrange,
+			Variation: section.Audit.Variation,
+		}
 	}
 	compiled.Warnings = lintScore(score, compiled.Playlist.Tracks)
 	return compiled, nil

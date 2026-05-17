@@ -65,6 +65,9 @@ sections:
 	if len(compiled.Overrides) != 2 {
 		t.Fatalf("override count = %d, want 2", len(compiled.Overrides))
 	}
+	if len(compiled.Blueprints) != 2 {
+		t.Fatalf("blueprint count = %d, want 2", len(compiled.Blueprints))
+	}
 }
 
 func TestCompileRejectsBadPattern(t *testing.T) {
