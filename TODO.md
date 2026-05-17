@@ -107,3 +107,23 @@
 
 ### Visual Polish
 - [x] Give the TUI one more signature visualization pass with subtle color breathing, smoother visual switching, and at least one uniquely `termus` visual mode that still matches the minimal line language.
+
+## Style Rule Pass
+
+### MAX Palette Rules
+- [ ] Reframe `max` as a curated role-based SoundFont pool per algorithm instead of always-on full-bank layering, so each station can borrow a wider palette without losing its core identity.
+
+### Glass Chapel
+- [ ] Fix `Glass Chapel`'s shared-channel pad interference, reduce trashy texture interactions, and retune its `max` palette / voicing so the bell station stays clean and luminous instead of brittle.
+
+### Jazz Guide Rules
+- [ ] Encode jazz style-guide rules into `jazz`: stronger guide-tone motion, 2-bar / 4-bar phrase sentences, better turnaround targeting, and more conversational comping/solo interaction.
+
+### Lo-fi Guide Rules
+- [ ] Encode lo-fi style-guide rules into `lofi`: groove pocket over jitter, richer extension vocabulary, more soulful loop mutation, and calmer/supportive texture use.
+
+### Shared Phrase Grammar
+- [ ] Add a shared melodic phrase-grammar layer with question/answer, pickup/peak/release, and cadence-aware endings so melodic genres sound more composed and less slot-generated.
+
+### Genre Density Policy
+- [ ] Add genre-specific density policies so note activity increases in `jazz` / `lofi` while `ambient` / `bells` / `drone` stay selective and spacious over long listening.
