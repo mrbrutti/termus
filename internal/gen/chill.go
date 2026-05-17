@@ -1,6 +1,7 @@
 package gen
 
 import (
+	"math"
 	"math/rand"
 
 	"github.com/sinshu/go-meltysynth/meltysynth"
@@ -570,17 +571,34 @@ func (a *Chill) Seed(seedVal int64) {
 	// hits, making the kick feel huge without it being loud.
 	core.configureSidechain(-4, 12, 240)
 
-	// Tape saturation — gentler than before (0.20 vs 0.28) so it doesn't
-	// generate as many harsh upper harmonics that the listener perceives
-	// as "always-present sharpness."
-	core.setTapeSaturation(0.20)
+	// Wow/flutter pitch modulator — the defining lofi tape-machine character.
+	// ±15 cents at 0.7 Hz (slow wow, speed-inconsistency) plus ±3 cents at
+	// 6 Hz (fast flutter, head-drum vibration). Stereo offset 0.35 rad
+	// (~20°) decorrelates L/R so comb artifacts are less noticeable.
+	core.setWowFlutter(synth.WowFlutterConfig{
+		WowRateHz:         0.7,
+		WowDepthCents:     15,
+		FlutterRateHz:     6,
+		FlutterDepthCents: 3,
+	})
 
-	// Vinyl crackle — much sparser than v1 (was 15 pops/sec at 0.045 amp;
-	// now 6 pops/sec at 0.022 amp with longer pop duration). Real dusty
-	// vinyl pops a few times per second, not constantly. The reduction
-	// removes the "always there" hash that the prior amplitude+rate were
-	// producing.
-	core.setVinylCrackle(6, 0.022, 1.5)
+	// Tape saturation via shared synth.Tape — replaces the old inline tanh.
+	// DriveDB 2.3 ≈ 1.30× linear drive, matching the prior 0.20 tapeSatAmount
+	// path (drive = 1.0 + 1.5×0.20 = 1.30, 20·log10(1.30) ≈ 2.28 dB).
+	// The new asymmetric formula adds mild 2nd-harmonic warmth the old symmetric
+	// tanh didn't produce, but loudness / peak behavior is preserved.
+	core.setSharedTape(synth.TapeConfig{DriveDB: 2.3})
+
+	// Vinyl crackle via shared synth.Vinyl — replaces the old inline Poisson
+	// pop loop. No continuous noise bed (NoiseLevelDB = -Inf); only pops
+	// at 6/sec with peak amplitude 0.022 — preserving the prior behavior.
+	// PopAmpLinear 0.022 matches the old crackleAmp value.
+	core.setSharedVinyl(float64(synth.SampleRate), synth.VinylConfig{
+		NoiseLevelDB: math.Inf(-1),
+		PopRateHz:    6,
+		PopAmpLinear: 0.022,
+		Seed:         seedVal,
+	})
 
 	// Tempo: 65 BPM ± 4 (61–69 BPM range, seed-driven). Per research, lofi
 	// sits at 65–95 BPM and the sweet spot for "doesn't tire the listener
