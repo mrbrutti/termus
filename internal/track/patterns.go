@@ -65,7 +65,7 @@ func validateEvent(sectionIndex, eventIndex int, event Event) error {
 	path := fmt.Sprintf("sections[%d].events[%d]", sectionIndex, eventIndex)
 	kind := strings.ToLower(strings.TrimSpace(event.Kind))
 	switch kind {
-	case "drop", "stop", "fill", "pickup", "stab":
+	case "drop", "stop", "fill", "pickup", "stab", "pedal", "swell", "double", "break", "tag", "ending":
 	default:
 		return fmt.Errorf("%s.kind: unsupported event kind %q", path, event.Kind)
 	}

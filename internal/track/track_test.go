@@ -565,6 +565,79 @@ sections:
 	}
 }
 
+func TestCompileSupportsArrangementBlock(t *testing.T) {
+	const src = `
+title: Arrangement Block
+style: jazz
+roles:
+  keys:
+    family: acoustic_piano
+    pattern: "x..x.x.. | .x..x..x"
+  bass:
+    family: bass
+    pattern: "x.x.x.x. | x.x.x.x."
+  lead:
+    family: reed_lead
+    motif: "5 . 6 7 | 3 . 2 1"
+sections:
+  - id: head
+    duration: 16s
+    harmony: "Dm7 G7 | Cmaj7 A7 | Dm7 G7 | Cmaj7 Cmaj7"
+    arrangement:
+      events:
+        - kind: pedal
+          bar: 1
+          roles: [bass]
+        - kind: double
+          bar: 2
+          roles: [lead]
+        - kind: swell
+          bar: 3
+          roles: [keys]
+        - kind: ending
+          bar: 4
+          roles: [lead, keys]
+`
+	file, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	compiled, err := Compile(file, 91, gen.ListeningModeEndless)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	var plan gen.AuthoredTrackPlan
+	for _, got := range compiled.Plans {
+		plan = got
+	}
+	var bass *gen.AuthoredRenderTrack
+	doubleFound := false
+	for i := range plan.Tracks {
+		track := &plan.Tracks[i]
+		if track.Name == "bass" {
+			bass = track
+		}
+		if strings.HasPrefix(track.Name, "lead-double") {
+			doubleFound = true
+		}
+	}
+	if bass == nil {
+		t.Fatal("expected bass track")
+	}
+	if !doubleFound {
+		t.Fatal("expected arrangement double track")
+	}
+	held := bass.Notes[0]
+	if held < 0 {
+		t.Fatalf("expected pedal note, got %d", held)
+	}
+	for i := 0; i < authoredSlotsPerBar; i++ {
+		if bass.Notes[i] != held {
+			t.Fatalf("expected pedal hold across bar 1, slot %d = %d want %d", i, bass.Notes[i], held)
+		}
+	}
+}
+
 func TestBundledTracksParseAndCompile(t *testing.T) {
 	paths, err := filepath.Glob(filepath.Join("..", "..", "tracks", "*", "*.tm"))
 	if err != nil {

@@ -81,7 +81,7 @@ func Compile(file *File, defaultSeed int64, defaultListenMode gen.ListeningMode)
 				return nil, fmt.Errorf("sections[%d]: %w", i, err)
 			}
 		}
-		for eventIdx, event := range section.Events {
+		for eventIdx, event := range sectionEvents(section) {
 			if err := validateEvent(i, eventIdx, event); err != nil {
 				return nil, err
 			}

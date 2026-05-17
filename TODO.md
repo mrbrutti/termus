@@ -159,7 +159,7 @@
 - [x] Support section inheritance and transforms in `.tm` (`derive`, `sequence`, `invert`, `thin`, `lift-register`, `cadence rewrite`) so authors can write A / A' / B relationships without duplicating raw material.
 
 ### Phase 2: Expand The `.tm` Language
-- [ ] Add a first-class arrangement block to `.tm` with explicit scene events such as fills, stop-time bars, pedal holds, swells, doubles, breaks, tags, pickups, and endings.
+- [x] Add a first-class arrangement block to `.tm` with explicit scene events such as fills, stop-time bars, pedal holds, swells, doubles, breaks, tags, pickups, and endings.
 - [ ] Add phrase-block syntax to `.tm` for section-local melody, comp, bass, and drum writing instead of only global role motifs and patterns.
 - [ ] Add orchestration directives to `.tm` so roles can change instrument family, register, articulation, or prominence by section without redefining the whole track.
 - [ ] Add track-level variation budgets and anti-repetition constraints to `.tm` so authors can say how much mutation is allowed per section, phrase, or return.

@@ -22,21 +22,26 @@ type File struct {
 }
 
 type Section struct {
-	ID         string          `yaml:"id,omitempty"`
-	Title      string          `yaml:"title,omitempty"`
-	Derive     string          `yaml:"derive,omitempty"`
-	Transforms []string        `yaml:"transforms,omitempty"`
-	Duration   string          `yaml:"duration"`
-	Seed       *int64          `yaml:"seed,omitempty"`
-	SeedOffset *int64          `yaml:"seed_offset,omitempty"`
-	Key        string          `yaml:"key,omitempty"`
-	Tempo      string          `yaml:"tempo,omitempty"`
-	Harmony    string          `yaml:"harmony,omitempty"`
-	Scene      string          `yaml:"scene,omitempty"`
-	Variation  string          `yaml:"variation,omitempty"`
-	Profile    Profile         `yaml:"profile,omitempty"`
-	Roles      map[string]Role `yaml:"roles,omitempty"`
-	Events     []Event         `yaml:"events,omitempty"`
+	ID          string          `yaml:"id,omitempty"`
+	Title       string          `yaml:"title,omitempty"`
+	Derive      string          `yaml:"derive,omitempty"`
+	Transforms  []string        `yaml:"transforms,omitempty"`
+	Duration    string          `yaml:"duration"`
+	Seed        *int64          `yaml:"seed,omitempty"`
+	SeedOffset  *int64          `yaml:"seed_offset,omitempty"`
+	Key         string          `yaml:"key,omitempty"`
+	Tempo       string          `yaml:"tempo,omitempty"`
+	Harmony     string          `yaml:"harmony,omitempty"`
+	Scene       string          `yaml:"scene,omitempty"`
+	Variation   string          `yaml:"variation,omitempty"`
+	Profile     Profile         `yaml:"profile,omitempty"`
+	Roles       map[string]Role `yaml:"roles,omitempty"`
+	Arrangement Arrangement     `yaml:"arrangement,omitempty"`
+	Events      []Event         `yaml:"events,omitempty"`
+}
+
+type Arrangement struct {
+	Events []Event `yaml:"events,omitempty"`
 }
 
 type Role struct {

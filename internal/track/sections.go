@@ -70,6 +70,15 @@ func mergeSection(base, override Section) Section {
 	}
 	out.Profile = mergeProfile(base.Profile, override.Profile)
 	out.Roles = mergeRoles(base.Roles, override.Roles)
+	out.Arrangement = mergeArrangement(base.Arrangement, override.Arrangement)
+	if len(override.Events) > 0 {
+		out.Events = append(append([]Event(nil), base.Events...), override.Events...)
+	}
+	return out
+}
+
+func mergeArrangement(base, override Arrangement) Arrangement {
+	out := base
 	if len(override.Events) > 0 {
 		out.Events = append(append([]Event(nil), base.Events...), override.Events...)
 	}
@@ -392,4 +401,16 @@ func appendDescriptorToken(base, token string) string {
 
 func newMacroValue(raw string) MacroValue {
 	return MacroValue{set: true, raw: strings.TrimSpace(raw)}
+}
+
+func sectionEvents(section Section) []Event {
+	if len(section.Arrangement.Events) == 0 {
+		return append([]Event(nil), section.Events...)
+	}
+	if len(section.Events) == 0 {
+		return append([]Event(nil), section.Arrangement.Events...)
+	}
+	out := append([]Event(nil), section.Arrangement.Events...)
+	out = append(out, section.Events...)
+	return out
 }

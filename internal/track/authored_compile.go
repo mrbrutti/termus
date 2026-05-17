@@ -115,7 +115,7 @@ func buildAuthoredPlan(spec gen.AlgoSpec, file *File, section Section, roles map
 		}
 		plan.Tracks = append(plan.Tracks, rendered...)
 	}
-	applySectionEvents(ctx, section.Events, harmonyBars, &plan)
+	applySectionEvents(ctx, sectionEvents(section), harmonyBars, &plan)
 	if len(plan.Tracks) == 0 {
 		return gen.AuthoredTrackPlan{}, fmt.Errorf("no active authored role tracks compiled")
 	}
@@ -416,6 +416,91 @@ func applyStab(track *gen.AuthoredRenderTrack, ctx authoredSectionContext, event
 	}
 }
 
+func applyPedal(track *gen.AuthoredRenderTrack, start, end int) {
+	held := -1
+	for i := maxInt(0, start); i < minInt(len(track.Notes), end); i++ {
+		if track.Notes[i] >= 0 {
+			held = track.Notes[i]
+			break
+		}
+	}
+	if held < 0 {
+		return
+	}
+	for i := maxInt(0, start); i < minInt(len(track.Notes), end); i++ {
+		track.Notes[i] = held
+		if i < len(track.VelocityPattern) {
+			track.VelocityPattern[i] -= 4
+		}
+		if i < len(track.TimingOffsets) {
+			track.TimingOffsets[i] = 0
+		}
+	}
+}
+
+func applySwell(track *gen.AuthoredRenderTrack, start, end int) {
+	span := maxInt(1, end-start)
+	for i := maxInt(0, start); i < minInt(len(track.Notes), end); i++ {
+		if track.Notes[i] < 0 || i >= len(track.VelocityPattern) {
+			continue
+		}
+		progress := float64(i-start) / float64(span)
+		track.VelocityPattern[i] += int32(4 + progress*14)
+	}
+}
+
+func applyDouble(track gen.AuthoredRenderTrack, start, end int) gen.AuthoredRenderTrack {
+	clone := track
+	clone.Name = track.Name + "-double"
+	clone.Pan = clampInt32(track.Pan+10, 0, 127)
+	clone.Velocity = clampInt32(track.Velocity-6, 0, 127)
+	clone.Notes = append([]int(nil), track.Notes...)
+	clone.VelocityPattern = append([]int32(nil), track.VelocityPattern...)
+	clone.TimingOffsets = append([]float64(nil), track.TimingOffsets...)
+	for i := 0; i < len(clone.Notes); i++ {
+		if i < start || i >= end || clone.Notes[i] < 0 {
+			clone.Notes[i] = -1
+			continue
+		}
+		switch authoredRoleKind(track.Name, Role{Family: track.Family}) {
+		case "bass":
+			clone.Notes[i] -= 12
+		default:
+			clone.Notes[i] += 12
+		}
+	}
+	return clone
+}
+
+func applyTag(track *gen.AuthoredRenderTrack, start, end int) {
+	if start <= 0 || start >= len(track.Notes) {
+		return
+	}
+	sourceStart := maxInt(0, start-authoredSlotsPerBar)
+	for i := maxInt(0, start); i < minInt(len(track.Notes), end); i++ {
+		src := sourceStart + (i-start)%maxInt(1, authoredSlotsPerBar)
+		if src >= 0 && src < len(track.Notes) {
+			track.Notes[i] = track.Notes[src]
+			if i < len(track.VelocityPattern) && src < len(track.VelocityPattern) {
+				track.VelocityPattern[i] = track.VelocityPattern[src] + 6
+			}
+		}
+	}
+}
+
+func applyEnding(track *gen.AuthoredRenderTrack, start, end int) {
+	cut := start + maxInt(1, (end-start)/2)
+	for i := maxInt(0, cut); i < minInt(len(track.Notes), end); i++ {
+		if i%2 == 1 {
+			track.Notes[i] = -1
+			continue
+		}
+		if i < len(track.VelocityPattern) {
+			track.VelocityPattern[i] -= 8
+		}
+	}
+}
+
 func defaultFillPattern(role string) string {
 	switch strings.ToLower(strings.TrimSpace(role)) {
 	case "kick":
@@ -479,6 +564,13 @@ func applySectionEvents(ctx authoredSectionContext, events []Event, bars []autho
 					applyFill(&plan.Tracks[idx], ctx, event, start, end)
 				}
 			}
+		case "break":
+			for idx := range plan.Tracks {
+				if !eventRoleSelected(event, plan.Tracks[idx].Name) {
+					continue
+				}
+				muteSlots(&plan.Tracks[idx], start, end)
+			}
 		case "pickup":
 			for idx := range plan.Tracks {
 				roleKind := authoredRoleKind(plan.Tracks[idx].Name, Role{Family: plan.Tracks[idx].Family})
@@ -500,6 +592,51 @@ func applySectionEvents(ctx authoredSectionContext, events []Event, bars []autho
 					continue
 				}
 				applyStab(&plan.Tracks[idx], ctx, event, start, end)
+			}
+		case "pedal":
+			for idx := range plan.Tracks {
+				roleKind := authoredRoleKind(plan.Tracks[idx].Name, Role{Family: plan.Tracks[idx].Family})
+				if roleKind != "bass" && roleKind != "pad" && roleKind != "comp" {
+					continue
+				}
+				if !eventRoleSelected(event, plan.Tracks[idx].Name) {
+					continue
+				}
+				applyPedal(&plan.Tracks[idx], start, end)
+			}
+		case "swell":
+			for idx := range plan.Tracks {
+				if !eventRoleSelected(event, plan.Tracks[idx].Name) {
+					continue
+				}
+				applySwell(&plan.Tracks[idx], start, end)
+			}
+		case "double":
+			extra := make([]gen.AuthoredRenderTrack, 0, len(plan.Tracks))
+			for idx := range plan.Tracks {
+				roleKind := authoredRoleKind(plan.Tracks[idx].Name, Role{Family: plan.Tracks[idx].Family})
+				if roleKind == "drum" {
+					continue
+				}
+				if !eventRoleSelected(event, plan.Tracks[idx].Name) {
+					continue
+				}
+				extra = append(extra, applyDouble(plan.Tracks[idx], start, end))
+			}
+			plan.Tracks = append(plan.Tracks, extra...)
+		case "tag":
+			for idx := range plan.Tracks {
+				if !eventRoleSelected(event, plan.Tracks[idx].Name) {
+					continue
+				}
+				applyTag(&plan.Tracks[idx], start, end)
+			}
+		case "ending":
+			for idx := range plan.Tracks {
+				if !eventRoleSelected(event, plan.Tracks[idx].Name) {
+					continue
+				}
+				applyEnding(&plan.Tracks[idx], start, end)
 			}
 		}
 	}
