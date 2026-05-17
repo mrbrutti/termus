@@ -229,6 +229,33 @@ func lintFile(file *File, tracks []gen.Track) []Warning {
 	if sceneCount == 0 {
 		warnings = append(warnings, Warning{Path: "sections.scene", Message: "no section scenes defined; role contrast may be weak"})
 	}
+	cadenceFound := false
+	for idx, section := range file.Sections {
+		roles := resolvedSectionRoles(file, section)
+		if sectionRoleDensity(roles) > 22 {
+			warnings = append(warnings, Warning{Path: fmt.Sprintf("sections[%d].roles", idx), Message: "section writing is dense across too many active roles; consider thinning or alternating ownership"})
+		}
+		if brightAttackCount(roles) > 3 {
+			warnings = append(warnings, Warning{Path: fmt.Sprintf("sections[%d].roles", idx), Message: "too many simultaneous bright attack roles; soften or stagger the ensemble"})
+		}
+		if strings.Contains(strings.ToLower(section.Scene+" "+section.Variation), "cadence") || strings.Contains(strings.ToLower(section.Scene+" "+section.Variation), "outro") {
+			cadenceFound = true
+		}
+		for _, event := range sectionEvents(section) {
+			switch strings.ToLower(strings.TrimSpace(event.Kind)) {
+			case "ending", "tag", "stop":
+				cadenceFound = true
+			}
+		}
+	}
+	if !cadenceFound {
+		warnings = append(warnings, Warning{Path: "sections", Message: "track has no clear cadence or ending shape; add a cadence/outro scene or ending event"})
+	}
+	for i := 1; i < len(file.Sections); i++ {
+		if sectionSimilarity(file, file.Sections[i-1], file.Sections[i]) >= 0.80 {
+			warnings = append(warnings, Warning{Path: fmt.Sprintf("sections[%d]", i), Message: "section is too similar to its neighbor; change harmony, phrase blocks, orchestration, or arrangement"})
+		}
+	}
 	budget := file.VariationBudget
 	if budget.MaxHarmonyRepeat > 0 {
 		for harmony, count := range countSectionField(file.Sections, func(section Section) string {
@@ -289,6 +316,111 @@ func countSectionField(sections []Section, keyFn func(Section) string) map[strin
 		counts[key]++
 	}
 	return counts
+}
+
+func resolvedSectionRoles(file *File, section Section) map[string]Role {
+	return applyOrchestration(applyRoleTransforms(mergeRoles(file.Roles, section.Roles), section.Transforms), section.Orchestration)
+}
+
+func sectionRoleDensity(roles map[string]Role) int {
+	total := 0
+	for name, role := range roles {
+		if role.Active != nil && !*role.Active {
+			continue
+		}
+		pattern := strings.TrimSpace(roleValue(role.Pattern, role.Motif))
+		if pattern == "" {
+			continue
+		}
+		total += rolePatternWeight(name, pattern)
+	}
+	return total
+}
+
+func rolePatternWeight(name, pattern string) int {
+	switch authoredRoleKind(name, Role{}) {
+	case "drum":
+		return strings.Count(pattern, "x") / 2
+	case "pad":
+		return maxInt(1, strings.Count(pattern, "x"))
+	default:
+		return maxInt(1, strings.Count(pattern, "x"))
+	}
+}
+
+func brightAttackCount(roles map[string]Role) int {
+	count := 0
+	for name, role := range roles {
+		if role.Active != nil && !*role.Active {
+			continue
+		}
+		if !roleHasBrightAttack(name, role) {
+			continue
+		}
+		count++
+	}
+	return count
+}
+
+func roleHasBrightAttack(name string, role Role) bool {
+	family := strings.ToLower(strings.TrimSpace(role.Family))
+	if family == "drums" || family == "bass" || family == "synth_bass" {
+		return false
+	}
+	articulation := strings.ToLower(strings.TrimSpace(role.Articulation))
+	prominence := strings.ToLower(strings.TrimSpace(role.Prominence))
+	if strings.Contains(articulation, "sustain") && !strings.Contains(prominence, "lead") {
+		return false
+	}
+	if strings.Contains(articulation, "bloom") || strings.Contains(articulation, "echo") || strings.Contains(articulation, "pulse") || strings.Contains(articulation, "stab") {
+		return true
+	}
+	for _, tone := range role.Tone {
+		lower := strings.ToLower(strings.TrimSpace(tone))
+		switch lower {
+		case "glass", "sparkle", "bright", "metallic", "luminous", "icy":
+			return true
+		}
+	}
+	switch family {
+	case "bells", "music_box", "mallet", "brass":
+		return true
+	}
+	return false
+}
+
+func sectionSimilarity(file *File, a, b Section) float64 {
+	score := 0.0
+	total := 4.0
+	if strings.TrimSpace(a.Harmony) == strings.TrimSpace(b.Harmony) {
+		score++
+	}
+	if strings.TrimSpace(a.Scene) == strings.TrimSpace(b.Scene) {
+		score++
+	}
+	if strings.TrimSpace(a.Variation) == strings.TrimSpace(b.Variation) {
+		score++
+	}
+	if roleSignature(resolvedSectionRoles(file, a)) == roleSignature(resolvedSectionRoles(file, b)) {
+		score++
+	}
+	return score / total
+}
+
+func roleSignature(roles map[string]Role) string {
+	if len(roles) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(roles))
+	for name, role := range roles {
+		active := role.Active == nil || *role.Active
+		if !active {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s:%s:%s:%s", name, role.Family, roleValue(role.Pattern, role.Motif), role.Register))
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, " | ")
 }
 
 func firstNonBlank(values ...string) string {

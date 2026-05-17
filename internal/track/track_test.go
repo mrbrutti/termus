@@ -825,6 +825,67 @@ sections:
 	}
 }
 
+func TestCompileLinterFlagsWeakContrastAndBrightOverload(t *testing.T) {
+	const src = `
+title: Linter Pressure
+style: bells
+roles:
+  bells:
+    family: bells
+    tone: [glass, bright]
+    articulation: bloom
+    motif: "5 . 6 7 | 3 . 2 1"
+  celesta:
+    family: mallet
+    tone: [sparkle, bright]
+    articulation: echo
+    pattern: "x....... | ....x..."
+  glock:
+    family: bells
+    tone: [glass, luminous]
+    articulation: echo
+    pattern: "x....... | ....x..."
+  box:
+    family: music_box
+    tone: [sparkle, bright]
+    articulation: echo
+    pattern: "x....... | ....x..."
+sections:
+  - id: a
+    duration: 16s
+    harmony: "Am7 Gmaj7 | Dm7 E7"
+    scene: "same-room"
+    variation: "steady"
+  - id: b
+    duration: 16s
+    harmony: "Am7 Gmaj7 | Dm7 E7"
+    scene: "same-room"
+    variation: "steady"
+`
+	file, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	compiled, err := Compile(file, 18, gen.ListeningModeEndless)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	joined := make([]string, 0, len(compiled.Warnings))
+	for _, warning := range compiled.Warnings {
+		joined = append(joined, warning.Path+" "+warning.Message)
+	}
+	text := strings.Join(joined, "\n")
+	for _, want := range []string{
+		"sections[0].roles",
+		"track has no clear cadence or ending shape",
+		"section is too similar to its neighbor",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("expected warning containing %q, got:\n%s", want, text)
+		}
+	}
+}
+
 func TestBundledTracksParseAndCompile(t *testing.T) {
 	paths, err := filepath.Glob(filepath.Join("..", "..", "tracks", "*", "*.tm"))
 	if err != nil {
