@@ -63,8 +63,8 @@ sections:
 	if compiled.Playlist.Tracks[0].Title != "curbside intro" {
 		t.Fatalf("track title = %q", compiled.Playlist.Tracks[0].Title)
 	}
-	if len(compiled.Blueprints) != 2 {
-		t.Fatalf("blueprint count = %d, want 2", len(compiled.Blueprints))
+	if len(compiled.Plans) != 2 {
+		t.Fatalf("plan count = %d, want 2", len(compiled.Plans))
 	}
 }
 
@@ -128,4 +128,3 @@ func TestResolveAcceptsDirectPath(t *testing.T) {
 		t.Fatalf("resolved path = %q, want %q", entry.Path, entries[0].Path)
 	}
 }
-

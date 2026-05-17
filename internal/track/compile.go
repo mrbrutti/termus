@@ -2,7 +2,6 @@ package track
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -52,9 +51,8 @@ func Compile(file *File, defaultSeed int64, defaultListenMode gen.ListeningMode)
 			ListenMode: listenMode,
 			Tracks:     make([]gen.Track, 0, len(file.Sections)),
 		},
-		Profiles:   make(map[string]gen.ControlProfile, len(file.Sections)),
-		Blueprints: make(map[string]gen.TrackBlueprint, len(file.Sections)),
-		Plans:      make(map[string]gen.AuthoredTrackPlan, len(file.Sections)),
+		Profiles: make(map[string]gen.ControlProfile, len(file.Sections)),
+		Plans:    make(map[string]gen.AuthoredTrackPlan, len(file.Sections)),
 	}
 	for name, role := range file.Roles {
 		if err := validateRole(name, role); err != nil {
@@ -103,8 +101,6 @@ func Compile(file *File, defaultSeed int64, defaultListenMode gen.ListeningMode)
 		})
 		key := playlistKey(spec, seed)
 		compiled.Profiles[key] = profile
-		blueprint := buildBlueprint(file, section, mergedRoles)
-		compiled.Blueprints[key] = blueprint
 		plan, err := buildAuthoredPlan(spec, file, section, mergedRoles, dur, profile)
 		if err != nil {
 			return nil, fmt.Errorf("sections[%d].plan: %w", i, err)
@@ -113,44 +109,6 @@ func Compile(file *File, defaultSeed int64, defaultListenMode gen.ListeningMode)
 	}
 	compiled.Warnings = lintFile(file, compiled.Playlist.Tracks)
 	return compiled, nil
-}
-
-func buildBlueprint(file *File, section Section, roles map[string]Role) gen.TrackBlueprint {
-	out := gen.TrackBlueprint{
-		Style:     file.Style,
-		Section:   firstNonBlank(section.Title, section.ID),
-		Tempo:     firstNonBlank(section.Tempo, file.Tempo),
-		Key:       firstNonBlank(section.Key, file.Key),
-		Harmony:   section.Harmony,
-		Scene:     section.Scene,
-		Variation: section.Variation,
-		Roles:     make(map[string]gen.RoleBlueprint, len(roles)),
-	}
-	names := make([]string, 0, len(roles))
-	for name := range roles {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		role := roles[name]
-		active := true
-		if role.Active != nil {
-			active = *role.Active
-		}
-		out.Roles[name] = gen.RoleBlueprint{
-			Name:         name,
-			Family:       role.Family,
-			Tone:         append([]string(nil), role.Tone...),
-			Articulation: role.Articulation,
-			Register:     role.Register,
-			Prominence:   role.Prominence,
-			Pattern:      role.Pattern,
-			Motif:        role.Motif,
-			Harmony:      firstNonBlank(role.Harmony, section.Harmony),
-			Active:       active,
-		}
-	}
-	return out
 }
 
 func mergeRoles(base map[string]Role, override map[string]Role) map[string]Role {

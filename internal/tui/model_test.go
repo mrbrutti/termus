@@ -229,6 +229,45 @@ func TestSplashPanelShowsStartupLoading(t *testing.T) {
 	}
 }
 
+func TestLoadSelectedTrackUsesStartupLoaderAndSwapsOnResult(t *testing.T) {
+	cmdr := &tuiCommanderStub{}
+	m := New(nil, cmdr, "Tracks", "Cmin", 42, 70).
+		WithSwitcher([]gen.AlgoSpec{{Name: "lofi", Display: "Lofi"}}, 0, func(spec gen.AlgoSpec, seed int64) gen.Algorithm {
+			return &tuiAlgoStub{name: spec.Name}
+		}).
+		WithTrackBrowser([]TrackNavEntry{{ID: "lofi/demo", Style: "lofi", Title: "Demo Track"}}, func(id string) (*gen.Playlist, string, error) {
+			return &gen.Playlist{
+				Name: "Demo",
+				Tracks: []gen.Track{{
+					Spec:     gen.AlgoSpec{Name: "lofi", Display: "Lofi"},
+					Seed:     88,
+					Duration: 4 * time.Second,
+					Title:    "Demo Section",
+				}},
+			}, "album-side", nil
+		}, true)
+
+	loadCmd := m.loadSelectedTrack()
+	if loadCmd == nil {
+		t.Fatal("expected track load command")
+	}
+	if !m.startupLoading || m.startupTitle != "Demo Track" {
+		t.Fatalf("track load should raise startup loader, got loading=%v title=%q", m.startupLoading, m.startupTitle)
+	}
+	msg := loadCmd()
+	gotModel, _ := m.Update(msg)
+	got := gotModel.(Model)
+	if got.trackVisible {
+		t.Fatal("track browser should close after successful load")
+	}
+	if got.activeTrackID != "lofi/demo" || got.listeningMode != "album-side" {
+		t.Fatalf("unexpected loaded track state: id=%q mode=%q", got.activeTrackID, got.listeningMode)
+	}
+	if len(cmdr.swaps) != 1 {
+		t.Fatalf("expected one algorithm swap, got %d", len(cmdr.swaps))
+	}
+}
+
 func TestStartupLoadingViewShowsBrailleStyleProgress(t *testing.T) {
 	m := Model{
 		width:          90,

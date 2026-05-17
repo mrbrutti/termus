@@ -7,18 +7,18 @@ import (
 )
 
 type File struct {
-	Title       string             `yaml:"title"`
-	Description string             `yaml:"description,omitempty"`
-	Style       string             `yaml:"style"`
-	ListenMode  string             `yaml:"listen_mode,omitempty"`
-	Seed        int64              `yaml:"seed,omitempty"`
-	Tags        []string           `yaml:"tags,omitempty"`
-	Key         string             `yaml:"key,omitempty"`
-	Tempo       string             `yaml:"tempo,omitempty"`
-	Roles       map[string]Role    `yaml:"roles,omitempty"`
-	Sections    []Section          `yaml:"sections"`
-	Globals     Profile            `yaml:"globals,omitempty"`
-	Lint        LintControl        `yaml:"lint,omitempty"`
+	Title       string          `yaml:"title"`
+	Description string          `yaml:"description,omitempty"`
+	Style       string          `yaml:"style"`
+	ListenMode  string          `yaml:"listen_mode,omitempty"`
+	Seed        int64           `yaml:"seed,omitempty"`
+	Tags        []string        `yaml:"tags,omitempty"`
+	Key         string          `yaml:"key,omitempty"`
+	Tempo       string          `yaml:"tempo,omitempty"`
+	Roles       map[string]Role `yaml:"roles,omitempty"`
+	Sections    []Section       `yaml:"sections"`
+	Globals     Profile         `yaml:"globals,omitempty"`
+	Lint        LintControl     `yaml:"lint,omitempty"`
 }
 
 type Section struct {
@@ -74,11 +74,10 @@ type Warning struct {
 }
 
 type Compiled struct {
-	Playlist   gen.Playlist
-	Profiles   map[string]gen.ControlProfile
-	Blueprints map[string]gen.TrackBlueprint
-	Plans      map[string]gen.AuthoredTrackPlan
-	Warnings   []Warning
+	Playlist gen.Playlist
+	Profiles map[string]gen.ControlProfile
+	Plans    map[string]gen.AuthoredTrackPlan
+	Warnings []Warning
 }
 
 type Entry struct {
@@ -88,6 +87,10 @@ type Entry struct {
 	Title       string
 	Description string
 	Tags        []string
+	Key         string
+	Tempo       string
+	ListenMode  string
+	Sections    []string
 }
 
 func playlistKey(spec gen.AlgoSpec, seed int64) string {

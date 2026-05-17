@@ -82,6 +82,45 @@ func ResolveSF2Selection(spec AlgoSpec, blueprint *TrackBlueprint, strategy, fal
 	}
 }
 
+func ResolveSF2SelectionForPlan(spec AlgoSpec, plan *AuthoredTrackPlan, strategy, fallback string) SF2Selection {
+	if !spec.RequiresSF2 {
+		return SF2Selection{}
+	}
+	if plan == nil {
+		return ResolveSF2Selection(spec, nil, strategy, fallback)
+	}
+	if strategy == "single" {
+		return SF2Selection{
+			Primary: fallback,
+			Presets: dedupePresets([]string{fallback}),
+		}
+	}
+	intents := intentsFromPlan(plan)
+	if len(intents) == 0 {
+		return ResolveSF2Selection(spec, nil, strategy, fallback)
+	}
+	primary := resolvePrimaryPreset(spec, intents, fallback)
+	if strategy == "pro" {
+		return SF2Selection{
+			Primary: primary,
+			Presets: dedupePresets([]string{primary}),
+		}
+	}
+	routes := resolveRoutePresets(spec.Name, intents, primary, fallback)
+	presets := make([]string, 0, len(routes)+1)
+	if primary != "" {
+		presets = append(presets, primary)
+	}
+	for _, preset := range routes {
+		presets = append(presets, preset)
+	}
+	return SF2Selection{
+		Primary: primary,
+		Routes:  routes,
+		Presets: dedupePresets(presets),
+	}
+}
+
 func resolvePrimaryPreset(spec AlgoSpec, intents []SF2RoleIntent, fallback string) string {
 	if preferred := strings.TrimSpace(spec.PreferredSF2); preferred != "" {
 		if _, ok := sf2Inventory[preferred]; ok {
@@ -175,6 +214,52 @@ func roleIntentsForSpec(spec AlgoSpec, blueprint *TrackBlueprint) []SF2RoleInten
 	}
 	overrideRolePlan(spec.Name, base, blueprint.Roles)
 	return base
+}
+
+func intentsFromPlan(plan *AuthoredTrackPlan) []SF2RoleIntent {
+	if plan == nil {
+		return nil
+	}
+	seen := map[int32]int{}
+	intents := make([]SF2RoleIntent, 0, len(plan.Tracks))
+	for _, track := range plan.Tracks {
+		family := strings.TrimSpace(track.Family)
+		if family == "" {
+			family = inferFamilyFromRole(track.Name)
+		}
+		intent := SF2RoleIntent{
+			Channel:      track.Channel,
+			Role:         track.Name,
+			Family:       family,
+			Tone:         append([]string(nil), track.Tone...),
+			Articulation: track.Articulation,
+			Register:     track.Register,
+			Prominence:   track.Prominence,
+			Active:       true,
+		}
+		if strings.TrimSpace(intent.Prominence) == "" {
+			intent.Prominence = inferredProminence(track.Name, family)
+		}
+		if idx, ok := seen[intent.Channel]; ok {
+			if intent.Family != "" && intents[idx].Family == "" {
+				intents[idx].Family = intent.Family
+			}
+			intents[idx].Tone = dedupeFold(append(intents[idx].Tone, intent.Tone...))
+			if intents[idx].Prominence == "" {
+				intents[idx].Prominence = intent.Prominence
+			}
+			if intents[idx].Articulation == "" {
+				intents[idx].Articulation = intent.Articulation
+			}
+			if intents[idx].Register == "" {
+				intents[idx].Register = intent.Register
+			}
+			continue
+		}
+		seen[intent.Channel] = len(intents)
+		intents = append(intents, intent)
+	}
+	return intents
 }
 
 func intentsFromBlueprint(style string, roles map[string]RoleBlueprint) []SF2RoleIntent {

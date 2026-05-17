@@ -17,6 +17,10 @@ type AuthoredChordSpan struct {
 type AuthoredRenderTrack struct {
 	Name            string
 	Family          string
+	Tone            []string
+	Articulation    string
+	Register        string
+	Prominence      string
 	Channel         int32
 	Program         int32
 	Velocity        int32

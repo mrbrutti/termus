@@ -120,7 +120,26 @@ func loadEntry(root, path string) (Entry, error) {
 		Title:       file.Title,
 		Description: file.Description,
 		Tags:        append([]string(nil), file.Tags...),
+		Key:         file.Key,
+		Tempo:       file.Tempo,
+		ListenMode:  file.ListenMode,
+		Sections:    sectionTitles(file.Sections),
 	}, nil
+}
+
+func sectionTitles(sections []Section) []string {
+	out := make([]string, 0, len(sections))
+	for _, section := range sections {
+		label := strings.TrimSpace(section.Title)
+		if label == "" {
+			label = strings.TrimSpace(section.ID)
+		}
+		if label == "" {
+			continue
+		}
+		out = append(out, label)
+	}
+	return out
 }
 
 func dedupePaths(paths []string) []string {

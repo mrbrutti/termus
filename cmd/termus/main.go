@@ -226,17 +226,19 @@ func main() {
 			}
 		}
 	}
-	liveStartupMax := *outPath == "" && *playlistOut == "" && sfStrategy == "max" && *sf2Path == "" && loadSpec.RequiresSF2 && !defaultTrackBrowse
+	liveRun := *outPath == "" && *playlistOut == ""
+	startupNeedsLibrary := defaultTrackBrowse && len(trackEntries) > 0
+	startupNeedsSF2 := loadSpec.RequiresSF2 || startupNeedsLibrary
+	liveStartupLoader := liveRun && startupNeedsSF2
 	var (
 		catalog *soundFontCatalog
 		sf      *meltysynth.SoundFont
 	)
-	if defaultTrackBrowse && *sf2Path == "" {
-		catalog = newSoundFontCatalog(sfStrategy, *sf2Preset)
-		gen.SetSF2Runtime(sfStrategy, catalog.snapshot())
-	} else if liveStartupMax {
-		catalog = newSoundFontCatalog("max", *sf2Preset)
-		gen.SetSF2Runtime("max", catalog.snapshot())
+	if liveRun {
+		if startupNeedsSF2 && *sf2Path == "" {
+			catalog = newSoundFontCatalog(sfStrategy, *sf2Preset)
+			gen.SetSF2Runtime(sfStrategy, catalog.snapshot())
+		}
 	} else {
 		catalog, sf, err = loadInitialSoundFontCatalog(loadSpec, sfStrategy, *sf2Preset, *sf2Path, os.Stderr)
 		if err != nil {
@@ -245,7 +247,7 @@ func main() {
 		}
 	}
 	var algo gen.Algorithm
-	if liveStartupMax || defaultTrackBrowse {
+	if liveStartupLoader {
 		algo = silentAlgorithm{}
 	} else {
 		algo = spec.Build(sf)
@@ -261,16 +263,6 @@ func main() {
 		}
 		return controlProfile
 	}
-	blueprintFor := func(s gen.AlgoSpec, algoSeed int64) *gen.TrackBlueprint {
-		if activeTrack == nil {
-			return nil
-		}
-		if base, ok := activeTrack.Blueprints[fmt.Sprintf("%s:%d", s.Name, algoSeed)]; ok {
-			cloned := base
-			return &cloned
-		}
-		return nil
-	}
 	planFor := func(s gen.AlgoSpec, algoSeed int64) *gen.AuthoredTrackPlan {
 		if activeTrack == nil {
 			return nil
@@ -282,7 +274,10 @@ func main() {
 		return nil
 	}
 	selectionFor := func(s gen.AlgoSpec, algoSeed int64) gen.SF2Selection {
-		return gen.ResolveSF2Selection(s, blueprintFor(s, algoSeed), sfStrategy, *sf2Preset)
+		if plan := planFor(s, algoSeed); plan != nil {
+			return gen.ResolveSF2SelectionForPlan(s, plan, sfStrategy, *sf2Preset)
+		}
+		return gen.ResolveSF2Selection(s, nil, sfStrategy, *sf2Preset)
 	}
 
 	var ir []float64
@@ -299,7 +294,7 @@ func main() {
 			}
 			ir = loadedIR
 			irLabel = label
-			if !liveStartupMax {
+			if !liveStartupLoader {
 				if rev, ok := algo.(gen.SF2Reverberator); ok {
 					rev.SetReverbIR(ir, *irWet)
 				}
@@ -326,9 +321,6 @@ func main() {
 			a = gen.NewAuthoredTrack(s, chosen, *plan)
 		} else {
 			a = s.Build(chosen)
-			if blueprint := blueprintFor(s, algoSeed); blueprint != nil {
-				a = gen.ApplyTrackBlueprint(a, *blueprint)
-			}
 		}
 		a = gen.ConfigureControlProfile(a, profileFor(s, algoSeed))
 		a.Seed(algoSeed)
@@ -473,6 +465,11 @@ func main() {
 			Style:       entry.Style,
 			Title:       entry.Title,
 			Description: entry.Description,
+			Tags:        append([]string(nil), entry.Tags...),
+			Key:         entry.Key,
+			Tempo:       entry.Tempo,
+			ListenMode:  entry.ListenMode,
+			Sections:    append([]string(nil), entry.Sections...),
 		})
 	}
 	openTrackBrowser := defaultTrackBrowse
@@ -484,8 +481,8 @@ func main() {
 		WithExportController(makeTUIExporter(buildAlgo, *initialVol)).
 		WithSwitcher(genres, startIdx, buildFn).
 		WithTrackBrowser(trackNav, trackLoader, openTrackBrowser)
-	if liveStartupMax {
-		model = model.WithStartupLoading(fmt.Sprintf("Loading MAX palette · %s", startupLabel(spec)), "preparing soundfonts", 0)
+	if liveStartupLoader {
+		model = model.WithStartupLoading(startupLoadTitle(defaultTrackBrowse, sfStrategy, spec), "preparing soundfonts", 0)
 	}
 
 	// Optional playlist. When set, the TUI auto-advances tracks with a
@@ -543,39 +540,45 @@ func main() {
 			}
 		}()
 	}
-	if liveStartupMax {
+	if liveStartupLoader {
 		go func() {
+			title := startupLoadTitle(defaultTrackBrowse, sfStrategy, spec)
 			update := func(progress catalogLoadUpdate) {
 				p.Send(tui.StartupLoadMsg{
-					Title:   fmt.Sprintf("Loading MAX palette · %s", startupLabel(spec)),
+					Title:   title,
 					Detail:  progress.Detail,
 					Percent: progress.Percent,
 				})
 			}
-			if err := catalog.ensurePresetsParallel(selectionFor(spec, *seed).Presets, 2, update); err != nil {
-				p.Send(audio.BackendState{Kind: audio.BackendStateInitFailed, Detail: err.Error()})
-				p.Send(tui.StartupLoadMsg{
-					Title:   fmt.Sprintf("Loading MAX palette · %s", startupLabel(spec)),
-					Detail:  "load failed: " + err.Error(),
-					Percent: 0,
-					Done:    true,
-				})
-				return
+			if *sf2Path != "" {
+				p.Send(tui.StartupLoadMsg{Title: title, Detail: "opening " + filepath.Base(*sf2Path), Percent: 0.15})
+				loaded, err := sf2.Open(*sf2Path)
+				if err != nil {
+					p.Send(audio.BackendState{Kind: audio.BackendStateInitFailed, Detail: err.Error()})
+					p.Send(tui.StartupLoadMsg{Title: title, Detail: "load failed: " + err.Error(), Percent: 0, Done: true})
+					return
+				}
+				sf = loaded
+				p.Send(tui.StartupLoadMsg{Title: title, Detail: "starting audio...", Percent: 1})
+			} else {
+				presets := startupPresetNames(sfStrategy, *sf2Preset)
+				if startupNeedsLibrary && sfStrategy == "max" {
+					presets = sf2.AllPresetNames()
+				}
+				if err := catalog.ensurePresetsParallel(presets, startupLoadConcurrency(sfStrategy), update); err != nil {
+					p.Send(audio.BackendState{Kind: audio.BackendStateInitFailed, Detail: err.Error()})
+					p.Send(tui.StartupLoadMsg{Title: title, Detail: "load failed: " + err.Error(), Percent: 0, Done: true})
+					return
+				}
+				p.Send(tui.StartupLoadMsg{Title: title, Detail: "starting audio...", Percent: 1})
 			}
-			readyAlgo := gen.WrapDebugStatus(buildLiveAlgo(spec, *seed), presetLabel(spec))
-			root.SwapAlgorithmFade(readyAlgo, 0)
-			p.Send(tui.StartupLoadMsg{
-				Title:   fmt.Sprintf("Loading MAX palette · %s", startupLabel(spec)),
-				Detail:  "starting audio...",
-				Percent: 1,
-			})
+			if !defaultTrackBrowse {
+				readyAlgo := gen.WrapDebugStatus(buildLiveAlgo(spec, *seed), presetLabel(spec))
+				root.SwapAlgorithmFade(readyAlgo, 0)
+			}
 			startLive()
-			catalog.WarmMaxAsync()
 		}()
 	} else {
-		if catalog != nil {
-			catalog.WarmMaxAsync()
-		}
 		startLive()
 	}
 	if _, err := p.Run(); err != nil {
@@ -745,6 +748,66 @@ func buildGenreList(sfAvailable bool, currentName string) ([]gen.AlgoSpec, int) 
 		}
 	}
 	return out, idx
+}
+
+func startupLoadTitle(trackBrowse bool, strategy string, spec gen.AlgoSpec) string {
+	if trackBrowse {
+		switch strategy {
+		case "max":
+			return "Loading Track Library · MAX"
+		case "pro":
+			return "Loading Track Library · PRO"
+		default:
+			return "Loading Track Library"
+		}
+	}
+	switch strategy {
+	case "max":
+		return fmt.Sprintf("Loading MAX palette · %s", startupLabel(spec))
+	case "pro":
+		return fmt.Sprintf("Loading PRO palette · %s", startupLabel(spec))
+	default:
+		return fmt.Sprintf("Loading SF2 · %s", startupLabel(spec))
+	}
+}
+
+func startupPresetNames(strategy, fallback string) []string {
+	switch strategy {
+	case "max":
+		return sf2.AllPresetNames()
+	case "single":
+		return []string{fallback}
+	default:
+		seen := map[string]bool{}
+		out := make([]string, 0)
+		for _, name := range gen.AllGenreNames() {
+			spec, ok := gen.Resolve(name)
+			if !ok || !spec.RequiresSF2 {
+				continue
+			}
+			preset := gen.ProSF2PresetForSpec(spec, fallback)
+			if preset == "" || seen[preset] {
+				continue
+			}
+			seen[preset] = true
+			out = append(out, preset)
+		}
+		if len(out) == 0 && fallback != "" {
+			return []string{fallback}
+		}
+		return out
+	}
+}
+
+func startupLoadConcurrency(strategy string) int {
+	switch strategy {
+	case "max":
+		return 3
+	case "pro":
+		return 2
+	default:
+		return 1
+	}
 }
 
 // loadIR resolves an --ir argument to an actual impulse response. Accepts:

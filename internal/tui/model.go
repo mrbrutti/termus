@@ -23,6 +23,11 @@ type TrackNavEntry struct {
 	Style       string
 	Title       string
 	Description string
+	Tags        []string
+	Key         string
+	Tempo       string
+	ListenMode  string
+	Sections    []string
 }
 
 type TrackLoader func(id string) (*gen.Playlist, string, error)
@@ -37,6 +42,17 @@ type StartupLoadMsg struct {
 	Detail  string
 	Percent float64
 	Done    bool
+}
+
+type TrackLoadResultMsg struct {
+	EntryID    string
+	EntryTitle string
+	Playlist   *gen.Playlist
+	ModeLabel  string
+	Spec       gen.AlgoSpec
+	Seed       int64
+	Algo       gen.Algorithm
+	Err        error
 }
 
 type seedBookmark struct {
@@ -89,6 +105,7 @@ type Model struct {
 	trackLoader       TrackLoader
 	tracks            []TrackNavEntry
 	trackIdx          int
+	trackStyleIdx     int
 	activeTrackID     string
 
 	// Algorithm switching ([n]/[p]).
@@ -413,6 +430,7 @@ func (m *Model) toggleTracks() {
 		m.inspectorVisible = false
 		m.exportVisible = false
 		m.controlsVisible = false
+		m.alignTrackSelection()
 		m.flashStatus("tracks: on", 2*time.Second)
 		return
 	}
@@ -420,50 +438,80 @@ func (m *Model) toggleTracks() {
 }
 
 func (m *Model) moveTrack(delta int) {
-	if len(m.tracks) == 0 {
+	visible := m.filteredTrackIndices()
+	if len(visible) == 0 {
 		m.trackIdx = 0
 		return
 	}
-	m.trackIdx = (m.trackIdx + delta + len(m.tracks)) % len(m.tracks)
-}
-
-func (m *Model) loadSelectedTrack() {
-	if m.trackLoader == nil || len(m.tracks) == 0 || m.buildFn == nil {
-		return
-	}
-	entry := m.tracks[m.trackIdx]
-	pl, modeLabel, err := m.trackLoader(entry.ID)
-	if err != nil {
-		m.flashStatus("track load failed", 3*time.Second)
-		return
-	}
-	if pl == nil || len(pl.Tracks) == 0 {
-		m.flashStatus("track empty", 3*time.Second)
-		return
-	}
-	first := pl.Tracks[0]
-	algo := m.buildFn(first.Spec, first.Seed)
-	m.cmd.SwapAlgorithmFade(algo, m.morphFadeFrames())
-	m.playlist = pl
-	m.playlistIdx = 0
-	m.playlistFade = 88200
-	m.trackStartedAt = time.Now()
-	m.nextTrackAt = time.Now().Add(first.Duration)
-	m.algo = first.Spec.Label()
-	m.seed = first.Seed
-	m.activeTrackID = entry.ID
-	m.trackVisible = false
-	m.touchCurrentSeed()
-	if modeLabel != "" {
-		m.listeningMode = modeLabel
-	}
-	for i, g := range m.genres {
-		if g.Name == first.Spec.Name {
-			m.genreIdx = i
+	current := 0
+	for i, idx := range visible {
+		if idx == m.trackIdx {
+			current = i
 			break
 		}
 	}
-	m.flashStatus("track: "+entry.Title, 3*time.Second)
+	current = (current + delta + len(visible)) % len(visible)
+	m.trackIdx = visible[current]
+}
+
+func (m *Model) cycleTrackStyle(delta int) {
+	styles := m.trackStyleOptions()
+	if len(styles) == 0 {
+		m.trackStyleIdx = 0
+		return
+	}
+	m.trackStyleIdx = (m.trackStyleIdx + delta + len(styles)) % len(styles)
+	m.alignTrackSelection()
+}
+
+func (m *Model) alignTrackSelection() {
+	visible := m.filteredTrackIndices()
+	if len(visible) == 0 {
+		m.trackIdx = 0
+		return
+	}
+	for _, idx := range visible {
+		if idx == m.trackIdx {
+			return
+		}
+	}
+	m.trackIdx = visible[0]
+}
+
+func (m *Model) loadSelectedTrack() tea.Cmd {
+	if m.trackLoader == nil || len(m.tracks) == 0 || m.buildFn == nil {
+		return nil
+	}
+	entry := m.tracks[m.trackIdx]
+	title := strings.TrimSpace(entry.Title)
+	if title == "" {
+		title = entry.ID
+	}
+	m.startupLoading = true
+	m.startupTitle = title
+	m.startupDetail = "compiling authored arrangement"
+	m.startupPercent = 0.18
+	m.splashVisible = true
+	return func() tea.Msg {
+		pl, modeLabel, err := m.trackLoader(entry.ID)
+		if err != nil {
+			return TrackLoadResultMsg{EntryID: entry.ID, EntryTitle: title, Err: err}
+		}
+		if pl == nil || len(pl.Tracks) == 0 {
+			return TrackLoadResultMsg{EntryID: entry.ID, EntryTitle: title, Err: fmt.Errorf("track empty")}
+		}
+		first := pl.Tracks[0]
+		algo := m.buildFn(first.Spec, first.Seed)
+		return TrackLoadResultMsg{
+			EntryID:    entry.ID,
+			EntryTitle: title,
+			Playlist:   pl,
+			ModeLabel:  modeLabel,
+			Spec:       first.Spec,
+			Seed:       first.Seed,
+			Algo:       algo,
+		}
+	}
 }
 
 func (m *Model) toggleLibrary() {
@@ -762,6 +810,40 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case StartupLoadMsg:
 		m.applyStartupLoad(msg)
 		return m, nil
+	case TrackLoadResultMsg:
+		m.startupLoading = false
+		m.splashVisible = false
+		if msg.Err != nil {
+			m.flashStatus("track load failed", 3*time.Second)
+			return m, nil
+		}
+		if msg.Playlist == nil || len(msg.Playlist.Tracks) == 0 || msg.Algo == nil {
+			m.flashStatus("track empty", 3*time.Second)
+			return m, nil
+		}
+		first := msg.Playlist.Tracks[0]
+		m.cmd.SwapAlgorithmFade(msg.Algo, m.morphFadeFrames())
+		m.playlist = msg.Playlist
+		m.playlistIdx = 0
+		m.playlistFade = 88200
+		m.trackStartedAt = time.Now()
+		m.nextTrackAt = time.Now().Add(first.Duration)
+		m.algo = msg.Spec.Label()
+		m.seed = msg.Seed
+		m.activeTrackID = msg.EntryID
+		m.trackVisible = false
+		m.touchCurrentSeed()
+		if msg.ModeLabel != "" {
+			m.listeningMode = msg.ModeLabel
+		}
+		for i, g := range m.genres {
+			if g.Name == msg.Spec.Name {
+				m.genreIdx = i
+				break
+			}
+		}
+		m.flashStatus("track: "+msg.EntryTitle, 3*time.Second)
+		return m, nil
 	case exportResultMsg:
 		m.exportBusy = false
 		if msg.err != nil {
@@ -788,12 +870,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			case "t", "esc":
 				m.toggleTracks()
+			case "left":
+				m.cycleTrackStyle(-1)
+			case "right":
+				m.cycleTrackStyle(1)
 			case "up":
 				m.moveTrack(-1)
 			case "down":
 				m.moveTrack(1)
 			case "enter":
-				m.loadSelectedTrack()
+				return m, m.loadSelectedTrack()
 			}
 			return m, nil
 		}
@@ -1399,8 +1485,9 @@ func helpPanel(m Model, w, h int, theme ColorTheme) string {
 	bodyW := maxInt(24, minInt(w-6, 76))
 	bodyH := maxInt(10, minInt(h-2, 18))
 	lines := []string{
-		styleHelpLine(theme, false, "Global", "[space] play / pause   [↑↓] volume   [m] control center"),
+		styleHelpLine(theme, false, "Global", "[space] play / pause   [↑↓] volume   [m] control center   [t] tracks"),
 		styleHelpLine(theme, false, "View", "The main screen stays minimal. Use the control center for everything deeper."),
+		styleHelpLine(theme, false, "Track Library", "[t] open library   [←→] style   [↑↓] browse   [enter] play"),
 		styleHelpLine(theme, false, "Inside Control Center", "[↑↓] browse   [←→] adjust   [enter] apply / open   [tab] next section"),
 		styleHelpLine(theme, false, "Sections", "Now   Look   Music   Seeds   Library   Export   Audio   Debug"),
 		styleHelpLine(theme, false, "Close", "[?] close help   [q] quit"),
@@ -1443,7 +1530,7 @@ func splashPanel(m Model, w, h int, theme ColorTheme) string {
 		lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render("TERMUS"),
 		"",
 		styleHelpLine(theme, false, "Play", "[space] pause / resume   [↑↓] volume"),
-		styleHelpLine(theme, false, "Open", "[m] control center   [?] help"),
+		styleHelpLine(theme, false, "Open", "[m] control center   [t] tracks   [?] help"),
 		styleHelpLine(theme, false, "Global", "[q] quit   [z] zen"),
 		"",
 		lipgloss.NewStyle().Faint(true).Render("Press any key to start exploring."),
