@@ -771,6 +771,60 @@ sections:
 	}
 }
 
+func TestCompileVariationBudgetWarnings(t *testing.T) {
+	const src = `
+title: Budget Warnings
+style: lofi
+variation_budget:
+  max_harmony_repeat: 1
+  max_scene_repeat: 1
+  max_motif_repeat: 1
+  require_return_transform: true
+roles:
+  lead:
+    family: reed_lead
+    motif: "5 . 6 7 | 3 . 2 1"
+sections:
+  - id: a
+    duration: 16s
+    harmony: "Dm9 G13 | Cmaj9 A7"
+    scene: "same-room"
+  - id: b
+    duration: 16s
+    harmony: "Dm9 G13 | Cmaj9 A7"
+    scene: "same-room"
+  - id: c
+    derive: a
+    duration: 16s
+`
+	file, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	compiled, err := Compile(file, 11, gen.ListeningModeEndless)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	if len(compiled.Warnings) == 0 {
+		t.Fatal("expected variation budget warnings")
+	}
+	text := make([]string, 0, len(compiled.Warnings))
+	for _, warning := range compiled.Warnings {
+		text = append(text, warning.Path+" "+warning.Message)
+	}
+	joined := strings.Join(text, "\n")
+	for _, want := range []string{
+		"variation_budget.max_harmony_repeat",
+		"variation_budget.max_scene_repeat",
+		"variation_budget.max_motif_repeat",
+		"sections[2].transforms",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("expected warning containing %q, got:\n%s", want, joined)
+		}
+	}
+}
+
 func TestBundledTracksParseAndCompile(t *testing.T) {
 	paths, err := filepath.Glob(filepath.Join("..", "..", "tracks", "*", "*.tm"))
 	if err != nil {

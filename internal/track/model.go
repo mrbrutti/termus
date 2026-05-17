@@ -7,18 +7,19 @@ import (
 )
 
 type File struct {
-	Title       string          `yaml:"title"`
-	Description string          `yaml:"description,omitempty"`
-	Style       string          `yaml:"style"`
-	ListenMode  string          `yaml:"listen_mode,omitempty"`
-	Seed        int64           `yaml:"seed,omitempty"`
-	Tags        []string        `yaml:"tags,omitempty"`
-	Key         string          `yaml:"key,omitempty"`
-	Tempo       string          `yaml:"tempo,omitempty"`
-	Roles       map[string]Role `yaml:"roles,omitempty"`
-	Sections    []Section       `yaml:"sections"`
-	Globals     Profile         `yaml:"globals,omitempty"`
-	Lint        LintControl     `yaml:"lint,omitempty"`
+	Title           string          `yaml:"title"`
+	Description     string          `yaml:"description,omitempty"`
+	Style           string          `yaml:"style"`
+	ListenMode      string          `yaml:"listen_mode,omitempty"`
+	Seed            int64           `yaml:"seed,omitempty"`
+	Tags            []string        `yaml:"tags,omitempty"`
+	Key             string          `yaml:"key,omitempty"`
+	Tempo           string          `yaml:"tempo,omitempty"`
+	Roles           map[string]Role `yaml:"roles,omitempty"`
+	Sections        []Section       `yaml:"sections"`
+	Globals         Profile         `yaml:"globals,omitempty"`
+	VariationBudget VariationBudget `yaml:"variation_budget,omitempty"`
+	Lint            LintControl     `yaml:"lint,omitempty"`
 }
 
 type Section struct {
@@ -106,6 +107,13 @@ type MacroValue struct {
 
 type LintControl struct {
 	RequireContrast bool `yaml:"require_contrast,omitempty"`
+}
+
+type VariationBudget struct {
+	MaxHarmonyRepeat       int  `yaml:"max_harmony_repeat,omitempty"`
+	MaxSceneRepeat         int  `yaml:"max_scene_repeat,omitempty"`
+	MaxMotifRepeat         int  `yaml:"max_motif_repeat,omitempty"`
+	RequireReturnTransform bool `yaml:"require_return_transform,omitempty"`
 }
 
 type Warning struct {

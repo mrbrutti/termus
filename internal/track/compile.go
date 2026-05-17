@@ -2,6 +2,7 @@ package track
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -228,7 +229,66 @@ func lintFile(file *File, tracks []gen.Track) []Warning {
 	if sceneCount == 0 {
 		warnings = append(warnings, Warning{Path: "sections.scene", Message: "no section scenes defined; role contrast may be weak"})
 	}
+	budget := file.VariationBudget
+	if budget.MaxHarmonyRepeat > 0 {
+		for harmony, count := range countSectionField(file.Sections, func(section Section) string {
+			return strings.TrimSpace(section.Harmony)
+		}) {
+			if harmony != "" && count > budget.MaxHarmonyRepeat {
+				warnings = append(warnings, Warning{Path: "variation_budget.max_harmony_repeat", Message: fmt.Sprintf("harmony %q repeats %d times (budget %d)", harmony, count, budget.MaxHarmonyRepeat)})
+			}
+		}
+	}
+	if budget.MaxSceneRepeat > 0 {
+		for scene, count := range countSectionField(file.Sections, func(section Section) string {
+			return strings.TrimSpace(section.Scene)
+		}) {
+			if scene != "" && count > budget.MaxSceneRepeat {
+				warnings = append(warnings, Warning{Path: "variation_budget.max_scene_repeat", Message: fmt.Sprintf("scene %q repeats %d times (budget %d)", scene, count, budget.MaxSceneRepeat)})
+			}
+		}
+	}
+	if budget.MaxMotifRepeat > 0 {
+		for motif, count := range countSectionField(file.Sections, func(section Section) string {
+			merged := applyOrchestration(applyRoleTransforms(mergeRoles(file.Roles, section.Roles), section.Transforms), section.Orchestration)
+			values := make([]string, 0, len(merged))
+			for name, role := range merged {
+				if authoredRoleKind(name, role) != "melody" {
+					continue
+				}
+				values = append(values, strings.TrimSpace(roleValue(role.Motif, role.Pattern)))
+			}
+			sort.Strings(values)
+			return strings.Join(values, " || ")
+		}) {
+			if motif != "" && count > budget.MaxMotifRepeat {
+				warnings = append(warnings, Warning{Path: "variation_budget.max_motif_repeat", Message: fmt.Sprintf("melodic phrase pack %q repeats %d times (budget %d)", motif, count, budget.MaxMotifRepeat)})
+			}
+		}
+	}
+	if budget.RequireReturnTransform {
+		for idx, section := range file.Sections {
+			if strings.TrimSpace(section.Derive) == "" {
+				continue
+			}
+			if len(section.Transforms) == 0 {
+				warnings = append(warnings, Warning{Path: fmt.Sprintf("sections[%d].transforms", idx), Message: "derived section has no transforms; return may sound like a copy"})
+			}
+		}
+	}
 	return warnings
+}
+
+func countSectionField(sections []Section, keyFn func(Section) string) map[string]int {
+	counts := map[string]int{}
+	for _, section := range sections {
+		key := keyFn(section)
+		if key == "" {
+			continue
+		}
+		counts[key]++
+	}
+	return counts
 }
 
 func firstNonBlank(values ...string) string {
