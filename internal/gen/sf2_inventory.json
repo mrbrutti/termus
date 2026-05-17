@@ -2,67 +2,190 @@
   {
     "name": "general",
     "styles": ["ambient", "lullaby", "classical", "lofi", "jazz", "bells", "phase", "drone"],
-    "families": ["acoustic_piano", "electric_piano", "bass", "reed_lead", "strings", "pad", "mallet", "drums", "choir", "woodwind", "guitar"],
-    "tones": ["balanced", "neutral", "safe", "generalist"]
+    "families": ["acoustic_piano", "electric_piano", "bass", "reed_lead", "strings", "pad", "mallet", "drums", "choir", "woodwind", "guitar", "brass", "music_box", "bells", "organ", "synth_bass"],
+    "tones": ["balanced", "neutral", "safe", "generalist"],
+    "realism": "utility",
+    "blend": ["core", "fallback"],
+    "articulations": ["comp", "sustain", "pulse", "echo", "walk"],
+    "programs": [
+      {"family": "acoustic_piano", "program": 0, "roles": ["piano", "keys", "comp"], "tones": ["balanced", "neutral"], "articulations": ["comp", "legato"], "registers": ["mid"], "blend": ["core"], "realism": "utility"},
+      {"family": "electric_piano", "program": 5, "roles": ["keys", "rhodes", "ep"], "tones": ["balanced", "soft"], "articulations": ["comp"], "registers": ["mid"], "blend": ["core"], "realism": "utility"},
+      {"family": "bass", "program": 32, "roles": ["bass", "walk"], "tones": ["balanced"], "articulations": ["walk", "sustain"], "registers": ["low", "sub"], "blend": ["glue"], "realism": "utility"},
+      {"family": "synth_bass", "program": 39, "roles": ["sub", "bass"], "tones": ["neutral"], "articulations": ["sustain"], "registers": ["sub", "low"], "blend": ["glue"], "realism": "utility"},
+      {"family": "reed_lead", "program": 66, "roles": ["lead", "alto", "tenor", "clarinet"], "tones": ["balanced"], "articulations": ["lyrical"], "registers": ["mid-high", "high"], "blend": ["front"], "realism": "utility"},
+      {"family": "woodwind", "program": 73, "roles": ["flute", "winds", "lead"], "tones": ["soft"], "articulations": ["breath"], "registers": ["mid-high", "high"], "blend": ["air"], "realism": "utility"},
+      {"family": "brass", "program": 56, "roles": ["trumpet", "horn", "brass"], "tones": ["present"], "articulations": ["stab", "lyrical"], "registers": ["mid-high", "high"], "blend": ["front"], "realism": "utility"},
+      {"family": "guitar", "program": 24, "roles": ["guitar", "pluck"], "tones": ["neutral"], "articulations": ["pluck"], "registers": ["mid", "mid-high"], "blend": ["support"], "realism": "utility"},
+      {"family": "mallet", "program": 11, "roles": ["vibes", "mallet", "celesta"], "tones": ["clear"], "articulations": ["pulse", "echo"], "registers": ["mid-high", "high"], "blend": ["air"], "realism": "utility"},
+      {"family": "bells", "program": 14, "roles": ["bells", "glock", "shimmer"], "tones": ["bright"], "articulations": ["bloom", "echo"], "registers": ["high", "air"], "blend": ["sparkle"], "realism": "utility"},
+      {"family": "music_box", "program": 10, "roles": ["box", "music_box"], "tones": ["delicate"], "articulations": ["echo"], "registers": ["high", "air"], "blend": ["sparkle"], "realism": "utility"},
+      {"family": "pad", "program": 89, "roles": ["pad", "bed"], "tones": ["neutral", "wide"], "articulations": ["sustain"], "registers": ["mid", "mid-high"], "blend": ["glue"], "realism": "utility"},
+      {"family": "choir", "program": 52, "roles": ["choir"], "tones": ["soft"], "articulations": ["sustain"], "registers": ["mid-high", "high"], "blend": ["glue", "air"], "realism": "utility"},
+      {"family": "strings", "program": 48, "roles": ["strings", "harp"], "tones": ["balanced"], "articulations": ["sustain", "answer"], "registers": ["mid", "mid-high", "high"], "blend": ["core"], "realism": "utility"},
+      {"family": "organ", "program": 19, "roles": ["organ"], "tones": ["balanced"], "articulations": ["sustain"], "registers": ["mid"], "blend": ["core"], "realism": "utility"},
+      {"family": "drums", "program": 0, "roles": ["drums", "kick", "snare", "ride", "hat"], "tones": ["neutral"], "articulations": ["swing", "pulse"], "registers": ["low", "mid", "high"], "blend": ["glue"], "realism": "utility"}
+    ]
   },
   {
     "name": "sgm",
     "styles": ["lofi", "jazz", "classical"],
-    "families": ["acoustic_piano", "electric_piano", "bass", "guitar", "drums"],
-    "tones": ["warm", "lush", "soft", "woody", "full"]
+    "families": ["acoustic_piano", "electric_piano", "bass", "guitar", "drums", "organ", "strings"],
+    "tones": ["warm", "lush", "soft", "woody", "full"],
+    "realism": "organic",
+    "blend": ["core", "glue"],
+    "articulations": ["comp", "walk", "support"],
+    "programs": [
+      {"family": "electric_piano", "program": 5, "roles": ["keys", "rhodes", "ep"], "tones": ["warm", "soft", "dusty"], "articulations": ["comp"], "registers": ["mid"], "blend": ["core"], "realism": "organic"},
+      {"family": "acoustic_piano", "program": 0, "roles": ["piano", "comp"], "tones": ["warm", "woody"], "articulations": ["comp"], "registers": ["mid"], "blend": ["core"], "realism": "organic"},
+      {"family": "bass", "program": 32, "roles": ["bass", "walk"], "tones": ["woody", "round"], "articulations": ["walk"], "registers": ["low"], "blend": ["glue"], "realism": "organic"},
+      {"family": "guitar", "program": 24, "roles": ["guitar"], "tones": ["warm", "soft"], "articulations": ["pluck", "answer"], "registers": ["mid", "mid-high"], "blend": ["support"], "realism": "organic"},
+      {"family": "organ", "program": 19, "roles": ["organ"], "tones": ["warm"], "articulations": ["sustain"], "registers": ["mid"], "blend": ["core"], "realism": "organic"},
+      {"family": "drums", "program": 0, "roles": ["drums", "kick", "snare", "ride", "hat"], "tones": ["soft", "woody"], "articulations": ["swing", "pulse"], "registers": ["low", "mid", "high"], "blend": ["glue"], "realism": "organic"}
+    ]
   },
   {
     "name": "tyros4",
     "styles": ["jazz", "lofi"],
-    "families": ["reed_lead", "brass", "strings", "drums"],
-    "tones": ["polished", "present", "brassy", "live", "bright"]
+    "families": ["reed_lead", "brass", "strings", "drums", "organ", "guitar"],
+    "tones": ["polished", "present", "brassy", "live", "bright"],
+    "realism": "polished",
+    "blend": ["front", "color"],
+    "articulations": ["lyrical", "stab", "swing"],
+    "programs": [
+      {"family": "reed_lead", "program": 66, "roles": ["lead", "alto", "tenor", "sax"], "tones": ["present", "live"], "articulations": ["lyrical"], "registers": ["mid-high", "high"], "blend": ["front"], "realism": "polished"},
+      {"family": "brass", "program": 56, "roles": ["trumpet", "horn", "brass"], "tones": ["brassy", "bright", "present"], "articulations": ["stab", "lyrical"], "registers": ["mid-high", "high"], "blend": ["front"], "realism": "polished"},
+      {"family": "organ", "program": 19, "roles": ["organ"], "tones": ["present"], "articulations": ["sustain"], "registers": ["mid"], "blend": ["color"], "realism": "polished"},
+      {"family": "guitar", "program": 26, "roles": ["guitar", "lead"], "tones": ["bright", "present"], "articulations": ["pluck", "lyrical"], "registers": ["mid-high"], "blend": ["color"], "realism": "polished"},
+      {"family": "drums", "program": 0, "roles": ["drums", "ride", "snare", "kick", "hat"], "tones": ["live"], "articulations": ["swing"], "registers": ["low", "mid", "high"], "blend": ["glue"], "realism": "polished"}
+    ]
   },
   {
     "name": "dsound4",
     "styles": ["lofi", "classical", "ambient"],
-    "families": ["electric_piano", "acoustic_piano", "bass", "pad", "strings"],
-    "tones": ["balanced", "modern", "clean", "wide"]
+    "families": ["electric_piano", "acoustic_piano", "bass", "pad", "strings", "woodwind"],
+    "tones": ["balanced", "modern", "clean", "wide"],
+    "realism": "hybrid",
+    "blend": ["core", "glue"],
+    "articulations": ["comp", "sustain"],
+    "programs": [
+      {"family": "electric_piano", "program": 5, "roles": ["keys", "ep"], "tones": ["clean", "wide"], "articulations": ["comp"], "registers": ["mid"], "blend": ["core"], "realism": "hybrid"},
+      {"family": "acoustic_piano", "program": 0, "roles": ["piano"], "tones": ["balanced", "clean"], "articulations": ["comp"], "registers": ["mid"], "blend": ["core"], "realism": "hybrid"},
+      {"family": "bass", "program": 32, "roles": ["bass"], "tones": ["balanced"], "articulations": ["walk", "sustain"], "registers": ["low"], "blend": ["glue"], "realism": "hybrid"},
+      {"family": "pad", "program": 89, "roles": ["pad", "bed"], "tones": ["wide", "clean"], "articulations": ["sustain"], "registers": ["mid", "mid-high"], "blend": ["glue"], "realism": "hybrid"},
+      {"family": "strings", "program": 48, "roles": ["strings"], "tones": ["balanced", "wide"], "articulations": ["sustain"], "registers": ["mid-high", "high"], "blend": ["core"], "realism": "hybrid"},
+      {"family": "woodwind", "program": 73, "roles": ["winds", "flute"], "tones": ["clean"], "articulations": ["breath"], "registers": ["high"], "blend": ["air"], "realism": "hybrid"}
+    ]
   },
   {
     "name": "fatboy",
     "styles": ["lofi", "phase", "ambient"],
     "families": ["drums", "bass", "electric_piano", "pad", "synth_bass"],
-    "tones": ["clean", "dry", "tight", "dusty", "direct"]
+    "tones": ["clean", "dry", "tight", "dusty", "direct"],
+    "realism": "hybrid",
+    "blend": ["glue", "attack"],
+    "articulations": ["pulse", "comp", "sustain"],
+    "programs": [
+      {"family": "drums", "program": 0, "roles": ["drums", "kick", "snare", "hat", "ride"], "tones": ["tight", "dry", "dusty"], "articulations": ["pulse", "swing"], "registers": ["low", "mid", "high"], "blend": ["attack"], "realism": "hybrid"},
+      {"family": "bass", "program": 32, "roles": ["bass"], "tones": ["direct", "tight"], "articulations": ["walk", "sustain"], "registers": ["low"], "blend": ["glue"], "realism": "hybrid"},
+      {"family": "synth_bass", "program": 39, "roles": ["sub", "bass"], "tones": ["direct", "dusty"], "articulations": ["sustain"], "registers": ["sub", "low"], "blend": ["glue"], "realism": "hybrid"},
+      {"family": "electric_piano", "program": 5, "roles": ["keys", "ep"], "tones": ["dusty", "dry"], "articulations": ["comp"], "registers": ["mid"], "blend": ["core"], "realism": "hybrid"},
+      {"family": "pad", "program": 89, "roles": ["pad"], "tones": ["dry", "direct"], "articulations": ["sustain"], "registers": ["mid"], "blend": ["glue"], "realism": "hybrid"}
+    ]
   },
   {
     "name": "timbres-of-heaven",
     "styles": ["classical", "bells", "ambient", "jazz"],
-    "families": ["strings", "woodwind", "brass", "choir", "acoustic_piano"],
-    "tones": ["lush", "orchestral", "rich", "airy"]
+    "families": ["strings", "woodwind", "brass", "choir", "acoustic_piano", "harp"],
+    "tones": ["lush", "orchestral", "rich", "airy"],
+    "realism": "organic",
+    "blend": ["core", "halo"],
+    "articulations": ["sustain", "answer", "swell"],
+    "programs": [
+      {"family": "strings", "program": 48, "roles": ["strings"], "tones": ["lush", "orchestral"], "articulations": ["sustain"], "registers": ["mid-high", "high"], "blend": ["core"], "realism": "organic"},
+      {"family": "woodwind", "program": 73, "roles": ["winds", "flute"], "tones": ["airy", "rich"], "articulations": ["breath", "answer"], "registers": ["high"], "blend": ["air"], "realism": "organic"},
+      {"family": "brass", "program": 61, "roles": ["brass", "horn"], "tones": ["rich"], "articulations": ["swell"], "registers": ["mid", "mid-high"], "blend": ["color"], "realism": "organic"},
+      {"family": "choir", "program": 52, "roles": ["choir"], "tones": ["airy", "lush"], "articulations": ["sustain"], "registers": ["high"], "blend": ["halo"], "realism": "organic"},
+      {"family": "acoustic_piano", "program": 0, "roles": ["piano"], "tones": ["rich"], "articulations": ["legato", "comp"], "registers": ["mid"], "blend": ["core"], "realism": "organic"},
+      {"family": "strings", "program": 46, "roles": ["harp"], "tones": ["airy", "rich"], "articulations": ["answer"], "registers": ["high"], "blend": ["air"], "realism": "organic"}
+    ]
   },
   {
     "name": "merlin-symphony",
     "styles": ["classical", "ambient", "drone"],
     "families": ["strings", "woodwind", "pad", "choir"],
-    "tones": ["soft", "cinematic", "floating", "orchestral"]
+    "tones": ["soft", "cinematic", "floating", "orchestral"],
+    "realism": "organic",
+    "blend": ["halo", "glue"],
+    "articulations": ["sustain", "answer"],
+    "programs": [
+      {"family": "strings", "program": 48, "roles": ["strings"], "tones": ["soft", "floating"], "articulations": ["sustain"], "registers": ["mid-high", "high"], "blend": ["halo"], "realism": "organic"},
+      {"family": "woodwind", "program": 73, "roles": ["winds", "flute"], "tones": ["soft"], "articulations": ["breath"], "registers": ["high"], "blend": ["air"], "realism": "organic"},
+      {"family": "pad", "program": 89, "roles": ["pad", "bed"], "tones": ["cinematic", "floating"], "articulations": ["sustain"], "registers": ["mid"], "blend": ["glue"], "realism": "organic"},
+      {"family": "choir", "program": 52, "roles": ["choir"], "tones": ["soft", "floating"], "articulations": ["sustain"], "registers": ["high"], "blend": ["halo"], "realism": "organic"}
+    ]
   },
   {
     "name": "fairy-tale",
     "styles": ["bells", "lullaby", "ambient"],
     "families": ["mallet", "bells", "music_box", "choir", "pad"],
-    "tones": ["glass", "sparkle", "luminous", "celestial", "delicate"]
+    "tones": ["glass", "sparkle", "luminous", "celestial", "delicate"],
+    "realism": "storybook",
+    "blend": ["sparkle", "halo"],
+    "articulations": ["bloom", "echo", "sustain"],
+    "programs": [
+      {"family": "mallet", "program": 8, "roles": ["celesta", "lead"], "tones": ["delicate", "celestial"], "articulations": ["echo", "lyrical"], "registers": ["high"], "blend": ["sparkle"], "realism": "storybook"},
+      {"family": "bells", "program": 14, "roles": ["bells", "glock", "shimmer"], "tones": ["glass", "luminous", "sparkle"], "articulations": ["bloom", "echo"], "registers": ["high", "air"], "blend": ["sparkle"], "realism": "storybook"},
+      {"family": "music_box", "program": 10, "roles": ["box", "music_box"], "tones": ["delicate", "sparkle"], "articulations": ["echo"], "registers": ["high", "air"], "blend": ["sparkle"], "realism": "storybook"},
+      {"family": "pad", "program": 89, "roles": ["pad"], "tones": ["soft", "celestial"], "articulations": ["sustain"], "registers": ["mid", "mid-high"], "blend": ["halo"], "realism": "storybook"},
+      {"family": "choir", "program": 52, "roles": ["choir"], "tones": ["airy", "celestial"], "articulations": ["sustain"], "registers": ["high"], "blend": ["halo"], "realism": "storybook"}
+    ]
   },
   {
     "name": "fm-dx",
     "styles": ["phase", "drone", "ambient", "bells"],
     "families": ["electric_piano", "bells", "pad", "synth_bass", "lead"],
-    "tones": ["metallic", "digital", "retro", "shimmer", "icy"]
+    "tones": ["metallic", "digital", "retro", "shimmer", "icy"],
+    "realism": "synthetic",
+    "blend": ["sparkle", "edge"],
+    "articulations": ["pulse", "bloom", "sustain"],
+    "programs": [
+      {"family": "electric_piano", "program": 4, "roles": ["keys", "ep"], "tones": ["digital", "metallic"], "articulations": ["pulse", "comp"], "registers": ["mid"], "blend": ["edge"], "realism": "synthetic"},
+      {"family": "bells", "program": 14, "roles": ["shimmer", "bells"], "tones": ["icy", "shimmer", "metallic"], "articulations": ["bloom", "pulse"], "registers": ["high", "air"], "blend": ["sparkle"], "realism": "synthetic"},
+      {"family": "pad", "program": 89, "roles": ["pad", "bed"], "tones": ["digital", "icy"], "articulations": ["sustain"], "registers": ["mid"], "blend": ["edge"], "realism": "synthetic"},
+      {"family": "synth_bass", "program": 38, "roles": ["bass", "sub"], "tones": ["digital", "retro"], "articulations": ["sustain"], "registers": ["sub", "low"], "blend": ["glue"], "realism": "synthetic"},
+      {"family": "lead", "program": 92, "roles": ["lead"], "tones": ["retro", "shimmer"], "articulations": ["lyrical"], "registers": ["mid-high"], "blend": ["color"], "realism": "synthetic"}
+    ]
   },
   {
     "name": "musescore-general",
     "styles": ["classical", "ambient", "phase", "bells"],
     "families": ["strings", "woodwind", "mallet", "choir", "acoustic_piano"],
-    "tones": ["polite", "balanced", "soft", "clear"]
+    "tones": ["polite", "balanced", "soft", "clear"],
+    "realism": "utility",
+    "blend": ["core", "glue"],
+    "articulations": ["sustain", "answer", "echo"],
+    "programs": [
+      {"family": "acoustic_piano", "program": 0, "roles": ["piano"], "tones": ["clear"], "articulations": ["legato"], "registers": ["mid"], "blend": ["core"], "realism": "utility"},
+      {"family": "strings", "program": 48, "roles": ["strings"], "tones": ["soft", "balanced"], "articulations": ["sustain"], "registers": ["mid-high", "high"], "blend": ["core"], "realism": "utility"},
+      {"family": "woodwind", "program": 73, "roles": ["winds", "flute"], "tones": ["soft"], "articulations": ["breath"], "registers": ["high"], "blend": ["air"], "realism": "utility"},
+      {"family": "mallet", "program": 11, "roles": ["mallet", "vibes", "celesta"], "tones": ["clear"], "articulations": ["echo", "pulse"], "registers": ["mid-high", "high"], "blend": ["air"], "realism": "utility"},
+      {"family": "choir", "program": 52, "roles": ["choir"], "tones": ["soft"], "articulations": ["sustain"], "registers": ["high"], "blend": ["glue"], "realism": "utility"}
+    ]
   },
   {
     "name": "arachno",
     "styles": ["ambient", "bells", "drone", "phase"],
     "families": ["pad", "bells", "lead", "choir", "synth_bass"],
-    "tones": ["retro", "warm", "wide", "dreamy", "synthy"]
+    "tones": ["retro", "warm", "wide", "dreamy", "synthy"],
+    "realism": "hybrid",
+    "blend": ["glue", "dream"],
+    "articulations": ["sustain", "bloom", "breath"],
+    "programs": [
+      {"family": "pad", "program": 89, "roles": ["pad", "bed"], "tones": ["warm", "wide", "dreamy"], "articulations": ["sustain"], "registers": ["mid", "mid-high"], "blend": ["glue"], "realism": "hybrid"},
+      {"family": "bells", "program": 14, "roles": ["bells", "shimmer"], "tones": ["warm", "sparkle"], "articulations": ["bloom"], "registers": ["high", "air"], "blend": ["sparkle"], "realism": "hybrid"},
+      {"family": "lead", "program": 73, "roles": ["lead", "flute"], "tones": ["dreamy", "soft"], "articulations": ["breath"], "registers": ["mid-high", "high"], "blend": ["air"], "realism": "hybrid"},
+      {"family": "choir", "program": 52, "roles": ["choir"], "tones": ["warm", "wide"], "articulations": ["sustain"], "registers": ["high"], "blend": ["glue"], "realism": "hybrid"},
+      {"family": "synth_bass", "program": 39, "roles": ["bass", "sub"], "tones": ["warm", "synthy"], "articulations": ["sustain"], "registers": ["sub", "low"], "blend": ["glue"], "realism": "hybrid"}
+    ]
   }
 ]

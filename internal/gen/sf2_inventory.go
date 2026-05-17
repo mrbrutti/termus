@@ -11,10 +11,25 @@ import (
 var sf2InventoryJSON []byte
 
 type sf2PresetProfile struct {
-	Name     string   `json:"name"`
-	Styles   []string `json:"styles"`
-	Families []string `json:"families"`
-	Tones    []string `json:"tones"`
+	Name          string              `json:"name"`
+	Styles        []string            `json:"styles"`
+	Families      []string            `json:"families"`
+	Tones         []string            `json:"tones"`
+	Realism       string              `json:"realism,omitempty"`
+	Blend         []string            `json:"blend,omitempty"`
+	Articulations []string            `json:"articulations,omitempty"`
+	Programs      []sf2ProgramProfile `json:"programs,omitempty"`
+}
+
+type sf2ProgramProfile struct {
+	Family        string   `json:"family"`
+	Program       int32    `json:"program"`
+	Roles         []string `json:"roles,omitempty"`
+	Tones         []string `json:"tones,omitempty"`
+	Articulations []string `json:"articulations,omitempty"`
+	Registers     []string `json:"registers,omitempty"`
+	Blend         []string `json:"blend,omitempty"`
+	Realism       string   `json:"realism,omitempty"`
 }
 
 type SF2RoleIntent struct {
@@ -44,6 +59,19 @@ func loadSF2Inventory() map[string]sf2PresetProfile {
 		out[item.Name] = item
 	}
 	return out
+}
+
+func InventoryPresetProfile(name string) (sf2PresetProfile, bool) {
+	profile, ok := sf2Inventory[strings.TrimSpace(name)]
+	return profile, ok
+}
+
+func InventoryProgramProfiles(name string) []sf2ProgramProfile {
+	profile, ok := InventoryPresetProfile(name)
+	if !ok {
+		return nil
+	}
+	return append([]sf2ProgramProfile(nil), profile.Programs...)
 }
 
 func ResolveSF2Selection(spec AlgoSpec, strategy, fallback string) SF2Selection {
