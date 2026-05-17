@@ -449,9 +449,22 @@ func applySwell(track *gen.AuthoredRenderTrack, start, end int) {
 	}
 }
 
-func applyDouble(track gen.AuthoredRenderTrack, start, end int) gen.AuthoredRenderTrack {
+func nextAvailableChannel(used map[int32]bool) int32 {
+	for channel := int32(0); channel < 16; channel++ {
+		if channel == 9 || used[channel] {
+			continue
+		}
+		return channel
+	}
+	return -1
+}
+
+func applyDouble(track gen.AuthoredRenderTrack, channel int32, start, end int) gen.AuthoredRenderTrack {
 	clone := track
 	clone.Name = track.Name + "-double"
+	if channel >= 0 {
+		clone.Channel = channel
+	}
 	clone.Pan = clampInt32(track.Pan+10, 0, 127)
 	clone.Velocity = clampInt32(track.Velocity-6, 0, 127)
 	clone.Notes = append([]int(nil), track.Notes...)
@@ -613,6 +626,10 @@ func applySectionEvents(ctx authoredSectionContext, events []Event, bars []autho
 			}
 		case "double":
 			extra := make([]gen.AuthoredRenderTrack, 0, len(plan.Tracks))
+			usedChannels := map[int32]bool{}
+			for _, existing := range plan.Tracks {
+				usedChannels[existing.Channel] = true
+			}
 			for idx := range plan.Tracks {
 				roleKind := authoredRoleKind(plan.Tracks[idx].Name, Role{Family: plan.Tracks[idx].Family})
 				if roleKind == "drum" {
@@ -621,7 +638,12 @@ func applySectionEvents(ctx authoredSectionContext, events []Event, bars []autho
 				if !eventRoleSelected(event, plan.Tracks[idx].Name) {
 					continue
 				}
-				extra = append(extra, applyDouble(plan.Tracks[idx], start, end))
+				channel := nextAvailableChannel(usedChannels)
+				if channel >= 0 {
+					usedChannels[channel] = true
+				}
+				doubled := applyDouble(plan.Tracks[idx], channel, start, end)
+				extra = append(extra, doubled)
 			}
 			plan.Tracks = append(plan.Tracks, extra...)
 		case "tag":

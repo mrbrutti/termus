@@ -611,14 +611,20 @@ sections:
 		plan = got
 	}
 	var bass *gen.AuthoredRenderTrack
+	var lead *gen.AuthoredRenderTrack
+	var leadDouble *gen.AuthoredRenderTrack
 	doubleFound := false
 	for i := range plan.Tracks {
 		track := &plan.Tracks[i]
 		if track.Name == "bass" {
 			bass = track
 		}
+		if track.Name == "lead" {
+			lead = track
+		}
 		if strings.HasPrefix(track.Name, "lead-double") {
 			doubleFound = true
+			leadDouble = track
 		}
 	}
 	if bass == nil {
@@ -626,6 +632,12 @@ sections:
 	}
 	if !doubleFound {
 		t.Fatal("expected arrangement double track")
+	}
+	if lead == nil || leadDouble == nil {
+		t.Fatalf("expected lead and doubled lead tracks, got lead=%v leadDouble=%v", lead != nil, leadDouble != nil)
+	}
+	if lead.Channel == leadDouble.Channel {
+		t.Fatalf("expected doubled lead on a distinct channel, both were %d", lead.Channel)
 	}
 	held := bass.Notes[0]
 	if held < 0 {
@@ -768,6 +780,9 @@ sections:
 	}
 	if comp.Family != "organ" {
 		t.Fatalf("comp family = %q", comp.Family)
+	}
+	if lead.Channel == comp.Channel {
+		t.Fatalf("expected substituted brass lead and organ comp to stay on separate channels, both were %d", lead.Channel)
 	}
 }
 
