@@ -882,8 +882,9 @@ func compileRoleTracks(ctx authoredSectionContext, name string, role Role, bars 
 			Chorus:          template.Chorus,
 			Brightness:      template.Brightness,
 			Notes:           notes,
-			VelocityPattern: compileVelocityPattern(ctx, kind, name, notes),
-			TimingOffsets:   compileTimingOffsets(ctx, kind, name, notes),
+			VelocityPattern: compileVelocityPattern(ctx, kind, name, role, notes, phraseSpans),
+			TimingOffsets:   compileTimingOffsets(ctx, kind, name, role, notes, phraseSpans),
+			GatePattern:     compileGatePattern(ctx, kind, name, role, notes, phraseSpans, template.Gate),
 			Gate:            template.Gate,
 			SwingAmount:     template.Swing,
 			Legato:          false,
@@ -908,8 +909,9 @@ func compileRoleTracks(ctx authoredSectionContext, name string, role Role, bars 
 			Chorus:          template.Chorus,
 			Brightness:      template.Brightness,
 			Notes:           notes,
-			VelocityPattern: compileVelocityPattern(ctx, kind, name, notes),
-			TimingOffsets:   compileTimingOffsets(ctx, kind, name, notes),
+			VelocityPattern: compileVelocityPattern(ctx, kind, name, role, notes, phraseSpans),
+			TimingOffsets:   compileTimingOffsets(ctx, kind, name, role, notes, phraseSpans),
+			GatePattern:     compileGatePattern(ctx, kind, name, role, notes, phraseSpans, template.Gate),
 			Gate:            template.Gate,
 			SwingAmount:     template.Swing,
 			Legato:          true,
@@ -919,10 +921,10 @@ func compileRoleTracks(ctx authoredSectionContext, name string, role Role, bars 
 		}}, nil
 	case "pad":
 		voices := compilePadVoices(ctx, name, role, bars, totalBars, phraseSpans)
-		return authoredVoiceTracks(ctx, name, role, template, voices, true), nil
+		return authoredVoiceTracks(ctx, name, role, template, voices, phraseSpans, true), nil
 	case "comp":
 		voices := compileCompVoices(ctx, name, role, bars, totalBars, phraseSpans)
-		return authoredVoiceTracks(ctx, name, role, template, voices, false), nil
+		return authoredVoiceTracks(ctx, name, role, template, voices, phraseSpans, false), nil
 	default: // melody
 		notes := compileMelody(ctx, name, role, bars, totalBars, phraseSpans)
 		return []gen.AuthoredRenderTrack{{
@@ -940,8 +942,9 @@ func compileRoleTracks(ctx authoredSectionContext, name string, role Role, bars 
 			Chorus:          template.Chorus,
 			Brightness:      template.Brightness,
 			Notes:           notes,
-			VelocityPattern: compileVelocityPattern(ctx, kind, name, notes),
-			TimingOffsets:   compileTimingOffsets(ctx, kind, name, notes),
+			VelocityPattern: compileVelocityPattern(ctx, kind, name, role, notes, phraseSpans),
+			TimingOffsets:   compileTimingOffsets(ctx, kind, name, role, notes, phraseSpans),
+			GatePattern:     compileGatePattern(ctx, kind, name, role, notes, phraseSpans, template.Gate),
 			Gate:            template.Gate,
 			SwingAmount:     template.Swing,
 			Legato:          template.Legato,
@@ -1515,7 +1518,7 @@ func compileMelody(ctx authoredSectionContext, name string, role Role, bars []au
 	return out
 }
 
-func compileVelocityPattern(ctx authoredSectionContext, kind, name string, notes []int) []int32 {
+func compileVelocityPattern(ctx authoredSectionContext, kind, name string, role Role, notes []int, phraseSpans []gen.AuthoredPhraseSpan) []int32 {
 	if len(notes) == 0 {
 		return nil
 	}
@@ -1527,6 +1530,8 @@ func compileVelocityPattern(ctx authoredSectionContext, kind, name string, notes
 		}
 		pos := i % authoredSlotsPerBar
 		bar := (i / authoredSlotsPerBar) % 2
+		span, phraseIdx := phraseSpanForSlot(phraseSpans, i)
+		mode := rolePhraseMode(ctx, kind, name, roleForPhrase(role, span.Label), span, phraseIdx)
 		delta := int32(ctx.rng.Intn(5) - 2)
 		switch kind {
 		case "drum":
@@ -1556,6 +1561,14 @@ func compileVelocityPattern(ctx authoredSectionContext, kind, name string, notes
 			default:
 				delta += 3
 			}
+			switch mode {
+			case "cadence", "fill":
+				delta += 5
+			case "thin", "air":
+				delta -= 4
+			case "push":
+				delta += 3
+			}
 		case "bass":
 			if pos == 0 {
 				delta += 8
@@ -1564,6 +1577,16 @@ func compileVelocityPattern(ctx authoredSectionContext, kind, name string, notes
 			}
 			if strings.Contains(lowerName, "sub") {
 				delta += 2
+			}
+			switch mode {
+			case "pedal":
+				delta -= 3
+			case "walk", "answer":
+				delta += 2
+			case "cadence":
+				if pos >= 6 {
+					delta += 6
+				}
 			}
 		case "melody":
 			if pos == 0 {
@@ -1578,6 +1601,20 @@ func compileVelocityPattern(ctx authoredSectionContext, kind, name string, notes
 			if ctx.has("cadence", "outro") && pos >= 6 {
 				delta -= 6
 			}
+			switch mode {
+			case "foreground", "climb":
+				if pos == 4 || pos == 6 {
+					delta += 4
+				}
+			case "answer", "echo":
+				delta -= 3
+			case "cadence":
+				if pos >= 6 {
+					delta += 5
+				}
+			case "tail":
+				delta -= 5
+			}
 		default:
 			if pos == 0 || pos == 4 {
 				delta += 5
@@ -1585,13 +1622,27 @@ func compileVelocityPattern(ctx authoredSectionContext, kind, name string, notes
 			if ctx.has("thin", "hush", "breakdown") {
 				delta -= 4
 			}
+			switch mode {
+			case "stab":
+				if pos == 0 || pos == 4 {
+					delta += 4
+				}
+			case "hold", "bed":
+				delta -= 2
+			case "push", "lift":
+				if pos >= 4 {
+					delta += 3
+				}
+			case "answer":
+				delta -= 1
+			}
 		}
 		out[i] = delta
 	}
 	return out
 }
 
-func compileTimingOffsets(ctx authoredSectionContext, kind, name string, notes []int) []float64 {
+func compileTimingOffsets(ctx authoredSectionContext, kind, name string, role Role, notes []int, phraseSpans []gen.AuthoredPhraseSpan) []float64 {
 	if len(notes) == 0 {
 		return nil
 	}
@@ -1606,6 +1657,8 @@ func compileTimingOffsets(ctx authoredSectionContext, kind, name string, notes [
 			continue
 		}
 		pos := i % authoredSlotsPerBar
+		span, phraseIdx := phraseSpanForSlot(phraseSpans, i)
+		mode := rolePhraseMode(ctx, kind, name, roleForPhrase(role, span.Label), span, phraseIdx)
 		switch kind {
 		case "drum":
 			switch lowerName {
@@ -1622,11 +1675,27 @@ func compileTimingOffsets(ctx authoredSectionContext, kind, name string, notes [
 			default:
 				out[i] = 0.001
 			}
+			switch mode {
+			case "fill", "push":
+				out[i] -= 0.003
+			case "thin", "air":
+				out[i] += 0.002
+			}
 		case "bass":
 			if ctx.motionBias() > 0 {
 				out[i] = -0.002
 			} else {
 				out[i] = baseLate * 0.5
+			}
+			switch mode {
+			case "pedal":
+				out[i] += 0.004
+			case "walk", "answer":
+				out[i] -= 0.002
+			case "cadence":
+				if pos >= 6 {
+					out[i] -= 0.003
+				}
 			}
 		case "melody":
 			if pos == 0 {
@@ -1634,9 +1703,93 @@ func compileTimingOffsets(ctx authoredSectionContext, kind, name string, notes [
 			} else {
 				out[i] = 0.001
 			}
+			switch mode {
+			case "answer", "echo":
+				out[i] += 0.003
+			case "climb":
+				out[i] -= 0.002
+			case "cadence":
+				if pos >= 6 {
+					out[i] += 0.002
+				}
+			}
 		default:
 			if strings.Contains(lowerName, "guitar") || strings.Contains(lowerName, "piano") || strings.Contains(lowerName, "keys") {
 				out[i] = 0.004
+			}
+			switch mode {
+			case "stab", "push":
+				out[i] -= 0.003
+			case "hold", "bed":
+				out[i] += 0.003
+			case "answer":
+				out[i] += 0.001
+			}
+		}
+	}
+	return out
+}
+
+func compileGatePattern(ctx authoredSectionContext, kind, name string, role Role, notes []int, phraseSpans []gen.AuthoredPhraseSpan, base float64) []float64 {
+	if len(notes) == 0 {
+		return nil
+	}
+	out := make([]float64, len(notes))
+	for i, note := range notes {
+		out[i] = base
+		if note < 0 {
+			continue
+		}
+		span, phraseIdx := phraseSpanForSlot(phraseSpans, i)
+		mode := rolePhraseMode(ctx, kind, name, roleForPhrase(role, span.Label), span, phraseIdx)
+		switch kind {
+		case "drum":
+			switch mode {
+			case "fill":
+				out[i] = minFloat(base, 0.46)
+			case "lift", "grid":
+				out[i] = minFloat(base, 0.52)
+			case "thin", "air":
+				out[i] = minFloat(base, 0.42)
+			default:
+				out[i] = minFloat(base, 0.58)
+			}
+		case "bass":
+			switch mode {
+			case "pedal":
+				out[i] = maxFloat(base, 1.10)
+			case "cadence":
+				out[i] = maxFloat(minFloat(base, 0.92), 0.78)
+			case "walk", "answer":
+				out[i] = maxFloat(minFloat(base, 0.88), 0.74)
+			default:
+				out[i] = maxFloat(minFloat(base, 0.96), 0.80)
+			}
+		case "melody":
+			switch mode {
+			case "foreground", "climb":
+				out[i] = maxFloat(minFloat(base, 0.88), 0.74)
+			case "answer", "echo":
+				out[i] = maxFloat(minFloat(base, 0.78), 0.62)
+			case "cadence":
+				out[i] = maxFloat(base, 0.98)
+			case "tail":
+				out[i] = maxFloat(minFloat(base, 0.66), 0.54)
+			default:
+				out[i] = base
+			}
+		default:
+			switch mode {
+			case "stab":
+				out[i] = maxFloat(minFloat(base, 0.52), 0.36)
+			case "push", "answer":
+				out[i] = maxFloat(minFloat(base, 0.70), 0.48)
+			case "hold", "bed", "close":
+				out[i] = maxFloat(base, 1.08)
+			case "lift":
+				out[i] = maxFloat(base, 0.92)
+			default:
+				out[i] = base
 			}
 		}
 	}
@@ -1855,7 +2008,7 @@ func shiftMelodyToken(token string, degreeDelta int, octaveUp bool) string {
 	return prefix + acc + strconv.Itoa(degree)
 }
 
-func authoredVoiceTracks(ctx authoredSectionContext, name string, role Role, template authoredRoleTemplate, voices [][]int, sustained bool) []gen.AuthoredRenderTrack {
+func authoredVoiceTracks(ctx authoredSectionContext, name string, role Role, template authoredRoleTemplate, voices [][]int, phraseSpans []gen.AuthoredPhraseSpan, sustained bool) []gen.AuthoredRenderTrack {
 	out := make([]gen.AuthoredRenderTrack, 0, len(voices))
 	for idx, notes := range voices {
 		if isAllRest(notes) {
@@ -1876,8 +2029,9 @@ func authoredVoiceTracks(ctx authoredSectionContext, name string, role Role, tem
 			Chorus:          template.Chorus,
 			Brightness:      template.Brightness,
 			Notes:           notes,
-			VelocityPattern: compileVelocityPattern(ctx, authoredRoleKind(name, role), name, notes),
-			TimingOffsets:   compileTimingOffsets(ctx, authoredRoleKind(name, role), name, notes),
+			VelocityPattern: compileVelocityPattern(ctx, authoredRoleKind(name, role), name, role, notes, phraseSpans),
+			TimingOffsets:   compileTimingOffsets(ctx, authoredRoleKind(name, role), name, role, notes, phraseSpans),
+			GatePattern:     compileGatePattern(ctx, authoredRoleKind(name, role), name, role, notes, phraseSpans, template.Gate),
 			Gate:            template.Gate,
 			SwingAmount:     template.Swing,
 			Legato:          sustained || template.Legato,

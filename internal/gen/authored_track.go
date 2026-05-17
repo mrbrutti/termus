@@ -37,6 +37,7 @@ type AuthoredRenderTrack struct {
 	Notes           []int
 	VelocityPattern []int32
 	TimingOffsets   []float64
+	GatePattern     []float64
 	Gate            float64
 	SwingAmount     float64
 	Legato          bool
@@ -107,6 +108,7 @@ func (a *AuthoredTrack) Seed(seed int64) {
 	for _, track := range a.plan.Tracks {
 		velocityPattern := append([]int32(nil), track.VelocityPattern...)
 		timingOffsets := append([]float64(nil), track.TimingOffsets...)
+		gatePattern := append([]float64(nil), track.GatePattern...)
 		cfg := SF2Track{
 			Channel:         track.Channel,
 			Velocity:        authoredVelocity(track.Velocity, a.profile),
@@ -141,6 +143,14 @@ func (a *AuthoredTrack) Seed(seed int64) {
 					return 0
 				}
 				return timingOffsets[slot%len(timingOffsets)]
+			}
+		}
+		if len(gatePattern) > 0 {
+			cfg.ResolveGate = func(slot int, key int) float64 {
+				if len(gatePattern) == 0 {
+					return cfg.Gate
+				}
+				return gatePattern[slot%len(gatePattern)]
 			}
 		}
 		core.addTrack(cfg)

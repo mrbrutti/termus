@@ -690,29 +690,75 @@ sections:
 	releaseStart := (plan.PhraseSpans[1].StartBar - 1) * authoredSlotsPerBar
 	releaseEnd := plan.PhraseSpans[1].EndBar * authoredSlotsPerBar
 	var lead *gen.AuthoredRenderTrack
-	var keys *gen.AuthoredRenderTrack
+	var keyTracks []*gen.AuthoredRenderTrack
 	for i := range plan.Tracks {
 		if plan.Tracks[i].Name == "lead" {
 			lead = &plan.Tracks[i]
 		}
 		if strings.HasPrefix(plan.Tracks[i].Name, "keys-") {
-			keys = &plan.Tracks[i]
+			keyTracks = append(keyTracks, &plan.Tracks[i])
 		}
 	}
-	if lead == nil || keys == nil {
-		t.Fatalf("expected lead and keys tracks, got lead=%v keys=%v", lead != nil, keys != nil)
+	if lead == nil || len(keyTracks) == 0 {
+		t.Fatalf("expected lead and keys tracks, got lead=%v keyTracks=%d", lead != nil, len(keyTracks))
 	}
 	if got := ((lead.Notes[releaseStart] % 12) + 12) % 12; got != 5 {
 		t.Fatalf("expected release phrase to start on scale degree 3 over Dm9, got pitch class %d", got)
 	}
 	active := 0
 	for i := releaseStart; i < releaseEnd; i++ {
-		if keys.Notes[i] >= 0 {
-			active++
+		for _, keys := range keyTracks {
+			if keys.Notes[i] >= 0 {
+				active++
+			}
 		}
 	}
 	if active > 2*authoredSlotsPerBar {
 		t.Fatalf("expected release comp phrase to stay sparse, got %d active notes", active)
+	}
+	statementLead := 0
+	for statementLead < releaseStart && lead.Notes[statementLead] < 0 {
+		statementLead++
+	}
+	releaseLead := releaseStart
+	for releaseLead < releaseEnd && lead.Notes[releaseLead] < 0 {
+		releaseLead++
+	}
+	statementKeyTrackIdx, statementKeys := -1, -1
+	releaseKeyTrackIdx, releaseKeys := -1, -1
+	for idx, keys := range keyTracks {
+		for slot := 0; slot < releaseStart; slot++ {
+			if keys.Notes[slot] >= 0 {
+				statementKeyTrackIdx, statementKeys = idx, slot
+				break
+			}
+		}
+		for slot := releaseStart; slot < releaseEnd; slot++ {
+			if keys.Notes[slot] >= 0 {
+				releaseKeyTrackIdx, releaseKeys = idx, slot
+				break
+			}
+		}
+		if statementKeyTrackIdx >= 0 && releaseKeyTrackIdx >= 0 {
+			break
+		}
+	}
+	if releaseLead >= len(lead.GatePattern) || statementLead >= len(lead.GatePattern) {
+		t.Fatal("expected active lead notes in both statement and release phrases")
+	}
+	if releaseKeyTrackIdx < 0 || statementKeyTrackIdx < 0 || releaseKeys < 0 || statementKeys < 0 {
+		t.Fatal("expected active comp notes in both statement and release phrases")
+	}
+	statementKeysTrack := keyTracks[statementKeyTrackIdx]
+	releaseKeysTrack := keyTracks[releaseKeyTrackIdx]
+	if lead.GatePattern[releaseLead] >= lead.GatePattern[statementLead] {
+		t.Fatalf("expected release lead gate %.2f to shorten vs statement %.2f", lead.GatePattern[releaseLead], lead.GatePattern[statementLead])
+	}
+	if releaseKeysTrack.GatePattern[releaseKeys] <= statementKeysTrack.GatePattern[statementKeys] {
+		t.Fatalf("expected release comp gate %.2f to hold more than statement %.2f", releaseKeysTrack.GatePattern[releaseKeys], statementKeysTrack.GatePattern[statementKeys])
+	}
+	if lead.VelocityPattern[releaseLead] >= lead.VelocityPattern[statementLead] {
+		t.Fatalf("expected release lead velocity %d to relax vs earlier phrase %d", lead.VelocityPattern[releaseLead], lead.VelocityPattern[statementLead])
 	}
 }
 
