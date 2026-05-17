@@ -1079,6 +1079,81 @@ sections:
 	}
 }
 
+func TestCompileUsesDeeperCompVocabulary(t *testing.T) {
+	const src = `
+title: Comp Vocabulary
+style: jazz
+roles:
+  comp:
+    family: acoustic_piano
+sections:
+  - id: comp
+    duration: 12s
+    harmony: "Dm7 G7 | Cmaj7 A7 | Fmaj7 E7 | Dm7 G7 | Em7 A7 | Dm7 G7"
+`
+	file, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	compiled, err := Compile(file, 233, gen.ListeningModeEndless)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	var plan gen.AuthoredTrackPlan
+	for _, got := range compiled.Plans {
+		plan = got
+	}
+	var compVoices []*gen.AuthoredRenderTrack
+	for i := range plan.Tracks {
+		if strings.HasPrefix(plan.Tracks[i].Name, "comp-") {
+			compVoices = append(compVoices, &plan.Tracks[i])
+		}
+	}
+	if len(compVoices) < 2 {
+		t.Fatalf("expected multiple comp voices, got %d", len(compVoices))
+	}
+	statementBar := 0
+	answerBar := 2
+	releaseBar := 4
+	statementHits := 0
+	answerHits := 0
+	releaseHits := 0
+	statementWidth := 0
+	answerWidth := 0
+	for slot := 0; slot < len(plan.Tracks[0].Notes); slot++ {
+		bar := slot / authoredSlotsPerBar
+		activeVoices := 0
+		for _, voice := range compVoices {
+			if voice.Notes[slot] >= 0 {
+				activeVoices++
+			}
+		}
+		switch bar {
+		case statementBar:
+			statementHits += activeVoices
+			if activeVoices > statementWidth {
+				statementWidth = activeVoices
+			}
+		case answerBar:
+			answerHits += activeVoices
+			if activeVoices > answerWidth {
+				answerWidth = activeVoices
+			}
+		case releaseBar:
+			releaseHits += activeVoices
+		}
+	}
+	if statementHits == answerHits {
+		t.Fatalf("expected answer comp rhythm to differ from statement, both had %d active voice hits", statementHits)
+	}
+	if statementWidth == answerWidth {
+		t.Fatalf("expected answer voicing width to differ from statement, both peaked at %d voices", statementWidth)
+	}
+	if releaseHits >= statementHits {
+		t.Fatalf("expected release comp to thin out vs statement, got release=%d statement=%d", releaseHits, statementHits)
+	}
+}
+
 func TestCompileVariationBudgetWarnings(t *testing.T) {
 	const src = `
 title: Budget Warnings

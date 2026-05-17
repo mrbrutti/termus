@@ -1765,7 +1765,60 @@ func compilePadVoices(ctx authoredSectionContext, name string, role Role, bars [
 }
 
 func compileCompVoices(ctx authoredSectionContext, name string, role Role, bars []authoredHarmonyBar, totalBars int, phraseSpans []gen.AuthoredPhraseSpan) [][]int {
-	return compilePadVoices(ctx, name, role, bars, totalBars, phraseSpans)
+	grid := expandPhraseRhythmPattern(role, totalBars, phraseSpans, defaultRhythmPattern(name))
+	maxVoices := 4
+	voices := make([][]int, maxVoices)
+	for i := range voices {
+		voices[i] = make([]int, len(grid))
+		for j := range voices[i] {
+			voices[i][j] = -1
+		}
+	}
+	for slot, active := range grid {
+		span, phraseIdx := phraseSpanForSlot(phraseSpans, slot)
+		localRole := roleForPhrase(role, span.Label)
+		mode := rolePhraseMode(ctx, "comp", name, localRole, span, phraseIdx)
+		active = phraseRhythmActive(ctx, "comp", name, localRole, span, phraseIdx, slot, active)
+		active = compSlotActive(ctx, name, localRole, mode, slot, active)
+		if !active {
+			continue
+		}
+		chord := chordForSlot(bars, slot)
+		voicing := chordVoicing(ctx, name, localRole, chord, mode, phraseIdx)
+		center := roleRegisterCenter(localRole.Register, ctx.style, name) + ctx.registerShift()/3
+		for i := range voices {
+			if i >= len(voicing) {
+				continue
+			}
+			voices[i][slot] = placePitchNear(rootMidiForRegister(chord.RootPC, role.Register, ctx.style, name)+voicing[i], center+i*3)
+		}
+	}
+	return voices
+}
+
+func compSlotActive(ctx authoredSectionContext, name string, role Role, mode string, slot int, active bool) bool {
+	pos := slot % authoredSlotsPerBar
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "hold":
+		return pos == 0
+	case "stab":
+		return active && (pos == 0 || pos == 4)
+	case "answer":
+		if active {
+			return pos == 0 || pos == 4 || pos == 6
+		}
+		if ctx.style == "jazz" {
+			return pos == 1 || pos == 6
+		}
+		return pos == 2 || pos == 7
+	case "push":
+		if active {
+			return pos == 0 || pos == 3 || pos == 5
+		}
+		return pos == 2 || pos == 7
+	default:
+		return active
+	}
 }
 
 func compileMelody(ctx authoredSectionContext, name string, role Role, bars []authoredHarmonyBar, totalBars int, phraseSpans []gen.AuthoredPhraseSpan) []int {
@@ -2609,6 +2662,42 @@ func chordVoicing(ctx authoredSectionContext, name string, role Role, chord auth
 		case "guitar", "pluck":
 			return []int{chordDegreeInterval(chord, 9), chordDegreeInterval(chord, 3), chordDegreeInterval(chord, 13)}
 		case "piano", "keys", "rhodes", "ep", "comp", "organ":
+			if ctx.style == "jazz" {
+				switch phraseMode {
+				case "hold":
+					return []int{chordDegreeInterval(chord, 7), chordDegreeInterval(chord, 9)}
+				case "answer":
+					return []int{chordDegreeInterval(chord, 7), chordDegreeInterval(chord, 9), chordDegreeInterval(chord, 13)}
+				case "stab":
+					return []int{chordDegreeInterval(chord, 3), chordDegreeInterval(chord, 7), chordDegreeInterval(chord, 13)}
+				case "push":
+					return []int{chordDegreeInterval(chord, 3), chordDegreeInterval(chord, 7), chordDegreeInterval(chord, 9)}
+				default:
+					return []int{chordDegreeInterval(chord, 3), chordDegreeInterval(chord, 7), chordDegreeInterval(chord, 9), chordDegreeInterval(chord, 13)}
+				}
+			}
+			if ctx.style == "lofi" {
+				switch phraseMode {
+				case "hold":
+					return []int{chordDegreeInterval(chord, 7), chordDegreeInterval(chord, 9)}
+				case "answer":
+					return []int{chordDegreeInterval(chord, 3), chordDegreeInterval(chord, 7), chordDegreeInterval(chord, 11)}
+				case "push":
+					return []int{chordDegreeInterval(chord, 7), chordDegreeInterval(chord, 9), chordDegreeInterval(chord, 11)}
+				default:
+					return []int{chordDegreeInterval(chord, 3), chordDegreeInterval(chord, 7), chordDegreeInterval(chord, 9), chordDegreeInterval(chord, 11)}
+				}
+			}
+			if ctx.style == "classical" {
+				switch phraseMode {
+				case "hold":
+					return []int{chordDegreeInterval(chord, 3), chordDegreeInterval(chord, 5)}
+				case "answer":
+					return []int{chordDegreeInterval(chord, 5), chordDegreeInterval(chord, 9)}
+				default:
+					return []int{chordDegreeInterval(chord, 3), chordDegreeInterval(chord, 5), chordDegreeInterval(chord, 8)}
+				}
+			}
 			if family == "mallet" || strings.Contains(strings.ToLower(role.Prominence), "air") {
 				return []int{chordDegreeInterval(chord, 7), chordDegreeInterval(chord, 9)}
 			}
