@@ -403,7 +403,7 @@ func (a *Jazz) rebuildEpisodeMaterials() {
 	}
 	pattern := a.chooseAccentPattern(numBars)
 	a.accentAnd2, a.accentBeat4, a.accentAnd4 = pattern.and2, pattern.beat4, pattern.and4
-	a.saxMotifs = a.chooseSaxMotifs()
+	a.saxMotifs = a.applyDensityToSaxMotifs(a.chooseSaxMotifs())
 	a.saxPlan = a.makeSaxPlan(jazzSaxSlotsPerBar * numBars)
 }
 
@@ -1006,6 +1006,7 @@ func (a *Jazz) buildCompLine(interval, numBars int) []int {
 }
 
 func (a *Jazz) makeCompAccentPlans(numBars int) ([]bool, []bool, []bool) {
+	policy := densityPolicyFor("jazz", a.profile)
 	and2 := make([]bool, numBars)
 	beat4 := make([]bool, numBars)
 	and4 := make([]bool, numBars)
@@ -1036,11 +1037,30 @@ func (a *Jazz) makeCompAccentPlans(numBars int) ([]bool, []bool, []bool) {
 			and4[lastBar] = true
 		}
 	}
+	for i := 0; i < policy.AccentBonus && i < numBars; i++ {
+		bar := (i * numBars) / maxInt(1, policy.AccentBonus)
+		and2[bar] = true
+	}
 	return and2, beat4, and4
 }
 
 func (a *Jazz) makeSaxPlan(numSlots int) []int {
 	return trimOrRepeatPhrase(a.saxMotifs.A, numSlots, jazzPlanRest)
+}
+
+func (a *Jazz) applyDensityToSaxMotifs(base MotifMemory) MotifMemory {
+	policy := densityPolicyFor("jazz", a.profile)
+	if policy.LeadFillCount <= 0 {
+		return base
+	}
+	fillCodes := []int{jazzPlanThird, jazzPlanSeventh, jazzPlanNinth, jazzPlanApproachBelow}
+	return MotifMemory{
+		A:       densifyPhrase(base.A, jazzPlanRest, fillCodes, policy.LeadFillCount),
+		Aprime:  densifyPhrase(base.Aprime, jazzPlanRest, fillCodes, policy.LeadFillCount),
+		B:       densifyPhrase(base.B, jazzPlanRest, fillCodes, policy.LeadFillCount+1),
+		Cadence: densifyPhrase(base.Cadence, jazzPlanRest, fillCodes, policy.LeadFillCount),
+		Outro:   densifyPhrase(base.Outro, jazzPlanRest, fillCodes[:2], maxInt(0, policy.LeadFillCount-1)),
+	}
 }
 
 func (a *Jazz) saxPlanCodeAt(slot int) int {

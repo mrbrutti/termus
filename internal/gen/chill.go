@@ -451,6 +451,7 @@ func (a *Chill) rebuildEpisodeMaterials() {
 	a.progression = a.makeEpisodeProgression(targetBars)
 	numBars := len(a.progression)
 	bundle := a.chooseMotifBundle()
+	bundle = a.applyDensityToMotifBundle(bundle)
 	a.vibeMotifs = bundle.vibe
 	a.guitarMotifs = bundle.guitar
 	a.saxMotifs = bundle.sax
@@ -1048,6 +1049,38 @@ func (a *Chill) makeGuitarMotifs() MotifMemory {
 
 func (a *Chill) makeSaxPlan(numBars int) []int {
 	return trimOrRepeatPhrase(a.saxMotifs.A, numBars, chillPlanRest)
+}
+
+func (a *Chill) applyDensityToMotifBundle(bundle chillMotifBundle) chillMotifBundle {
+	policy := densityPolicyFor("lofi", a.profile)
+	if policy.LeadFillCount <= 0 {
+		return bundle
+	}
+	vibeFill := []int{chillPlanNinth, chillPlanEleventh, chillPlanThirteenth}
+	guitarFill := []int{chillPlanNinth, chillPlanSuspendFourth, chillPlanResolveThird}
+	saxFill := []int{chillPlanNinth, chillPlanEleventh, chillPlanPickupBelow, chillPlanResolveThird}
+	bundle.vibe = MotifMemory{
+		A:       densifyPhrase(bundle.vibe.A, chillPlanRest, vibeFill, maxInt(0, policy.LeadFillCount-1)),
+		Aprime:  densifyPhrase(bundle.vibe.Aprime, chillPlanRest, vibeFill, maxInt(0, policy.LeadFillCount-1)),
+		B:       densifyPhrase(bundle.vibe.B, chillPlanRest, vibeFill, policy.LeadFillCount),
+		Cadence: densifyPhrase(bundle.vibe.Cadence, chillPlanRest, vibeFill, maxInt(0, policy.LeadFillCount-1)),
+		Outro:   densifyPhrase(bundle.vibe.Outro, chillPlanRest, vibeFill[:2], 1),
+	}
+	bundle.guitar = MotifMemory{
+		A:       densifyPhrase(bundle.guitar.A, chillPlanRest, guitarFill, maxInt(0, policy.LeadFillCount-1)),
+		Aprime:  densifyPhrase(bundle.guitar.Aprime, chillPlanRest, guitarFill, maxInt(0, policy.LeadFillCount-1)),
+		B:       densifyPhrase(bundle.guitar.B, chillPlanRest, guitarFill, policy.LeadFillCount),
+		Cadence: densifyPhrase(bundle.guitar.Cadence, chillPlanRest, guitarFill, policy.LeadFillCount),
+		Outro:   densifyPhrase(bundle.guitar.Outro, chillPlanRest, guitarFill[:2], 1),
+	}
+	bundle.sax = MotifMemory{
+		A:       densifyPhrase(bundle.sax.A, chillPlanRest, saxFill, policy.LeadFillCount),
+		Aprime:  densifyPhrase(bundle.sax.Aprime, chillPlanRest, saxFill, policy.LeadFillCount),
+		B:       densifyPhrase(bundle.sax.B, chillPlanRest, saxFill, policy.LeadFillCount+1),
+		Cadence: densifyPhrase(bundle.sax.Cadence, chillPlanRest, saxFill, policy.LeadFillCount),
+		Outro:   densifyPhrase(bundle.sax.Outro, chillPlanRest, saxFill[:2], 1),
+	}
+	return bundle
 }
 
 func (a *Chill) saxPlanCodeAt(slot int) int {

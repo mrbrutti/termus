@@ -126,4 +126,4 @@
 - [x] Add a shared melodic phrase-grammar layer with question/answer, pickup/peak/release, and cadence-aware endings so melodic genres sound more composed and less slot-generated.
 
 ### Genre Density Policy
-- [ ] Add genre-specific density policies so note activity increases in `jazz` / `lofi` while `ambient` / `bells` / `drone` stay selective and spacious over long listening.
+- [x] Add genre-specific density policies so note activity increases in `jazz` / `lofi` while `ambient` / `bells` / `drone` stay selective and spacious over long listening.

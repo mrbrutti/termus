@@ -389,7 +389,7 @@ func (a *SF2Drone) applyArrangement() {
 	bass := SectionSceneFor(a.section, RoleBass)
 	reverbDelta := ReverbDelta(profile)
 	brightDelta := BrightnessDelta(profile)
-	densityDelta := int32(ProfileCentered(profile.Density) * 8)
+	densityDelta := int32(ProfileCentered(profile.Density)*8) + densityPolicyFor("drone", profile).TextureExpressionBias
 	droneDelta := DroneDepthDelta(profile)
 	a.core.setReverbSend(0, SectionCC(120, texture.ReverbDelta+reverbDelta))
 	a.core.setReverbSend(1, SectionCC(110, texture.ReverbDelta+reverbDelta))

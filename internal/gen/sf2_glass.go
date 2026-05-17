@@ -513,7 +513,9 @@ func (a *SF2Glass) makeMusicBoxMotifs() MotifMemory {
 func (a *SF2Glass) syncSection() {
 	cadence := len(a.chordOffsets) > 0 && a.currentChordIdx == len(a.chordOffsets)-1 && a.musicBoxOn != nil && *a.musicBoxOn
 	musicBox := a.musicBoxOn != nil && *a.musicBoxOn
-	if profileOrDefault(a.profile).Density <= 1 && a.musicBoxOn != nil {
+	profile := profileOrDefault(a.profile)
+	policy := densityPolicyFor("bells", profile)
+	if profile.Density < policy.SecondaryTextureFloor && a.musicBoxOn != nil && !cadence {
 		*a.musicBoxOn = false
 		musicBox = false
 	}
@@ -534,7 +536,7 @@ func (a *SF2Glass) applyArrangement() {
 	bass := SectionSceneFor(a.section, RoleBass)
 	reverbDelta := ReverbDelta(profile)
 	brightDelta := BrightnessDelta(profile)
-	densityDelta := int32(ProfileCentered(profile.Density) * 8)
+	densityDelta := int32(ProfileCentered(profile.Density)*8) + densityPolicyFor("bells", profile).TextureExpressionBias
 	droneDelta := DroneDepthDelta(profile)
 	a.core.setReverbSend(0, SectionCC(120, lead.ReverbDelta+reverbDelta))
 	a.core.setReverbSend(1, SectionCC(120, lead.ReverbDelta+reverbDelta))

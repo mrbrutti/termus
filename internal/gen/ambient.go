@@ -524,7 +524,8 @@ func (a *Ambient) syncSection() {
 	celesta := a.celestaOn != nil && *a.celestaOn
 	a.section = textureSectionForLayers(bells, celesta, cadence)
 	profile := profileOrDefault(a.profile)
-	if profile.Density <= 1 && a.celestaOn != nil {
+	policy := densityPolicyFor("ambient", profile)
+	if profile.Density < policy.SecondaryTextureFloor && a.celestaOn != nil && a.section.Kind != FormCadence {
 		*a.celestaOn = false
 	}
 	if profile.Density == 0 && a.bellsOn != nil && a.section.Kind != FormCadence {
@@ -546,7 +547,7 @@ func (a *Ambient) applyArrangement() {
 	bass := SectionSceneFor(a.section, RoleBass)
 	reverbDelta := ReverbDelta(profile)
 	brightDelta := BrightnessDelta(profile)
-	densityDelta := int32(ProfileCentered(profile.Density) * 8)
+	densityDelta := int32(ProfileCentered(profile.Density)*8) + densityPolicyFor("ambient", profile).TextureExpressionBias
 	droneDelta := DroneDepthDelta(profile)
 	a.core.setReverbSend(0, SectionCC(100, texture.ReverbDelta+reverbDelta))
 	a.core.setReverbSend(1, SectionCC(96, texture.ReverbDelta+reverbDelta))
