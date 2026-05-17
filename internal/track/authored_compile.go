@@ -115,6 +115,7 @@ func buildAuthoredPlan(spec gen.AlgoSpec, file *File, section Section, roles map
 		}
 		plan.Tracks = append(plan.Tracks, rendered...)
 	}
+	applyPhraseDynamics(ctx, &plan)
 	applySectionEvents(ctx, sectionEvents(section), harmonyBars, &plan)
 	if len(plan.Tracks) == 0 {
 		return gen.AuthoredTrackPlan{}, fmt.Errorf("no active authored role tracks compiled")
@@ -514,6 +515,139 @@ func applyEnding(track *gen.AuthoredRenderTrack, start, end int) {
 	}
 }
 
+func phraseSlotRange(span gen.AuthoredPhraseSpan) (int, int) {
+	start := maxInt(0, (span.StartBar-1)*authoredSlotsPerBar)
+	end := maxInt(start, span.EndBar*authoredSlotsPerBar)
+	return start, end
+}
+
+func applyPhraseDynamics(ctx authoredSectionContext, plan *gen.AuthoredTrackPlan) {
+	if plan == nil || len(plan.PhraseSpans) == 0 {
+		return
+	}
+	for idx := range plan.Tracks {
+		track := &plan.Tracks[idx]
+		role := Role{
+			Family:       track.Family,
+			Articulation: track.Articulation,
+			Prominence:   track.Prominence,
+		}
+		kind := authoredRoleKind(track.Name, role)
+		for _, span := range plan.PhraseSpans {
+			start, end := phraseSlotRange(span)
+			applyPhraseArc(ctx, track, kind, span.Label, start, end)
+		}
+	}
+}
+
+func applyPhraseArc(ctx authoredSectionContext, track *gen.AuthoredRenderTrack, kind, label string, start, end int) {
+	if track == nil || start >= end {
+		return
+	}
+	limit := minInt(len(track.Notes), end)
+	spanLen := maxInt(1, limit-start)
+	for i := maxInt(0, start); i < limit; i++ {
+		if track.Notes[i] < 0 {
+			continue
+		}
+		progress := float64(i-start) / float64(spanLen)
+		switch strings.ToLower(strings.TrimSpace(label)) {
+		case "statement":
+			bump := int32((0.5 - math.Abs(progress-0.5)) * 10)
+			track.VelocityPattern[i] += bump
+		case "answer":
+			track.VelocityPattern[i] -= 2
+			if progress > 0.35 && progress < 0.75 {
+				track.VelocityPattern[i] += 3
+			}
+		case "sequence":
+			track.VelocityPattern[i] += int32(progress * 8)
+			if i < len(track.TimingOffsets) {
+				track.TimingOffsets[i] -= 0.002
+			}
+		case "release":
+			track.VelocityPattern[i] -= int32(progress * 8)
+			if i < len(track.TimingOffsets) {
+				track.TimingOffsets[i] += 0.002
+			}
+		case "cadence":
+			if progress >= 0.55 {
+				track.VelocityPattern[i] += int32((1.0 - progress) * 8)
+			} else {
+				track.VelocityPattern[i] += int32(progress * 6)
+			}
+		}
+	}
+	if kind == "melody" && strings.ToLower(strings.TrimSpace(label)) != "cadence" {
+		for i := limit - 1; i >= maxInt(0, start); i-- {
+			if track.Notes[i] < 0 {
+				continue
+			}
+			track.Notes[i] = -1
+			if i < len(track.VelocityPattern) {
+				track.VelocityPattern[i] = 0
+			}
+			break
+		}
+	}
+	if strings.EqualFold(label, "cadence") || strings.EqualFold(label, "release") {
+		for i := limit - 1; i >= maxInt(0, start); i-- {
+			if track.Notes[i] < 0 {
+				continue
+			}
+			if i < len(track.GatePattern) {
+				switch kind {
+				case "comp", "pad":
+					track.GatePattern[i] = maxFloat(track.GatePattern[i], 1.18)
+				case "melody", "bass":
+					track.GatePattern[i] = maxFloat(track.GatePattern[i], 1.02)
+				}
+			}
+			break
+		}
+	}
+	if kind == "drum" && strings.EqualFold(label, "cadence") {
+		for i := maxInt(0, limit-2); i < limit; i++ {
+			if track.Notes[i] >= 0 {
+				track.VelocityPattern[i] += 5
+			}
+		}
+	}
+}
+
+func applyVelocityRamp(track *gen.AuthoredRenderTrack, start, end int, from, to int32) {
+	if track == nil || start >= end {
+		return
+	}
+	span := maxInt(1, end-start-1)
+	for i := maxInt(0, start); i < minInt(len(track.Notes), end); i++ {
+		if track.Notes[i] < 0 || i >= len(track.VelocityPattern) {
+			continue
+		}
+		progress := float64(i-start) / float64(span)
+		ramp := from + int32(float64(to-from)*progress)
+		track.VelocityPattern[i] += ramp
+	}
+}
+
+func applyBreath(track *gen.AuthoredRenderTrack, start, end int) {
+	if track == nil {
+		return
+	}
+	cutStart := maxInt(start, end-2)
+	muteSlots(track, cutStart, end)
+}
+
+func applyHold(track *gen.AuthoredRenderTrack, start, end int) {
+	if track == nil {
+		return
+	}
+	applyPedal(track, start, end)
+	for i := maxInt(0, start); i < minInt(len(track.GatePattern), end); i++ {
+		track.GatePattern[i] = maxFloat(track.GatePattern[i], 1.18)
+	}
+}
+
 func defaultFillPattern(role string) string {
 	switch strings.ToLower(strings.TrimSpace(role)) {
 	case "kick":
@@ -623,6 +757,49 @@ func applySectionEvents(ctx authoredSectionContext, events []Event, bars []autho
 					continue
 				}
 				applySwell(&plan.Tracks[idx], start, end)
+			}
+		case "crescendo":
+			for idx := range plan.Tracks {
+				if !eventRoleSelected(event, plan.Tracks[idx].Name) {
+					continue
+				}
+				applyVelocityRamp(&plan.Tracks[idx], start, end, 0, 16)
+			}
+		case "decrescendo":
+			for idx := range plan.Tracks {
+				if !eventRoleSelected(event, plan.Tracks[idx].Name) {
+					continue
+				}
+				applyVelocityRamp(&plan.Tracks[idx], start, end, 0, -16)
+			}
+		case "breath":
+			for idx := range plan.Tracks {
+				roleKind := authoredRoleKind(plan.Tracks[idx].Name, Role{Family: plan.Tracks[idx].Family})
+				if roleKind != "melody" && roleKind != "comp" && roleKind != "pad" {
+					continue
+				}
+				if !eventRoleSelected(event, plan.Tracks[idx].Name) {
+					continue
+				}
+				applyBreath(&plan.Tracks[idx], start, end)
+			}
+		case "hold":
+			for idx := range plan.Tracks {
+				roleKind := authoredRoleKind(plan.Tracks[idx].Name, Role{Family: plan.Tracks[idx].Family})
+				if roleKind != "melody" && roleKind != "comp" && roleKind != "pad" && roleKind != "bass" {
+					continue
+				}
+				if !eventRoleSelected(event, plan.Tracks[idx].Name) {
+					continue
+				}
+				applyHold(&plan.Tracks[idx], start, end)
+			}
+		case "silence":
+			for idx := range plan.Tracks {
+				if len(event.Roles) > 0 && !eventRoleSelected(event, plan.Tracks[idx].Name) {
+					continue
+				}
+				muteSlots(&plan.Tracks[idx], start, end)
 			}
 		case "double":
 			extra := make([]gen.AuthoredRenderTrack, 0, len(plan.Tracks))

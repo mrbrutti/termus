@@ -832,6 +832,105 @@ sections:
 	}
 }
 
+func TestCompileSupportsDynamicArrangementEvents(t *testing.T) {
+	const src = `
+title: Dynamic Events
+style: jazz
+roles:
+  lead:
+    family: brass
+    motif: "5 . 6 7 | 3 . 2 1"
+  comp:
+    family: acoustic_piano
+    pattern: "x..x.x.. | .x..x..x"
+sections:
+  - id: head
+    duration: 40s
+    harmony: "Dm7 G7 | Cmaj7 A7 | Fmaj7 E7 | Dm7 G7 | Cmaj7 Cmaj7"
+    arrangement:
+      events:
+        - kind: crescendo
+          bar: 1
+          bars: 2
+          roles: [lead]
+        - kind: breath
+          bar: 2
+          roles: [lead]
+        - kind: hold
+          bar: 4
+          roles: [comp]
+        - kind: silence
+          bar: 5
+          roles: [comp]
+`
+	file, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	compiled, err := Compile(file, 141, gen.ListeningModeEndless)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	var plan gen.AuthoredTrackPlan
+	for _, got := range compiled.Plans {
+		plan = got
+	}
+	var lead *gen.AuthoredRenderTrack
+	var comp *gen.AuthoredRenderTrack
+	for i := range plan.Tracks {
+		if plan.Tracks[i].Name == "lead" {
+			lead = &plan.Tracks[i]
+		}
+		if strings.HasPrefix(plan.Tracks[i].Name, "comp-") {
+			comp = &plan.Tracks[i]
+		}
+	}
+	if lead == nil || comp == nil {
+		t.Fatalf("expected lead and comp tracks, got lead=%v comp=%v", lead != nil, comp != nil)
+	}
+	firstLead := -1
+	laterLead := -1
+	for i := 0; i < 2*authoredSlotsPerBar; i++ {
+		if lead.Notes[i] >= 0 {
+			if firstLead < 0 {
+				firstLead = i
+			}
+			laterLead = i
+		}
+	}
+	if firstLead < 0 || laterLead < 0 || laterLead <= firstLead {
+		t.Fatal("expected active lead notes during crescendo range")
+	}
+	if lead.VelocityPattern[laterLead] <= lead.VelocityPattern[firstLead] {
+		t.Fatalf("expected crescendo to lift lead velocity from %d to %d", lead.VelocityPattern[firstLead], lead.VelocityPattern[laterLead])
+	}
+	breathEnd := 2 * authoredSlotsPerBar
+	for i := breathEnd - 2; i < breathEnd; i++ {
+		if lead.Notes[i] >= 0 {
+			t.Fatalf("expected breath gap near end of bar 2, slot %d still active with note %d", i, lead.Notes[i])
+		}
+	}
+	holdStart := 3 * authoredSlotsPerBar
+	holdEnd := 4 * authoredSlotsPerBar
+	held := false
+	for i := holdStart; i < holdEnd; i++ {
+		if comp.Notes[i] >= 0 && comp.GatePattern[i] > 1.10 {
+			held = true
+			break
+		}
+	}
+	if !held {
+		t.Fatal("expected held comp gate during hold event")
+	}
+	silenceStart := 4 * authoredSlotsPerBar
+	silenceEnd := 5 * authoredSlotsPerBar
+	for i := silenceStart; i < silenceEnd; i++ {
+		if comp.Notes[i] >= 0 {
+			t.Fatalf("expected silence event to mute comp at slot %d, got note %d", i, comp.Notes[i])
+		}
+	}
+}
+
 func TestCompileVariationBudgetWarnings(t *testing.T) {
 	const src = `
 title: Budget Warnings
