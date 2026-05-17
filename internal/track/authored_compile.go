@@ -49,6 +49,17 @@ type authoredSectionContext struct {
 	rng       *rand.Rand
 }
 
+func ctxForSection(style string, section Section, profile gen.ControlProfile, seed int64) authoredSectionContext {
+	return authoredSectionContext{
+		style:     style,
+		sectionID: firstNonBlank(section.Title, section.ID),
+		variation: strings.ToLower(strings.TrimSpace(section.Variation)),
+		scene:     strings.ToLower(strings.TrimSpace(section.Scene)),
+		profile:   profile,
+		rng:       rand.New(rand.NewSource(seed)),
+	}
+}
+
 func buildAuthoredPlan(spec gen.AlgoSpec, file *File, section Section, roles map[string]Role, dur time.Duration, profile gen.ControlProfile, seed int64) (gen.AuthoredTrackPlan, error) {
 	bpm := resolveTempoBPM(firstNonBlank(section.Tempo, file.Tempo), spec.Name)
 	barSec := 240.0 / bpm
@@ -66,6 +77,7 @@ func buildAuthoredPlan(spec gen.AlgoSpec, file *File, section Section, roles map
 	}
 	harmonyBars = repeatHarmonyBars(harmonyBars, targetBars)
 	slotCount := targetBars * authoredSlotsPerBar
+	phraseSpans := compilePhraseSpans(ctxForSection(spec.Name, section, profile, seed), targetBars)
 	plan := gen.AuthoredTrackPlan{
 		Style:       spec.Name,
 		Section:     firstNonBlank(section.Title, section.ID),
@@ -76,15 +88,9 @@ func buildAuthoredPlan(spec gen.AlgoSpec, file *File, section Section, roles map
 		BarCount:    targetBars,
 		SlotCount:   slotCount,
 		ChordSpans:  compileChordSpans(harmonyBars),
+		PhraseSpans: phraseSpans,
 	}
-	ctx := authoredSectionContext{
-		style:     spec.Name,
-		sectionID: firstNonBlank(section.Title, section.ID),
-		variation: strings.ToLower(strings.TrimSpace(section.Variation)),
-		scene:     strings.ToLower(strings.TrimSpace(section.Scene)),
-		profile:   profile,
-		rng:       rand.New(rand.NewSource(seed)),
-	}
+	ctx := ctxForSection(spec.Name, section, profile, seed)
 	roleNames := make([]string, 0, len(roles))
 	for name, role := range roles {
 		active := role.Active == nil || *role.Active
@@ -99,7 +105,7 @@ func buildAuthoredPlan(spec gen.AlgoSpec, file *File, section Section, roles map
 	sort.Strings(roleNames)
 	for _, roleName := range roleNames {
 		role := roles[roleName]
-		rendered, err := compileRoleTracks(ctx, roleName, role, harmonyBars, targetBars)
+		rendered, err := compileRoleTracks(ctx, roleName, role, harmonyBars, targetBars, phraseSpans)
 		if err != nil {
 			return gen.AuthoredTrackPlan{}, fmt.Errorf("%s: %w", roleName, err)
 		}
@@ -199,6 +205,74 @@ func (c authoredSectionContext) shouldLift() bool {
 	return c.registerShift() > 0
 }
 
+func compilePhraseSpans(ctx authoredSectionContext, totalBars int) []gen.AuthoredPhraseSpan {
+	if totalBars <= 0 {
+		return nil
+	}
+	phraseBars := phraseBlockSize(ctx.style, totalBars)
+	if phraseBars <= 0 {
+		phraseBars = totalBars
+	}
+	count := int(math.Ceil(float64(totalBars) / float64(phraseBars)))
+	out := make([]gen.AuthoredPhraseSpan, 0, count)
+	for startBar := 1; startBar <= totalBars; startBar += phraseBars {
+		endBar := minInt(totalBars, startBar+phraseBars-1)
+		idx := len(out)
+		label := "statement"
+		switch {
+		case idx == 0:
+			label = "statement"
+		case endBar == totalBars && ctx.has("cadence", "outro", "settle", "close"):
+			label = "cadence"
+		case endBar == totalBars:
+			label = "release"
+		case idx%2 == 1:
+			label = "answer"
+		default:
+			label = "sequence"
+		}
+		out = append(out, gen.AuthoredPhraseSpan{
+			StartBar: startBar,
+			EndBar:   endBar,
+			Label:    label,
+		})
+	}
+	return out
+}
+
+func phraseBlockSize(style string, totalBars int) int {
+	if totalBars <= 2 {
+		return totalBars
+	}
+	switch style {
+	case "ambient", "drone":
+		if totalBars >= 8 {
+			return 4
+		}
+		return 2
+	case "bells", "lullaby", "phase":
+		return 2
+	default:
+		if totalBars >= 8 {
+			return 4
+		}
+		return 2
+	}
+}
+
+func phraseSpanForSlot(spans []gen.AuthoredPhraseSpan, slot int) (gen.AuthoredPhraseSpan, int) {
+	bar := slot/authoredSlotsPerBar + 1
+	for idx, span := range spans {
+		if bar >= span.StartBar && bar <= span.EndBar {
+			return span, idx
+		}
+	}
+	if len(spans) == 0 {
+		return gen.AuthoredPhraseSpan{StartBar: 1, EndBar: maxInt(1, bar), Label: "statement"}, 0
+	}
+	return spans[len(spans)-1], len(spans) - 1
+}
+
 func eventSlotRange(event Event, totalBars int) (int, int) {
 	bar := event.Bar
 	if bar <= 0 {
@@ -261,7 +335,7 @@ func applyFill(track *gen.AuthoredRenderTrack, ctx authoredSectionContext, event
 	if pattern == "" {
 		pattern = defaultFillPattern(base)
 	}
-	notes := compileDrumPattern(ctx, pattern, base, maxInt(1, (end-start+authoredSlotsPerBar-1)/authoredSlotsPerBar))
+	notes := compileDrumPattern(ctx, pattern, base, maxInt(1, (end-start+authoredSlotsPerBar-1)/authoredSlotsPerBar), nil)
 	for i := start; i < end && i < len(track.Notes); i++ {
 		local := i - start
 		if local >= 0 && local < len(notes) {
@@ -551,12 +625,12 @@ func compileChordSpans(bars []authoredHarmonyBar) []gen.AuthoredChordSpan {
 	return spans
 }
 
-func compileRoleTracks(ctx authoredSectionContext, name string, role Role, bars []authoredHarmonyBar, totalBars int) ([]gen.AuthoredRenderTrack, error) {
+func compileRoleTracks(ctx authoredSectionContext, name string, role Role, bars []authoredHarmonyBar, totalBars int, phraseSpans []gen.AuthoredPhraseSpan) ([]gen.AuthoredRenderTrack, error) {
 	template := authoredTemplateFor(ctx.style, name, role)
 	kind := authoredRoleKind(name, role)
 	switch kind {
 	case "drum":
-		notes := compileDrumPattern(ctx, role.Pattern, name, totalBars)
+		notes := compileDrumPattern(ctx, role.Pattern, name, totalBars, phraseSpans)
 		if len(notes) == 0 {
 			return nil, nil
 		}
@@ -585,7 +659,7 @@ func compileRoleTracks(ctx authoredSectionContext, name string, role Role, bars 
 			FireProbability: 1,
 		}}, nil
 	case "bass":
-		notes := compileBassLine(ctx, name, role, bars, totalBars)
+		notes := compileBassLine(ctx, name, role, bars, totalBars, phraseSpans)
 		return []gen.AuthoredRenderTrack{{
 			Name:            name,
 			Family:          role.Family,
@@ -611,13 +685,13 @@ func compileRoleTracks(ctx authoredSectionContext, name string, role Role, bars 
 			FireProbability: 1,
 		}}, nil
 	case "pad":
-		voices := compilePadVoices(ctx, name, role, bars, totalBars)
+		voices := compilePadVoices(ctx, name, role, bars, totalBars, phraseSpans)
 		return authoredVoiceTracks(ctx, name, role, template, voices, true), nil
 	case "comp":
-		voices := compileCompVoices(ctx, name, role, bars, totalBars)
+		voices := compileCompVoices(ctx, name, role, bars, totalBars, phraseSpans)
 		return authoredVoiceTracks(ctx, name, role, template, voices, false), nil
 	default: // melody
-		notes := compileMelody(ctx, name, role, bars, totalBars)
+		notes := compileMelody(ctx, name, role, bars, totalBars, phraseSpans)
 		return []gen.AuthoredRenderTrack{{
 			Name:            name,
 			Family:          role.Family,
@@ -1050,10 +1124,12 @@ func applyRoleCharacter(base authoredRoleTemplate, role Role) authoredRoleTempla
 	return base
 }
 
-func compileDrumPattern(ctx authoredSectionContext, pattern, roleName string, totalBars int) []int {
+func compileDrumPattern(ctx authoredSectionContext, pattern, roleName string, totalBars int, phraseSpans []gen.AuthoredPhraseSpan) []int {
 	grid := expandRhythmPattern(pattern, totalBars, defaultRhythmPattern(roleName))
 	out := make([]int, len(grid))
 	for i, active := range grid {
+		span, phraseIdx := phraseSpanForSlot(phraseSpans, i)
+		active = phraseRhythmActive(ctx, authoredRoleKind(roleName, Role{Family: "drums"}), roleName, span, phraseIdx, i, active)
 		if active {
 			out[i] = drumNoteFor(ctx, roleName, i)
 		} else {
@@ -1063,12 +1139,13 @@ func compileDrumPattern(ctx authoredSectionContext, pattern, roleName string, to
 	return out
 }
 
-func compileBassLine(ctx authoredSectionContext, name string, role Role, bars []authoredHarmonyBar, totalBars int) []int {
+func compileBassLine(ctx authoredSectionContext, name string, role Role, bars []authoredHarmonyBar, totalBars int, phraseSpans []gen.AuthoredPhraseSpan) []int {
 	grid := expandRhythmPattern(role.Pattern, totalBars, defaultRhythmPattern(name))
 	out := make([]int, len(grid))
 	last := -1
 	for slot := range grid {
-		if !grid[slot] {
+		span, phraseIdx := phraseSpanForSlot(phraseSpans, slot)
+		if !phraseRhythmActive(ctx, "bass", name, span, phraseIdx, slot, grid[slot]) {
 			out[slot] = -1
 			continue
 		}
@@ -1093,6 +1170,10 @@ func compileBassLine(ctx authoredSectionContext, name string, role Role, bars []
 		case pos >= 6:
 			next := chordForSlot(bars, minInt(totalBars*authoredSlotsPerBar-1, slot+2))
 			note = approachTo(next.RootPC, base)
+		case span.Label == "answer" && pos%4 == 2:
+			note = placePitchNear(base+chordDegreeInterval(chord, 7), base+10)
+		case span.Label == "sequence" && pos == 4:
+			note = placePitchNear(base+chordDegreeInterval(chord, 9), base+12)
 		case pos%4 == 2:
 			note = placePitchNear(base+chordDegreeInterval(chord, 5), base+7)
 		default:
@@ -1113,7 +1194,7 @@ func compileBassLine(ctx authoredSectionContext, name string, role Role, bars []
 	return out
 }
 
-func compilePadVoices(ctx authoredSectionContext, name string, role Role, bars []authoredHarmonyBar, totalBars int) [][]int {
+func compilePadVoices(ctx authoredSectionContext, name string, role Role, bars []authoredHarmonyBar, totalBars int, phraseSpans []gen.AuthoredPhraseSpan) [][]int {
 	grid := expandRhythmPattern(role.Pattern, totalBars, defaultRhythmPattern(name))
 	maxVoices := 4
 	voices := make([][]int, maxVoices)
@@ -1124,11 +1205,13 @@ func compilePadVoices(ctx authoredSectionContext, name string, role Role, bars [
 		}
 	}
 	for slot, active := range grid {
+		span, phraseIdx := phraseSpanForSlot(phraseSpans, slot)
+		active = phraseRhythmActive(ctx, "pad", name, span, phraseIdx, slot, active)
 		if !active {
 			continue
 		}
 		chord := chordForSlot(bars, slot)
-		voicing := chordVoicing(ctx, name, role, chord)
+		voicing := chordVoicing(ctx, name, role, chord, span.Label, phraseIdx)
 		center := roleRegisterCenter(role.Register, ctx.style, name) + ctx.registerShift()/2
 		for i := range voices {
 			if i >= len(voicing) {
@@ -1140,16 +1223,17 @@ func compilePadVoices(ctx authoredSectionContext, name string, role Role, bars [
 	return voices
 }
 
-func compileCompVoices(ctx authoredSectionContext, name string, role Role, bars []authoredHarmonyBar, totalBars int) [][]int {
-	return compilePadVoices(ctx, name, role, bars, totalBars)
+func compileCompVoices(ctx authoredSectionContext, name string, role Role, bars []authoredHarmonyBar, totalBars int, phraseSpans []gen.AuthoredPhraseSpan) [][]int {
+	return compilePadVoices(ctx, name, role, bars, totalBars, phraseSpans)
 }
 
-func compileMelody(ctx authoredSectionContext, name string, role Role, bars []authoredHarmonyBar, totalBars int) []int {
+func compileMelody(ctx authoredSectionContext, name string, role Role, bars []authoredHarmonyBar, totalBars int, phraseSpans []gen.AuthoredPhraseSpan) []int {
 	tokens := expandMelodyPattern(roleValue(role.Motif, role.Pattern), totalBars, defaultMelodyPattern(ctx.style, name))
 	out := make([]int, len(tokens))
 	center := roleRegisterCenter(role.Register, ctx.style, name) + ctx.registerShift()
 	last := center
 	for slot, token := range tokens {
+		span, phraseIdx := phraseSpanForSlot(phraseSpans, slot)
 		token = strings.TrimSpace(token)
 		if ctx.shouldThin(slot) && token != "-" {
 			out[slot] = -1
@@ -1164,9 +1248,9 @@ func compileMelody(ctx authoredSectionContext, name string, role Role, bars []au
 			continue
 		}
 		chord := chordForSlot(bars, slot)
-		token = transformMelodyToken(ctx, token, slot)
+		token = transformMelodyToken(ctx, span.Label, phraseIdx, token, slot)
 		note := melodyTokenToMidi(chord, token, center, last)
-		if ctx.has("cadence", "outro") && slot%authoredSlotsPerBar >= 6 {
+		if (ctx.has("cadence", "outro") || span.Label == "cadence") && slot%authoredSlotsPerBar >= 6 {
 			note = minInt(note, last)
 		}
 		out[slot] = note
@@ -1303,13 +1387,54 @@ func compileTimingOffsets(ctx authoredSectionContext, kind, name string, notes [
 	return out
 }
 
-func transformMelodyToken(ctx authoredSectionContext, token string, slot int) string {
+func phraseRhythmActive(ctx authoredSectionContext, kind, name string, span gen.AuthoredPhraseSpan, phraseIdx, slot int, active bool) bool {
+	if !active {
+		return false
+	}
+	pos := slot % authoredSlotsPerBar
+	lower := strings.ToLower(strings.TrimSpace(name))
+	switch span.Label {
+	case "answer":
+		if kind == "drum" && (lower == "hat" || lower == "hihat" || lower == "ride") && pos%2 == 0 {
+			return false
+		}
+		if kind == "pad" && pos >= 6 {
+			return false
+		}
+	case "sequence":
+		if kind == "bass" && pos == 2 {
+			return false
+		}
+	case "release":
+		if kind == "pad" && pos == 0 && phraseIdx > 0 {
+			return false
+		}
+	case "cadence":
+		if kind == "drum" && (lower == "snare" || lower == "kick") && pos >= 6 {
+			return true
+		}
+		if (kind == "comp" || kind == "pad") && pos >= 4 {
+			return false
+		}
+	}
+	return true
+}
+
+func transformMelodyToken(ctx authoredSectionContext, phraseLabel string, phraseIdx int, token string, slot int) string {
 	if token == "" || token == "." || token == "-" || token == "r" {
 		return token
 	}
 	bar := slot / authoredSlotsPerBar
 	pos := slot % authoredSlotsPerBar
 	switch {
+	case phraseLabel == "answer" && pos <= 2:
+		return shiftMelodyToken(token, 2, false)
+	case phraseLabel == "sequence" && pos == 4:
+		return shiftMelodyToken(token, 1, false)
+	case phraseLabel == "cadence" && pos >= 6:
+		return shiftMelodyToken(token, -2, false)
+	case phraseLabel == "release" && phraseIdx > 0 && pos >= 4:
+		return shiftMelodyToken(token, -1, false)
 	case ctx.has("sequence-up", "answer-lift") && bar%2 == 1 && pos <= 2:
 		return shiftMelodyToken(token, 2, false)
 	case ctx.has("open-register", "lift-register") && pos == 4:
@@ -1551,18 +1676,24 @@ func chordForSlot(bars []authoredHarmonyBar, slot int) authoredChord {
 	return bars[bar].chords[len(bars[bar].chords)-1]
 }
 
-func chordVoicing(ctx authoredSectionContext, name string, role Role, chord authoredChord) []int {
+func chordVoicing(ctx authoredSectionContext, name string, role Role, chord authoredChord, phraseLabel string, phraseIdx int) []int {
 	lowerName := strings.ToLower(name)
 	family := strings.ToLower(role.Family)
 	switch authoredRoleKind(name, role) {
 	case "pad":
 		switch family {
 		case "pad", "choir":
-			if ctx.has("thin", "subtract", "breakdown") {
+			if ctx.has("thin", "subtract", "breakdown") || phraseLabel == "release" {
 				return []int{0, chordDegreeInterval(chord, 5), chordDegreeInterval(chord, 9)}
+			}
+			if phraseLabel == "answer" {
+				return []int{0, chordDegreeInterval(chord, 7), chordDegreeInterval(chord, 11)}
 			}
 			return []int{0, chordDegreeInterval(chord, 5), chordDegreeInterval(chord, 9), chordDegreeInterval(chord, 11)}
 		case "strings":
+			if phraseLabel == "cadence" {
+				return []int{0, chordDegreeInterval(chord, 5), chordDegreeInterval(chord, 9)}
+			}
 			return []int{0, chordDegreeInterval(chord, 3), chordDegreeInterval(chord, 5), chordDegreeInterval(chord, 9)}
 		default:
 			return []int{0, chordDegreeInterval(chord, 5), chordDegreeInterval(chord, 9)}
@@ -1575,13 +1706,22 @@ func chordVoicing(ctx authoredSectionContext, name string, role Role, chord auth
 			if family == "mallet" || strings.Contains(strings.ToLower(role.Prominence), "air") {
 				return []int{chordDegreeInterval(chord, 7), chordDegreeInterval(chord, 9)}
 			}
-			if ctx.has("thin", "hush", "breakdown") {
+			if ctx.has("thin", "hush", "breakdown") || phraseLabel == "release" {
 				return []int{chordDegreeInterval(chord, 3), chordDegreeInterval(chord, 7)}
+			}
+			if phraseLabel == "answer" {
+				return []int{chordDegreeInterval(chord, 7), chordDegreeInterval(chord, 9), chordDegreeInterval(chord, 13)}
+			}
+			if phraseLabel == "cadence" || phraseIdx%2 == 1 {
+				return []int{chordDegreeInterval(chord, 3), chordDegreeInterval(chord, 7), chordDegreeInterval(chord, 13)}
 			}
 			return []int{chordDegreeInterval(chord, 3), chordDegreeInterval(chord, 7), chordDegreeInterval(chord, 9), chordDegreeInterval(chord, 13)}
 		case "vibes", "vibraphone", "mallet":
-			if ctx.has("thin", "air", "breakdown") {
+			if ctx.has("thin", "air", "breakdown") || phraseLabel == "release" {
 				return []int{chordDegreeInterval(chord, 9)}
+			}
+			if phraseLabel == "answer" {
+				return []int{chordDegreeInterval(chord, 7), chordDegreeInterval(chord, 9)}
 			}
 			return []int{chordDegreeInterval(chord, 3), chordDegreeInterval(chord, 7), chordDegreeInterval(chord, 9)}
 		default:

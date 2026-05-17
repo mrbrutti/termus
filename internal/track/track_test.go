@@ -67,6 +67,11 @@ sections:
 	if len(compiled.Plans) != 2 {
 		t.Fatalf("plan count = %d, want 2", len(compiled.Plans))
 	}
+	for _, plan := range compiled.Plans {
+		if len(plan.PhraseSpans) == 0 {
+			t.Fatal("expected phrase spans in authored plan")
+		}
+	}
 }
 
 func TestCompileRejectsBadPattern(t *testing.T) {
@@ -205,6 +210,48 @@ sections:
 	}
 	if got := piano.Notes[1]; got != -1 {
 		t.Fatalf("expected stabbed piano slot 1 to be muted, got %d", got)
+	}
+}
+
+func TestCompileBuildsPhraseBlocks(t *testing.T) {
+	const src = `
+title: Phrase Blocks
+style: lofi
+seed: 21
+roles:
+  lead:
+    family: reed_lead
+    motif: "5 . 6 7 | 3 . 2 1"
+  keys:
+    family: electric_piano
+    pattern: "x..x .x.."
+sections:
+  - id: long
+    duration: 32s
+    harmony: "Dm9 G13 | Cmaj9 A7 | Bbmaj9 A7 | Dm9 G13"
+    scene: "head glide"
+    variation: "introduce-hook"
+`
+	file, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	compiled, err := Compile(file, 21, gen.ListeningModeEndless)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	var plan gen.AuthoredTrackPlan
+	for _, got := range compiled.Plans {
+		plan = got
+	}
+	if len(plan.PhraseSpans) < 2 {
+		t.Fatalf("expected multiple phrase spans, got %d", len(plan.PhraseSpans))
+	}
+	if got, want := plan.PhraseSpans[0].Label, "statement"; got != want {
+		t.Fatalf("first phrase label = %q, want %q", got, want)
+	}
+	if got, want := plan.PhraseSpans[len(plan.PhraseSpans)-1].Label, "release"; got != want {
+		t.Fatalf("last phrase label = %q, want %q", got, want)
 	}
 }
 

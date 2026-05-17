@@ -14,6 +14,12 @@ type AuthoredChordSpan struct {
 	Label     string
 }
 
+type AuthoredPhraseSpan struct {
+	StartBar int
+	EndBar   int
+	Label    string
+}
+
 type AuthoredRenderTrack struct {
 	Name            string
 	Family          string
@@ -49,6 +55,7 @@ type AuthoredTrackPlan struct {
 	BarCount    int
 	SlotCount   int
 	ChordSpans  []AuthoredChordSpan
+	PhraseSpans []AuthoredPhraseSpan
 	Tracks      []AuthoredRenderTrack
 }
 
