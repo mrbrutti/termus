@@ -77,6 +77,7 @@ type Compiled struct {
 	Playlist   gen.Playlist
 	Profiles   map[string]gen.ControlProfile
 	Blueprints map[string]gen.TrackBlueprint
+	Plans      map[string]gen.AuthoredTrackPlan
 	Warnings   []Warning
 }
 

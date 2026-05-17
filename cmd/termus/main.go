@@ -271,6 +271,16 @@ func main() {
 		}
 		return nil
 	}
+	planFor := func(s gen.AlgoSpec, algoSeed int64) *gen.AuthoredTrackPlan {
+		if activeTrack == nil {
+			return nil
+		}
+		if plan, ok := activeTrack.Plans[fmt.Sprintf("%s:%d", s.Name, algoSeed)]; ok {
+			cloned := plan
+			return &cloned
+		}
+		return nil
+	}
 	selectionFor := func(s gen.AlgoSpec, algoSeed int64) gen.SF2Selection {
 		return gen.ResolveSF2Selection(s, blueprintFor(s, algoSeed), sfStrategy, *sf2Preset)
 	}
@@ -311,9 +321,14 @@ func main() {
 			}
 			gen.SetSF2RuntimeWithRoutes(sfStrategy, catalog.snapshot(), map[string]map[int32]string{s.Name: selection.Routes})
 		}
-		a := s.Build(chosen)
-		if blueprint := blueprintFor(s, algoSeed); blueprint != nil {
-			a = gen.ApplyTrackBlueprint(a, *blueprint)
+		var a gen.Algorithm
+		if plan := planFor(s, algoSeed); plan != nil {
+			a = gen.NewAuthoredTrack(s, chosen, *plan)
+		} else {
+			a = s.Build(chosen)
+			if blueprint := blueprintFor(s, algoSeed); blueprint != nil {
+				a = gen.ApplyTrackBlueprint(a, *blueprint)
+			}
 		}
 		a = gen.ConfigureControlProfile(a, profileFor(s, algoSeed))
 		a.Seed(algoSeed)

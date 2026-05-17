@@ -164,12 +164,298 @@ func presetScore(style string, preset sf2PresetProfile, intents []SF2RoleIntent,
 }
 
 func roleIntentsForSpec(spec AlgoSpec, blueprint *TrackBlueprint) []SF2RoleIntent {
+	if blueprint != nil && len(blueprint.Roles) > 0 {
+		if intents := intentsFromBlueprint(spec.Name, blueprint.Roles); len(intents) > 0 {
+			return intents
+		}
+	}
 	base := defaultRolePlan(spec.Name)
 	if blueprint == nil {
 		return base
 	}
 	overrideRolePlan(spec.Name, base, blueprint.Roles)
 	return base
+}
+
+func intentsFromBlueprint(style string, roles map[string]RoleBlueprint) []SF2RoleIntent {
+	if len(roles) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(roles))
+	for name := range roles {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	seen := map[int32]int{}
+	intents := make([]SF2RoleIntent, 0, len(names))
+	for _, name := range names {
+		role := roles[name]
+		if !role.Active {
+			continue
+		}
+		family := strings.TrimSpace(role.Family)
+		if family == "" {
+			family = inferFamilyFromRole(name)
+		}
+		intent := SF2RoleIntent{
+			Channel:      roleIntentChannel(style, name, family),
+			Role:         name,
+			Family:       family,
+			Tone:         append([]string(nil), role.Tone...),
+			Articulation: role.Articulation,
+			Register:     role.Register,
+			Prominence:   role.Prominence,
+			Active:       true,
+		}
+		if strings.TrimSpace(intent.Prominence) == "" {
+			intent.Prominence = inferredProminence(name, family)
+		}
+		if idx, ok := seen[intent.Channel]; ok {
+			if intent.Family != "" && intents[idx].Family == "" {
+				intents[idx].Family = intent.Family
+			}
+			intents[idx].Tone = dedupeFold(append(intents[idx].Tone, intent.Tone...))
+			if intents[idx].Prominence == "" {
+				intents[idx].Prominence = intent.Prominence
+			}
+			continue
+		}
+		seen[intent.Channel] = len(intents)
+		intents = append(intents, intent)
+	}
+	return intents
+}
+
+func roleIntentChannel(style, name, family string) int32 {
+	lowerName := strings.ToLower(strings.TrimSpace(name))
+	family = strings.ToLower(strings.TrimSpace(family))
+	switch lowerName {
+	case "kick", "snare", "hat", "hihat", "ride", "crash", "openhat", "clap", "rim", "tom", "tom-high", "tom-low", "perc", "drums":
+		return 9
+	}
+	switch style {
+	case "lofi":
+		switch lowerName {
+		case "keys", "rhodes", "ep", "chords":
+			return 0
+		case "bass", "sub":
+			return 1
+		case "texture", "vibes", "vibraphone", "mallet":
+			return 2
+		case "lead", "sax", "hook", "counter", "flute":
+			return 3
+		case "guitar", "pluck":
+			return 4
+		case "pad", "choir":
+			return 5
+		}
+	case "jazz":
+		switch lowerName {
+		case "keys", "piano", "comp":
+			return 0
+		case "bass", "walk":
+			return 1
+		case "lead", "sax", "horn", "alto", "tenor", "clarinet", "trumpet":
+			return 2
+		case "guitar", "vibes", "vibraphone":
+			return 3
+		case "organ":
+			return 4
+		}
+	case "bells":
+		switch lowerName {
+		case "bells":
+			return 0
+		case "celesta":
+			return 1
+		case "glock":
+			return 2
+		case "box", "music_box":
+			return 3
+		case "pad":
+			return 4
+		case "choir":
+			return 5
+		case "strings":
+			return 6
+		case "bass":
+			return 7
+		case "shimmer":
+			return 8
+		}
+	case "ambient":
+		switch lowerName {
+		case "pad":
+			return 0
+		case "choir":
+			return 1
+		case "texture", "bells", "sparkle":
+			return 2
+		case "lead", "flute", "woodwind":
+			return 3
+		case "bass":
+			return 4
+		case "strings":
+			return 5
+		case "shimmer":
+			return 6
+		}
+	case "drone":
+		switch lowerName {
+		case "bed":
+			return 0
+		case "strings":
+			return 1
+		case "choir":
+			return 2
+		case "shimmer":
+			return 3
+		case "bass":
+			return 4
+		case "lead":
+			return 5
+		}
+	case "classical":
+		switch lowerName {
+		case "piano":
+			return 0
+		case "strings":
+			return 1
+		case "winds":
+			return 2
+		case "brass":
+			return 3
+		case "harp":
+			return 4
+		case "choir":
+			return 5
+		}
+	case "phase":
+		switch lowerName {
+		case "mallet-a", "mallet_a":
+			return 0
+		case "mallet-b", "mallet_b":
+			return 1
+		case "pad":
+			return 2
+		case "bass":
+			return 3
+		case "shimmer":
+			return 4
+		case "choir":
+			return 5
+		}
+	case "lullaby":
+		switch lowerName {
+		case "lead":
+			return 0
+		case "harp":
+			return 1
+		case "choir":
+			return 2
+		case "box":
+			return 3
+		case "pad":
+			return 4
+		}
+	}
+	switch family {
+	case "acoustic_piano", "electric_piano":
+		return 0
+	case "bass", "synth_bass":
+		return 1
+	case "reed_lead", "woodwind", "brass":
+		return 2
+	case "guitar", "mallet", "music_box":
+		return 3
+	case "pad":
+		return 4
+	case "choir":
+		return 5
+	case "strings":
+		return 6
+	default:
+		return 0
+	}
+}
+
+func inferFamilyFromRole(name string) string {
+	lowerName := strings.ToLower(strings.TrimSpace(name))
+	switch lowerName {
+	case "kick", "snare", "hat", "hihat", "ride", "crash", "openhat", "clap", "rim", "tom", "tom-high", "tom-low", "perc", "drums":
+		return "drums"
+	case "keys", "rhodes", "ep", "chords":
+		return "electric_piano"
+	case "piano", "comp":
+		return "acoustic_piano"
+	case "bass", "sub", "walk":
+		return "bass"
+	case "texture", "vibes", "vibraphone", "celesta":
+		return "mallet"
+	case "glock", "bells":
+		return "bells"
+	case "box", "music_box":
+		return "music_box"
+	case "guitar", "pluck":
+		return "guitar"
+	case "lead", "sax", "alto", "tenor", "clarinet", "hook", "counter":
+		return "reed_lead"
+	case "trumpet", "horn", "brass":
+		return "brass"
+	case "flute", "winds", "woodwind":
+		return "woodwind"
+	case "strings":
+		return "strings"
+	case "choir":
+		return "choir"
+	case "pad", "bed":
+		return "pad"
+	case "shimmer":
+		return "lead"
+	case "harp":
+		return "strings"
+	default:
+		return ""
+	}
+}
+
+func inferredProminence(name, family string) string {
+	lowerName := strings.ToLower(strings.TrimSpace(name))
+	family = strings.ToLower(strings.TrimSpace(family))
+	switch lowerName {
+	case "lead", "bells", "sax", "alto", "tenor", "trumpet", "flute":
+		return "lead"
+	case "texture", "choir", "glock", "box", "music_box", "shimmer":
+		return "air"
+	case "bass", "sub", "walk", "kick", "snare", "hat", "ride", "drums":
+		return "anchor"
+	case "keys", "piano", "guitar", "strings", "winds", "harp", "organ", "vibes":
+		return "support"
+	}
+	switch family {
+	case "bass", "synth_bass", "drums":
+		return "anchor"
+	case "choir", "pad", "strings", "mallet":
+		return "support"
+	case "reed_lead", "woodwind", "brass", "bells":
+		return "lead"
+	default:
+		return "support"
+	}
+}
+
+func dedupeFold(values []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		key := strings.ToLower(strings.TrimSpace(value))
+		if key == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, value)
+	}
+	return out
 }
 
 func defaultRolePlan(style string) []SF2RoleIntent {

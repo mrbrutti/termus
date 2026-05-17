@@ -54,6 +54,7 @@ func Compile(file *File, defaultSeed int64, defaultListenMode gen.ListeningMode)
 		},
 		Profiles:   make(map[string]gen.ControlProfile, len(file.Sections)),
 		Blueprints: make(map[string]gen.TrackBlueprint, len(file.Sections)),
+		Plans:      make(map[string]gen.AuthoredTrackPlan, len(file.Sections)),
 	}
 	for name, role := range file.Roles {
 		if err := validateRole(name, role); err != nil {
@@ -102,7 +103,13 @@ func Compile(file *File, defaultSeed int64, defaultListenMode gen.ListeningMode)
 		})
 		key := playlistKey(spec, seed)
 		compiled.Profiles[key] = profile
-		compiled.Blueprints[key] = buildBlueprint(file, section, mergedRoles)
+		blueprint := buildBlueprint(file, section, mergedRoles)
+		compiled.Blueprints[key] = blueprint
+		plan, err := buildAuthoredPlan(spec, file, section, mergedRoles, dur, profile)
+		if err != nil {
+			return nil, fmt.Errorf("sections[%d].plan: %w", i, err)
+		}
+		compiled.Plans[key] = plan
 	}
 	compiled.Warnings = lintFile(file, compiled.Playlist.Tracks)
 	return compiled, nil

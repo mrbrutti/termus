@@ -1,9 +1,9 @@
 title: Soft Tape / Rain Bus
-description: Late-night bus ride with patient chord motion, a brighter middle, and a quiet platform return.
+description: Rhodes-led late bus study with a patient hook, lifted bridge, and a quiet curbside return.
 style: lofi
 listen_mode: album-side
 seed: 42017
-tags: [lofi, warm, late-night, dusty, ride]
+tags: [lofi, rain, bus, dusty, late-night]
 key: Dmin
 tempo: 78
 globals:
@@ -19,51 +19,69 @@ roles:
     articulation: stab
     register: mid
     prominence: support
-    pattern: "x..x .x.. | x.x. .x.."
+    pattern: "x..x.x.. | x.x...x."
   bass:
     family: bass
     tone: [round, woody]
     articulation: legato
     register: low
     prominence: anchor
-    pattern: "x... x... | x..x x..."
-  lead:
-    family: reed_lead
-    tone: [breathy, intimate]
-    articulation: lyrical
-    register: mid-high
-    prominence: lead
-    motif: "5 . . 9 | b9 7 . 5 | 3 . 2 1 | . . . ."
-  texture:
+    pattern: "x...x..x | x.x...x."
+  kick:
+    family: drums
+    tone: [dusty, soft]
+    articulation: pocket
+    prominence: anchor
+    pattern: "x...x..x | x...x..."
+  snare:
+    family: drums
+    tone: [dusty, soft]
+    articulation: pocket
+    prominence: anchor
+    pattern: "....x... | ....x..."
+  hat:
+    family: drums
+    tone: [dry, tight]
+    articulation: pocket
+    prominence: support
+    pattern: "x.x.x.x. | x.xxx.x."
+  vibes:
     family: mallet
     tone: [glass, soft]
     articulation: halo
-    register: air
+    register: high
     prominence: air
-    pattern: "x... .... | ..x. ...."
+    pattern: "..x..... | ....x..."
   guitar:
     family: guitar
     tone: [soft, warm]
     articulation: answer
     register: mid
     prominence: support
-    pattern: ".x.. ...x | ..x. .x.."
-  drums:
-    family: drums
-    tone: [dusty, tight]
-    articulation: pocket
-    register: low
-    prominence: anchor
-    pattern: "x... x..x | ..x. ..x."
+    pattern: ".x..x..x | ..x...x."
+  lead:
+    family: reed_lead
+    tone: [breathy, intimate]
+    articulation: lyrical
+    register: mid-high
+    prominence: lead
+    motif: "5 . 6 . 7 . 9 7 | 5 . 3 . 2 . 1 ."
+  pad:
+    family: pad
+    tone: [soft, wide]
+    articulation: sustain
+    register: mid
+    prominence: air
+    pattern: "x....... | ....x..."
 sections:
   - id: intro
-    title: curbside intro
-    duration: 75s
-    harmony: "Dm9 G13 Cmaj9 A7 | Dm9 Bbmaj9 G13 A7"
-    scene: "intro sparse nocturne"
-    variation: "settle"
+    title: windshield beads
+    duration: 45s
+    harmony: "Dm9 G13 | Cmaj9 A7 | Dm9 Bbmaj9 | G13 A7"
+    scene: "intro hush"
+    variation: "establish"
     profile:
-      density: sparse
+      density: light
       brightness: warm
       motion: still
     roles:
@@ -71,26 +89,26 @@ sections:
         active: false
       guitar:
         active: false
-  - id: a
+      snare:
+        pattern: "........ | ....x..."
+      hat:
+        pattern: "x...x... | x...x..."
+  - id: verse-a
     title: aisle sway
-    duration: 135s
-    harmony: "Dm9 G13 Cmaj9 A7 | Bbmaj9 A7 Dm9 G13"
-    scene: "head warm moving"
+    duration: 60s
+    harmony: "Dm9 G13 | Cmaj9 A7 | Bbmaj9 A7 | Dm9 G13"
+    scene: "head glide"
     variation: "introduce-hook"
-    profile:
-      density: steady
-      motion: gentle
     roles:
       lead:
-        active: true
-        motif: "9 . b9 7 | 5 . 6 5 | 3 . 2 1 | . 9 7 5"
-      drums:
-        pattern: "x... x..x | ..x. ..x. | x.x. x.x."
-  - id: a-prime
-    title: tunnel answer
-    duration: 120s
-    harmony: "Fm9 Bb13 Ebmaj9 C7 | Dm9 G13 Cmaj9 A7"
-    scene: "lift denser pulse"
+        motif: "9 . b9 . 7 . 5 . | 6 . 5 . 3 . 2 1"
+      vibes:
+        pattern: "..x...x. | ....x..."
+  - id: verse-b
+    title: tunnel orange
+    duration: 60s
+    harmony: "Fm9 Bb13 | Ebmaj9 C7 | Dm9 G13 | Cmaj9 A7"
+    scene: "answer brighter"
     variation: "sequence-up"
     profile:
       density: busy
@@ -98,42 +116,63 @@ sections:
       motion: moving
     roles:
       lead:
-        motif: "5 . 6 7 | 9 . b9 7 | 5 - 3 1 | . 9 7 3"
+        motif: "5 . 6 7 9 . b9 7 | 5 . 3 . 2 . 1 ."
       guitar:
         active: true
-        pattern: ".x.. .x.x | ..x. .x.."
-      drums:
-        pattern: "x..x x..x | ..x. ..x. | x.x.x.x."
+        pattern: ".x..x..x | ..x.x..."
+      kick:
+        pattern: "x..xx..x | x...x..x"
   - id: bridge
-    title: orange transfer
-    duration: 120s
-    harmony: "Bbmaj9 A7 Dm9 G13 | Fmaj9 Em7b5 A7 Dm9"
-    scene: "bridge brighter push"
+    title: transfer glow
+    duration: 50s
+    harmony: "Bbmaj9 A7 | Dm9 G13 | Fmaj9 Em7b5 | A7 Dm9"
+    scene: "bridge lift"
     variation: "open-register"
     profile:
       density: busy
-      brightness: balanced
+      brightness: bright
       motion: moving
     roles:
       lead:
-        motif: "11 . 9 7 | b9 7 5 3 | 5 . 6 7 | 9 . 7 3"
+        motif: "11 . 9 . 7 . 5 3 | 5 . 6 . 7 . 9 ."
       keys:
-        pattern: "x.x. .x.x | x..x .x.."
-      drums:
-        pattern: "x..x x..x | ..x. ..x. | x.x.x.x."
-  - id: outro
-    title: platform return
-    duration: 90s
-    harmony: "Dm9 G13 Cmaj9 A7 | Dm9 Bbmaj9 G13 A7"
-    scene: "outro thin home"
-    variation: "cadence"
+        pattern: "x.x.x..x | x..x.x.."
+      hat:
+        pattern: "xxxxxxxx | x.xxx.xx"
+      pad:
+        active: true
+  - id: breakdown
+    title: red light idle
+    duration: 40s
+    harmony: "Dm9 Dm9 | Bbmaj9 A7 | Dm9 G13 | A7 A7"
+    scene: "breakdown thin"
+    variation: "subtract"
     profile:
-      density: light
+      density: sparse
       brightness: warm
-      motion: gentle
+      motion: still
+      reverb: halo
     roles:
       lead:
-        motif: "3 . 2 1 | . 9 7 5 | 3 . . 1 | . . . ."
+        motif: "3 . . . 2 . . . | 1 . . . . . . ."
       guitar:
         active: false
-
+      kick:
+        pattern: "x....... | x...x..."
+      hat:
+        pattern: "x...x... | ....x..."
+      vibes:
+        pattern: "....x... | ........"
+  - id: outro
+    title: curbside return
+    duration: 45s
+    harmony: "Dm9 G13 | Cmaj9 A7 | Dm9 Bbmaj9 | G13 A7"
+    scene: "outro home"
+    variation: "cadence"
+    roles:
+      lead:
+        motif: "3 . 2 . 1 . . . | . . . . . . . ."
+      guitar:
+        active: false
+      pad:
+        active: false

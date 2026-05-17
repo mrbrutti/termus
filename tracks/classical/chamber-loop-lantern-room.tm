@@ -1,11 +1,11 @@
 title: Chamber Loop / Lantern Room
-description: Piano-led chamber study with a denser second statement, a quiet interior room, and a resolving close.
+description: Piano-led chamber miniature with winds in the answer phrase, a dim middle chamber, and a resolved final room.
 style: classical
 listen_mode: album-side
 seed: 26031
-tags: [classical, chamber, piano, lantern]
+tags: [classical, chamber, piano, lantern, room]
 key: Gminor
-tempo: 92
+tempo: 90
 globals:
   density: steady
   brightness: balanced
@@ -14,74 +14,109 @@ globals:
 roles:
   piano:
     family: acoustic_piano
-    tone: [clear]
+    tone: [clear, present]
     articulation: legato
     register: mid
     prominence: lead
-    motif: "5 . 6 5 | 3 . 2 1"
+    motif: "5 . 6 . 5 . 3 2 | 1 . . . 2 . 3 ."
   strings:
     family: strings
-    tone: [lush]
+    tone: [lush, soft]
     articulation: sustain
     register: mid-high
     prominence: support
-    pattern: "x... .... | x... ...."
+    pattern: "x....... | ....x..."
   winds:
     family: woodwind
-    tone: [soft]
+    tone: [soft, airy]
     articulation: answer
-    register: mid-high
+    register: high
     prominence: support
-    pattern: ".x.. .... | ..x. ...."
+    pattern: ".x....x. | ..x....."
   brass:
     family: brass
-    tone: [rich]
+    tone: [rich, soft]
     articulation: swell
     register: mid
     prominence: support
-    pattern: ".... x... | .... ...."
+    pattern: "........ | ....x..."
+  harp:
+    family: strings
+    tone: [soft, airy]
+    articulation: answer
+    register: high
+    prominence: air
+    pattern: "..x..... | ....x..."
+  choir:
+    family: choir
+    tone: [airy, soft]
+    articulation: sustain
+    register: high
+    prominence: air
+    pattern: "........ | x......."
 sections:
-  - id: intro
+  - id: threshold
     title: threshold
-    duration: 120s
-    harmony: "Gm9 Ebmaj9 | Fmaj9 D7"
+    duration: 40s
+    harmony: "Gm9 Ebmaj9 | Fmaj9 D7 | Gm9 Cm9 | D7 Gm9"
     scene: "intro chamber"
     variation: "establish"
     roles:
       brass:
         active: false
-  - id: a
+      choir:
+        active: false
+  - id: theme
     title: lantern theme
-    duration: 180s
+    duration: 55s
     harmony: "Gm9 Ebmaj9 | Fmaj9 D7 | Gm9 Cm9 | D7 Gm9"
     scene: "theme full-room"
     variation: "statement"
     roles:
       piano:
-        motif: "5 . 6 5 | 3 . 2 1 | 5 . 6 7 | 9 . 7 3"
+        motif: "5 . 6 7 9 . 7 5 | 3 . 2 . 1 . 2 3"
+      winds:
+        pattern: ".x..x... | ..x....."
   - id: interior
     title: interior room
-    duration: 135s
-    harmony: "Cm9 Gm9 | Ebmaj9 D7"
+    duration: 45s
+    harmony: "Cm9 Gm9 | Ebmaj9 D7 | Gm9 Cm9 | D7 D7"
     scene: "interior thin"
     variation: "subtract"
     profile:
       density: light
       brightness: warm
     roles:
-      strings:
-        pattern: "x... .... | .... x..."
+      piano:
+        motif: "5 . . . 3 . . . | 1 . . . . . . ."
       brass:
         active: false
-  - id: outro
+      choir:
+        active: false
+      winds:
+        pattern: "........ | ..x....."
+  - id: gallery
+    title: upper gallery
+    duration: 50s
+    harmony: "Ebmaj9 D7 | Gm9 Cm9 | Fmaj9 D7 | Gm9 Gm9"
+    scene: "gallery lift"
+    variation: "lift"
+    profile:
+      density: busy
+      brightness: bright
+    roles:
+      brass:
+        active: true
+      choir:
+        active: true
+      piano:
+        motif: "11 . 9 7 5 . 6 7 | 9 . 7 5 3 . 2 1"
+  - id: close
     title: lamp out
-    duration: 120s
+    duration: 40s
     harmony: "Gm9 Ebmaj9 | Fmaj9 D7 | Gm9 D7 | Gm9 Gm9"
     scene: "outro resolve"
     variation: "cadence"
     roles:
       piano:
-        motif: "3 . 2 1 | 1 . . ."
-      brass:
-        active: false
-
+        motif: "3 . 2 . 1 . . . | . . . . . . . ."
