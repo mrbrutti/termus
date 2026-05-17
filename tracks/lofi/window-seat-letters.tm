@@ -69,7 +69,7 @@ roles:
 sections:
   - id: intro
     title: folded paper
-    duration: 40s
+    duration: 14s
     harmony: "Cm9 F13 | Bbmaj9 G7 | Cm9 Abmaj9 | F13 G7"
     scene: "intro hush"
     variation: "establish"
@@ -79,11 +79,14 @@ sections:
       motion: still
     roles:
       clarinet:
-        active: false
+        active: true
+        motif: "5 . . . 3 . . . | 2 . . . 1 . . ."
       guitar:
         active: false
       pad:
         active: false
+      piano:
+        pattern: "x....... | .x..x..."
   - id: verse-a
     title: margin note
     duration: 55s
@@ -140,4 +143,3 @@ sections:
     roles:
       clarinet:
         motif: "3 . . 2 . . 1 . | . . . . . . . ."
-

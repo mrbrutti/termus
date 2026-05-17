@@ -13,13 +13,13 @@ globals:
   reverb: room
   phrase: long
 roles:
-  keys:
-    family: electric_piano
-    tone: [warm, soft]
-    articulation: stab
+  guitar:
+    family: guitar
+    tone: [warm, muted]
+    articulation: answer
     register: mid
     prominence: support
-    pattern: "x...x... | x..x.x.."
+    pattern: "x... .... | ..x...x."
   bass:
     family: synth_bass
     tone: [direct, warm]
@@ -62,7 +62,7 @@ roles:
 sections:
   - id: intro
     title: desk lamp
-    duration: 35s
+    duration: 14s
     harmony: "Am9 D13 | Gmaj9 E7 | Am9 Fmaj9 | D13 E7"
     scene: "intro study"
     variation: "establish"
@@ -72,7 +72,10 @@ sections:
       motion: still
     roles:
       vibes:
-        active: false
+        active: true
+        motif: "5 . . 7 . . 5 . | 3 . . 2 . . 1 ."
+      guitar:
+        pattern: "x....... | ....x..."
   - id: verse-a
     title: highlighted page
     duration: 55s
@@ -130,4 +133,3 @@ sections:
     roles:
       vibes:
         motif: "3 . . 2 . . 1 . | . . . . . . . ."
-

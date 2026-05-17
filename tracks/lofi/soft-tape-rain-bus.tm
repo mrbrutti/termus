@@ -13,7 +13,7 @@ globals:
   reverb: room
   phrase: long
 roles:
-  keys:
+  rhodes:
     family: electric_piano
     tone: [warm, dusty, soft]
     articulation: stab
@@ -76,7 +76,7 @@ roles:
 sections:
   - id: intro
     title: windshield beads
-    duration: 45s
+    duration: 16s
     harmony: "Dm9 G13 | Cmaj9 A7 | Dm9 Bbmaj9 | G13 A7"
     scene: "intro hush"
     variation: "establish"
@@ -86,9 +86,11 @@ sections:
       motion: still
     roles:
       lead:
-        active: false
+        active: true
+        motif: "5 . . . 7 . . 5 | . . 3 . 2 . 1 ."
       guitar:
-        active: false
+        active: true
+        pattern: ".x...... | ....x..."
       snare:
         pattern: "........ | ....x..."
       hat:
@@ -135,7 +137,7 @@ sections:
     roles:
       lead:
         motif: "11 . 9 . 7 . 5 3 | 5 . 6 . 7 . 9 ."
-      keys:
+      rhodes:
         pattern: "x.x.x..x | x..x.x.."
       hat:
         pattern: "xxxxxxxx | x.xxx.xx"

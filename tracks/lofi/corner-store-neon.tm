@@ -13,7 +13,7 @@ globals:
   reverb: room
   phrase: long
 roles:
-  keys:
+  ep:
     family: electric_piano
     tone: [warm, soft]
     articulation: stab
@@ -69,7 +69,7 @@ roles:
 sections:
   - id: intro
     title: cooler hum
-    duration: 35s
+    duration: 12s
     harmony: "Fm9 Bb13 | Ebmaj9 C7 | Fm9 Dbmaj9 | Bb13 C7"
     scene: "intro glow"
     variation: "establish"
@@ -79,9 +79,12 @@ sections:
       motion: still
     roles:
       flute:
-        active: false
+        active: true
+        motif: "9 . . . 7 . . . | 5 . . 3 . . 2 1"
       pad:
         active: false
+      ep:
+        pattern: "x....... | x..x...."
   - id: verse-a
     title: neon aisle
     duration: 55s
@@ -135,4 +138,3 @@ sections:
     roles:
       flute:
         motif: "3 . . 2 . . 1 . | . . . . . . . ."
-

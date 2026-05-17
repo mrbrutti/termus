@@ -13,7 +13,7 @@ globals:
   reverb: room
   phrase: long
 roles:
-  keys:
+  ep:
     family: electric_piano
     tone: [warm, dusty, soft]
     articulation: stab
@@ -69,7 +69,7 @@ roles:
 sections:
   - id: intro
     title: tape click
-    duration: 35s
+    duration: 12s
     harmony: "Em9 A13 | Dmaj9 B7 | Em9 Cmaj9 | A13 B7"
     scene: "intro pulse"
     variation: "establish"
@@ -79,9 +79,12 @@ sections:
       motion: still
     roles:
       guitar-lead:
-        active: false
+        active: true
+        motif: "5 . . 7 . 9 . 7 | 5 . . 3 . 2 . 1"
       pad:
         active: false
+      ep:
+        pattern: "x.x..... | x...x..."
   - id: verse-a
     title: crosswalk loop
     duration: 50s

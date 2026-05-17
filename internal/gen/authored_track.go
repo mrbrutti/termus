@@ -29,6 +29,8 @@ type AuthoredRenderTrack struct {
 	Chorus          int32
 	Brightness      int32
 	Notes           []int
+	VelocityPattern []int32
+	TimingOffsets   []float64
 	Gate            float64
 	SwingAmount     float64
 	Legato          bool
@@ -96,6 +98,8 @@ func (a *AuthoredTrack) Seed(seed int64) {
 		core.setChannelCutoff(setup.Channel, SectionCC(setup.Brightness, BrightnessDelta(a.profile)))
 	}
 	for _, track := range a.plan.Tracks {
+		velocityPattern := append([]int32(nil), track.VelocityPattern...)
+		timingOffsets := append([]float64(nil), track.TimingOffsets...)
 		cfg := SF2Track{
 			Channel:         track.Channel,
 			Velocity:        authoredVelocity(track.Velocity, a.profile),
@@ -107,6 +111,30 @@ func (a *AuthoredTrack) Seed(seed int64) {
 			TieRepeats:      track.TieRepeats,
 			OverlapSec:      track.OverlapSec,
 			FireProbability: authoredFireProbability(track.FireProbability, a.profile),
+		}
+		if len(velocityPattern) > 0 {
+			cfg.ResolveVelocity = func(slot int, key int, base int32) int32 {
+				if len(velocityPattern) == 0 {
+					return base
+				}
+				idx := slot % len(velocityPattern)
+				v := base + velocityPattern[idx]
+				if v < 18 {
+					return 18
+				}
+				if v > 127 {
+					return 127
+				}
+				return v
+			}
+		}
+		if len(timingOffsets) > 0 {
+			cfg.ResolveTimingOffsetSec = func(slot int) float64 {
+				if len(timingOffsets) == 0 {
+					return 0
+				}
+				return timingOffsets[slot%len(timingOffsets)]
+			}
 		}
 		core.addTrack(cfg)
 	}

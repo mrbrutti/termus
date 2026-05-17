@@ -101,7 +101,7 @@ func Compile(file *File, defaultSeed int64, defaultListenMode gen.ListeningMode)
 		})
 		key := playlistKey(spec, seed)
 		compiled.Profiles[key] = profile
-		plan, err := buildAuthoredPlan(spec, file, section, mergedRoles, dur, profile)
+		plan, err := buildAuthoredPlan(spec, file, section, mergedRoles, dur, profile, seed)
 		if err != nil {
 			return nil, fmt.Errorf("sections[%d].plan: %w", i, err)
 		}

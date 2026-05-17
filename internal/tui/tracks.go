@@ -91,7 +91,7 @@ func renderTrackStyleBar(m Model, theme ColorTheme, width int) string {
 				count++
 			}
 		}
-		text := fmt.Sprintf("%s %d", style, count)
+		text := fmt.Sprintf("%s %s %d", trackStyleGlyph(style), style, count)
 		if strings.EqualFold(style, active) {
 			parts = append(parts, lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render("["+text+"]"))
 			continue
@@ -130,18 +130,15 @@ func renderTrackListPane(m Model, w, h int, theme ColorTheme) string {
 		if title == "" {
 			title = entry.ID
 		}
-		meta := entry.ID
-		if entry.Description != "" {
-			meta = entry.Description
-		}
+		meta := trackCompactMeta(entry)
 		prefix := "  "
 		if idx == m.trackIdx {
-			prefix = "› "
+			prefix = "▸ "
 		} else if entry.ID == m.activeTrackID {
 			prefix = "• "
 		}
 		block := lipgloss.JoinVertical(lipgloss.Left,
-			lipgloss.NewStyle().Bold(idx == m.trackIdx).Render(prefix+trimToWidth(title, maxInt(8, w-2))),
+			lipgloss.NewStyle().Bold(idx == m.trackIdx).Render(prefix+trackStyleGlyph(entry.Style)+" "+trimToWidth(title, maxInt(8, w-4))),
 			lipgloss.NewStyle().Faint(true).Render(trimToWidth("  "+meta, maxInt(8, w-2))),
 		)
 		if idx == m.trackIdx {
@@ -165,7 +162,7 @@ func renderTrackDetailPane(m Model, w, h int, theme ColorTheme) string {
 		title = entry.ID
 	}
 	lines := []string{
-		lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render(title),
+		lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render(trackStyleGlyph(entry.Style) + " " + title),
 	}
 	meta := make([]string, 0, 4)
 	if entry.Style != "" {
@@ -183,9 +180,7 @@ func renderTrackDetailPane(m Model, w, h int, theme ColorTheme) string {
 	if len(meta) > 0 {
 		lines = append(lines, lipgloss.NewStyle().Foreground(theme.BarFg).Faint(true).Render(strings.Join(meta, " · ")))
 	}
-	if entry.Description != "" {
-		lines = append(lines, "", trimToWidth(entry.Description, w))
-	}
+	lines = append(lines, "", lipgloss.NewStyle().Faint(true).Render(trimToWidth(entry.ID, w)))
 	if len(entry.Tags) > 0 {
 		lines = append(lines, "", renderTrackTags(entry.Tags, theme, w))
 	}
@@ -204,6 +199,49 @@ func renderTrackDetailPane(m Model, w, h int, theme ColorTheme) string {
 		lines = append(lines, "", lipgloss.NewStyle().Foreground(theme.BarHi).Render("currently loaded"))
 	}
 	return style.Render(strings.Join(lines, "\n"))
+}
+
+func trackCompactMeta(entry TrackNavEntry) string {
+	parts := make([]string, 0, 4)
+	if entry.Style != "" {
+		parts = append(parts, entry.Style)
+	}
+	if entry.Key != "" {
+		parts = append(parts, entry.Key)
+	}
+	if entry.Tempo != "" {
+		parts = append(parts, entry.Tempo+" bpm")
+	}
+	if entry.ListenMode != "" {
+		parts = append(parts, entry.ListenMode)
+	}
+	if len(parts) == 0 {
+		return entry.ID
+	}
+	return strings.Join(parts, " · ")
+}
+
+func trackStyleGlyph(style string) string {
+	switch strings.ToLower(strings.TrimSpace(style)) {
+	case "ambient":
+		return "◌"
+	case "bells":
+		return "✶"
+	case "classical":
+		return "◇"
+	case "drone":
+		return "▤"
+	case "jazz":
+		return "♬"
+	case "lofi":
+		return "◒"
+	case "lullaby":
+		return "☾"
+	case "phase":
+		return "∿"
+	default:
+		return "•"
+	}
 }
 
 func renderTrackTags(tags []string, theme ColorTheme, width int) string {
