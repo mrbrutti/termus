@@ -18,8 +18,11 @@ func RMS(buf []float64) float64 {
 	return math.Sqrt(sum / float64(len(buf)))
 }
 
-// Peak returns the maximum absolute sample value.
+// Peak returns the maximum absolute sample value. Returns 0 for an empty buffer.
 func Peak(buf []float64) float64 {
+	if len(buf) == 0 {
+		return 0
+	}
 	var p float64
 	for _, x := range buf {
 		if v := math.Abs(x); v > p {
