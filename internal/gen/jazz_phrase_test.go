@@ -19,3 +19,11 @@ func TestJazzSaxMotifsSpanFourBarSentences(t *testing.T) {
 	}
 }
 
+func TestJazzGuideTargetPrefersNextThirdOnResolution(t *testing.T) {
+	j := &Jazz{rootMidi: 48}
+	current := jazzDom7(7, "G7")
+	next := jazzMaj7(0, "Cmaj7")
+	if got, want := j.jazzGuideTarget(current, next, false), 48+next.tones[1]+12; got != want {
+		t.Fatalf("guide target = %d, want %d", got, want)
+	}
+}

@@ -14,7 +14,7 @@ func TestChillMotifsSpanEightBarLoops(t *testing.T) {
 		"vibe":   vibe.A,
 		"guitar": guitar.A,
 	} {
-		if got, want := len(phrase), chillMotifBars; got != want {
+		if got, want := len(phrase), chillSupportMotifSlots; got != want {
 			t.Fatalf("%s phrase length = %d, want %d", name, got, want)
 		}
 	}

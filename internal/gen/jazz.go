@@ -876,32 +876,72 @@ func (a *Jazz) saxNoteAt(slot int) int {
 	chordIdx := (slot / jazzSaxSlotsPerBar) % len(a.progression)
 	chord := a.progression[chordIdx]
 	next := a.progression[(chordIdx+1)%len(a.progression)]
+	register := a.jazzLeadRegisterBump(slot)
 	switch a.saxPlanCodeAt(slot) {
 	case jazzPlanRest:
 		return -1
 	case jazzPlanRoot:
-		return clampMidiToRange(a.currentRoot()+chord.tones[0]+12, 64, 86)
+		return clampMidiToRange(a.currentRoot()+chord.tones[0]+12+register, 64, 89)
 	case jazzPlanThird:
-		return clampMidiToRange(a.currentRoot()+chord.tones[1]+12, 64, 86)
+		return clampMidiToRange(a.currentRoot()+chord.tones[1]+12+register, 64, 89)
 	case jazzPlanFifth:
-		return clampMidiToRange(a.currentRoot()+chord.tones[2]+12, 64, 86)
+		return clampMidiToRange(a.currentRoot()+chord.tones[2]+12+register, 64, 89)
 	case jazzPlanSeventh:
-		return clampMidiToRange(a.currentRoot()+chord.tones[3]+12, 64, 86)
+		return clampMidiToRange(a.currentRoot()+chord.tones[3]+12+register, 64, 89)
 	case jazzPlanNinth:
-		return clampMidiToRange(a.currentRoot()+chord.tones[0]+14, 64, 86)
+		return clampMidiToRange(a.currentRoot()+chord.tones[0]+14+register, 64, 89)
 	case jazzPlanApproachAbove:
-		return clampMidiToRange(a.currentRoot()+next.tones[0]+13, 64, 86)
+		target := a.jazzGuideTarget(chord, next, false)
+		return clampMidiToRange(target+1+register, 64, 89)
 	case jazzPlanApproachBelow:
-		return clampMidiToRange(a.currentRoot()+next.tones[0]+11, 64, 86)
+		target := a.jazzGuideTarget(chord, next, true)
+		return clampMidiToRange(target-1+register, 64, 89)
 	case jazzPlanSuspendFourth:
-		return clampMidiToRange(a.currentRoot()+chord.tones[0]+17, 64, 86)
+		return clampMidiToRange(a.currentRoot()+chord.tones[0]+17+register, 64, 89)
 	case jazzPlanResolveThird:
-		return clampMidiToRange(a.currentRoot()+chord.tones[1]+12, 64, 86)
+		return clampMidiToRange(a.currentRoot()+chord.tones[1]+12+register, 64, 89)
 	case jazzPlanAnticipateNextRoot:
-		return clampMidiToRange(a.currentRoot()+next.tones[0]+12, 64, 86)
+		return clampMidiToRange(a.jazzGuideTarget(chord, next, false)+register, 64, 89)
 	default:
-		return clampMidiToRange(a.currentRoot()+chord.tones[1]+12, 64, 86)
+		return clampMidiToRange(a.currentRoot()+chord.tones[1]+12+register, 64, 89)
 	}
+}
+
+func (a *Jazz) jazzLeadRegisterBump(slot int) int {
+	phrase := a.saxMotifs.PhraseFor(a.section.Kind)
+	if len(phrase) == 0 {
+		phrase = a.saxPlan
+	}
+	if len(phrase) == 0 {
+		return 0
+	}
+	bar := ((slot % len(phrase)) + len(phrase)) % len(phrase)
+	bar /= jazzSaxSlotsPerBar
+	switch bar {
+	case 1:
+		return 2
+	case 2:
+		return 5
+	case 3:
+		return 7
+	default:
+		return 0
+	}
+}
+
+func (a *Jazz) jazzGuideTarget(current, next jazzChord, preferSeventh bool) int {
+	if jazzIsDominant(current) {
+		if next.quality == "maj7" || next.quality == "m7" {
+			return a.currentRoot() + next.tones[1] + 12
+		}
+	}
+	if next.quality == "7" && preferSeventh {
+		return a.currentRoot() + next.tones[3] + 12
+	}
+	if next.quality == "m7" || next.quality == "maj7" {
+		return a.currentRoot() + next.tones[1] + 12
+	}
+	return a.currentRoot() + next.tones[0] + 12
 }
 
 func (a *Jazz) makeBassPlan(totalBeats int) []int {

@@ -277,8 +277,9 @@ const (
 )
 
 const (
-	chillMotifBars     = 8
-	chillLeadMotifBars = 16
+	chillSupportSlotsPerBar = 2
+	chillSupportMotifSlots  = 16
+	chillLeadMotifBars      = 16
 )
 
 // NewChill constructs the algorithm. Caller must call Seed before Next.
@@ -665,7 +666,7 @@ func (a *Chill) Seed(seedVal int64) {
 	}
 	core.addTrack(SF2Track{
 		Channel: 2, Velocity: 68, Notes: vibeNotes,
-		PeriodSec: cycleSec, Phase01: 0,
+		PeriodSec: cycleSec, Phase01: 0.25 / float64(numBars),
 		ResolveNote:            func(slot int, _ int) int { return a.vibeNoteAt(slot) },
 		Gate:                   0.68,
 		ResolveTimingOffsetSec: a.wrapSwing(cyclicTimingOffset(18, 12, 20, 14, 17, 11, 21, 15)),
@@ -686,7 +687,7 @@ func (a *Chill) Seed(seedVal int64) {
 		guitarNotes[i] = a.guitarNoteAt(i)
 	}
 	core.addTrack(SF2Track{
-		Channel: 4, Velocity: 50, Notes: guitarNotes,
+		Channel: 4, Velocity: 48, Notes: guitarNotes,
 		PeriodSec:              cycleSec,
 		Phase01:                1.5 / float64(4*numBars), // 1.5 beats into the first bar
 		ResolveNote:            func(slot int, _ int) int { return a.guitarNoteAt(slot) },
@@ -907,7 +908,7 @@ func (a *Chill) bassNoteAt(slot int) int {
 // chord-tone in the +12-semitone register (between bass and EP) at the "and"
 // of beat 2 — classic jazz/bossa comping placement.
 func (a *Chill) guitarNoteAt(slot int) int {
-	chordIdx := slot % len(a.progression)
+	chordIdx := (slot / chillSupportSlotsPerBar) % len(a.progression)
 	return a.resolvePlanNote(slot, a.progression[chordIdx], a.guitarDialogueCodeAt(slot), 12+a.section.RegisterLift, 52, 80)
 }
 
@@ -921,12 +922,12 @@ func (a *Chill) saxNoteAt(slot int) int {
 
 // vibeNoteAt resolves the upper-voice motif that answers the Rhodes stabs.
 func (a *Chill) vibeNoteAt(slot int) int {
-	chordIdx := slot % len(a.progression)
+	chordIdx := (slot / chillSupportSlotsPerBar) % len(a.progression)
 	return a.resolvePlanNote(slot, a.progression[chordIdx], a.vibeDialogueCodeAt(slot), 24+a.section.RegisterLift/2, 72, 94)
 }
 
 func (a *Chill) makeVibePlan(numBars int) []int {
-	return trimOrRepeatPhrase(a.vibeMotifs.A, numBars, chillPlanThird)
+	return trimOrRepeatPhrase(a.vibeMotifs.A, chillSupportSlotsPerBar*numBars, chillPlanThird)
 }
 
 func (a *Chill) vibePlanCodeAt(slot int) int {
@@ -963,7 +964,10 @@ func (a *Chill) makeVibeMotifs() MotifMemory {
 			Pickup:    aCell[0],
 			Statement: aCell[1],
 		},
-		PhraseShape{},
+		PhraseShape{
+			Peak:    answerCell[0],
+			Release: answerCell[1],
+		},
 		map[int]int{
 			chillPlanSeventh:    chillPlanNinth,
 			chillPlanNinth:      chillPlanEleventh,
@@ -971,10 +975,13 @@ func (a *Chill) makeVibeMotifs() MotifMemory {
 			chillPlanThirteenth: chillPlanNinth,
 		},
 		PhraseShape{
-			Pickup:    answerCell[0],
+			Pickup:    reversePhrase(answerCell[0]),
 			Statement: answerCell[1],
 		},
-		PhraseShape{},
+		PhraseShape{
+			Peak:    answerCell[0],
+			Release: []int{chillPlanThirteenth, chillPlanEleventh, chillPlanResolveThird, chillPlanRoot},
+		},
 		PhraseShape{
 			Pickup:    aCell[0],
 			Statement: []int{chillPlanEleventh, chillPlanNinth, chillPlanResolveThird, chillPlanRoot},
@@ -987,7 +994,7 @@ func (a *Chill) makeVibeMotifs() MotifMemory {
 }
 
 func (a *Chill) makeGuitarPlan(numBars int) []int {
-	return trimOrRepeatPhrase(a.guitarMotifs.A, numBars, chillPlanNinth)
+	return trimOrRepeatPhrase(a.guitarMotifs.A, chillSupportSlotsPerBar*numBars, chillPlanNinth)
 }
 
 func (a *Chill) guitarPlanCodeAt(slot int) int {
@@ -1024,7 +1031,10 @@ func (a *Chill) makeGuitarMotifs() MotifMemory {
 			Pickup:    aCell[0],
 			Statement: aCell[1],
 		},
-		PhraseShape{},
+		PhraseShape{
+			Peak:    answerCell[0],
+			Release: answerCell[1],
+		},
 		map[int]int{
 			chillPlanPickupAbove:   chillPlanPickupBelow,
 			chillPlanSuspendFourth: chillPlanResolveThird,
@@ -1033,9 +1043,12 @@ func (a *Chill) makeGuitarMotifs() MotifMemory {
 		},
 		PhraseShape{
 			Pickup:    answerCell[0],
-			Statement: answerCell[1],
+			Statement: reversePhrase(answerCell[1]),
 		},
-		PhraseShape{},
+		PhraseShape{
+			Peak:    answerCell[1],
+			Release: []int{chillPlanResolveThird, chillPlanNinth, chillPlanResolveThird, chillPlanRoot},
+		},
 		PhraseShape{
 			Pickup:    aCell[0],
 			Statement: []int{chillPlanResolveThird, chillPlanNinth, chillPlanResolveThird, chillPlanRoot},
@@ -1104,10 +1117,11 @@ func (a *Chill) saxLeadActiveAt(slot int) bool {
 
 func (a *Chill) vibeDialogueCodeAt(slot int) int {
 	base := a.vibePlanCodeAt(slot)
-	if a.saxLeadActiveAt(slot) {
+	leadBar := slot / chillSupportSlotsPerBar
+	if a.saxLeadActiveAt(leadBar) {
 		return chillPlanRest
 	}
-	if slot > 0 && a.saxLeadActiveAt(slot-1) {
+	if slot > 0 && a.saxLeadActiveAt((slot-1)/chillSupportSlotsPerBar) {
 		if a.section.Kind == FormCadence {
 			return chillPlanEleventh
 		}
@@ -1118,13 +1132,14 @@ func (a *Chill) vibeDialogueCodeAt(slot int) int {
 
 func (a *Chill) guitarDialogueCodeAt(slot int) int {
 	base := a.guitarPlanCodeAt(slot)
-	if a.saxLeadActiveAt(slot) {
+	leadBar := slot / chillSupportSlotsPerBar
+	if a.saxLeadActiveAt(leadBar) {
 		if a.section.Kind == FormCadence {
 			return chillPlanResolveThird
 		}
 		return chillPlanRest
 	}
-	if slot > 0 && a.saxLeadActiveAt(slot-1) {
+	if slot > 0 && a.saxLeadActiveAt((slot-1)/chillSupportSlotsPerBar) {
 		return chillPlanNinth
 	}
 	return base

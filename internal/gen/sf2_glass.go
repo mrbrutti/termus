@@ -183,41 +183,44 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	// current chord at fire time, so the motif survives while the harmony moves.
 	bellSlots := make([]int, len(a.bellContour))
 	core.addTrack(SF2Track{
-		Channel: 0, Velocity: 72, Notes: bellSlots,
-		PeriodSec: 21.7 * phraseScale, Phase01: a.rng.Float64(),
+		Channel: 0, Velocity: 66, Notes: bellSlots,
+		PeriodSec: 25.1 * phraseScale, Phase01: a.rng.Float64(),
 		ResolveNote:        func(slot int, _ int) int { return a.bellPhraseNote(slot) },
-		ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(112, 124, 114) },
+		ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(106, 118, 108) },
 		ResolveDetuneCents: slotDetunePattern(0, 2, -2, 3),
-		Gate:               0.70,
-		VelocityJitter:     16, TimingJitterSec: 0.10,
+		Gate:               0.62,
+		VelocityJitter:     12, TimingJitterSec: 0.08,
+		FireProbability:    0.84,
 	})
 
 	// --- Celesta counter-phrase: a second coherent phrase one octave up,
 	// on a different period — answers the tubular bell motif.
 	celestaSlots := make([]int, len(a.celestaContour))
 	core.addTrack(SF2Track{
-		Channel: 1, Velocity: 56, Notes: celestaSlots,
-		PeriodSec: 29.7 * phraseScale, Phase01: a.rng.Float64(),
+		Channel: 1, Velocity: 50, Notes: celestaSlots,
+		PeriodSec: 34.9 * phraseScale, Phase01: a.rng.Float64(),
 		ResolveNote:        func(slot int, _ int) int { return a.celestaPhraseNote(slot) },
-		ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(108, 124, 110) },
+		ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(102, 116, 104) },
 		ResolveDetuneCents: slotDetunePattern(1, -1, 2, -2),
-		Gate:               0.56,
-		VelocityJitter:     14, TimingJitterSec: 0.10,
+		Gate:               0.50,
+		VelocityJitter:     10, TimingJitterSec: 0.08,
+		FireProbability:    0.76,
 	})
 
 	// --- Glockenspiel: 1 voice, very high, very sparse — only one note per
 	// long period, just the chord's brightest tone.
 	core.addTrack(SF2Track{
-		Channel: 2, Velocity: 48, Notes: []int{a.bellNote(0, 24)},
-		PeriodSec: 37.3 * phraseScale, Phase01: a.rng.Float64(),
+		Channel: 2, Velocity: 40, Notes: []int{a.bellNote(0, 24)},
+		PeriodSec: 46.3 * phraseScale, Phase01: a.rng.Float64(),
 		MutationRate:       0.40,
 		MutateOne:          func(_ int, _ int) int { return a.bellNote(0, 24) },
 		ResolveNote:        func(_ int, _ int) int { return a.bellNote(0, 24) },
-		ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(116, 127, 118) },
+		ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(110, 120, 112) },
 		ResolveDetuneCents: slotDetunePattern(2, -2, 3, 0),
 		Gate:               0.92,
 		Legato:             true,
-		VelocityJitter:     12, TimingJitterSec: 0.12,
+		VelocityJitter:     8, TimingJitterSec: 0.10,
+		FireProbability:    0.58,
 	})
 
 	// --- Music box ornament: nostalgic answering fragment that drops in/out
@@ -225,18 +228,19 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	// than a constant ostinato.
 	musicBoxSlots := make([]int, len(a.musicBoxContour)+2)
 	core.addTrack(SF2Track{
-		Channel: 3, Velocity: 44, Notes: musicBoxSlots,
-		PeriodSec: 43.1 * phraseScale, Phase01: a.rng.Float64(),
+		Channel: 3, Velocity: 38, Notes: musicBoxSlots,
+		PeriodSec: 49.7 * phraseScale, Phase01: a.rng.Float64(),
 		ResolveNote: func(slot int, _ int) int {
 			if slot%len(musicBoxSlots) >= len(a.musicBoxMotifs.PhraseFor(a.section.Kind)) {
 				return -1
 			}
 			return a.musicBoxPhraseNote(slot)
 		},
-		ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(102, 118, 104) },
+		ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(96, 110, 98) },
 		ResolveDetuneCents: slotDetunePattern(-2, 1, -1, 2),
-		Gate:               0.52,
-		VelocityJitter:     12, TimingJitterSec: 0.12,
+		Gate:               0.44,
+		VelocityJitter:     8, TimingJitterSec: 0.10,
+		FireProbability:    0.62,
 		Enabled: a.musicBoxOn,
 	})
 
