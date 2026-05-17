@@ -72,6 +72,13 @@ func validateRole(name string, role Role) error {
 	return nil
 }
 
+func validateOrchestrationRole(name string, role OrchestrationRole) error {
+	if role.Register != "" && !registerRE.MatchString(role.Register) {
+		return fmt.Errorf("orchestration.roles.%s.register: invalid register %q", name, role.Register)
+	}
+	return nil
+}
+
 func validateEvent(sectionIndex, eventIndex int, event Event) error {
 	path := fmt.Sprintf("sections[%d].events[%d]", sectionIndex, eventIndex)
 	kind := strings.ToLower(strings.TrimSpace(event.Kind))

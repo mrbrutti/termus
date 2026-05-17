@@ -22,26 +22,40 @@ type File struct {
 }
 
 type Section struct {
-	ID          string          `yaml:"id,omitempty"`
-	Title       string          `yaml:"title,omitempty"`
-	Derive      string          `yaml:"derive,omitempty"`
-	Transforms  []string        `yaml:"transforms,omitempty"`
-	Duration    string          `yaml:"duration"`
-	Seed        *int64          `yaml:"seed,omitempty"`
-	SeedOffset  *int64          `yaml:"seed_offset,omitempty"`
-	Key         string          `yaml:"key,omitempty"`
-	Tempo       string          `yaml:"tempo,omitempty"`
-	Harmony     string          `yaml:"harmony,omitempty"`
-	Scene       string          `yaml:"scene,omitempty"`
-	Variation   string          `yaml:"variation,omitempty"`
-	Profile     Profile         `yaml:"profile,omitempty"`
-	Roles       map[string]Role `yaml:"roles,omitempty"`
-	Arrangement Arrangement     `yaml:"arrangement,omitempty"`
-	Events      []Event         `yaml:"events,omitempty"`
+	ID            string          `yaml:"id,omitempty"`
+	Title         string          `yaml:"title,omitempty"`
+	Derive        string          `yaml:"derive,omitempty"`
+	Transforms    []string        `yaml:"transforms,omitempty"`
+	Duration      string          `yaml:"duration"`
+	Seed          *int64          `yaml:"seed,omitempty"`
+	SeedOffset    *int64          `yaml:"seed_offset,omitempty"`
+	Key           string          `yaml:"key,omitempty"`
+	Tempo         string          `yaml:"tempo,omitempty"`
+	Harmony       string          `yaml:"harmony,omitempty"`
+	Scene         string          `yaml:"scene,omitempty"`
+	Variation     string          `yaml:"variation,omitempty"`
+	Profile       Profile         `yaml:"profile,omitempty"`
+	Roles         map[string]Role `yaml:"roles,omitempty"`
+	Orchestration Orchestration   `yaml:"orchestration,omitempty"`
+	Arrangement   Arrangement     `yaml:"arrangement,omitempty"`
+	Events        []Event         `yaml:"events,omitempty"`
 }
 
 type Arrangement struct {
 	Events []Event `yaml:"events,omitempty"`
+}
+
+type Orchestration struct {
+	Roles map[string]OrchestrationRole `yaml:"roles,omitempty"`
+}
+
+type OrchestrationRole struct {
+	Family       string   `yaml:"family,omitempty"`
+	Tone         []string `yaml:"tone,omitempty"`
+	Articulation string   `yaml:"articulation,omitempty"`
+	Register     string   `yaml:"register,omitempty"`
+	Prominence   string   `yaml:"prominence,omitempty"`
+	Active       *bool    `yaml:"active,omitempty"`
 }
 
 type Role struct {

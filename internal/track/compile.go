@@ -76,8 +76,14 @@ func Compile(file *File, defaultSeed int64, defaultListenMode gen.ListeningMode)
 		}
 		mergedRoles := mergeRoles(file.Roles, section.Roles)
 		mergedRoles = applyRoleTransforms(mergedRoles, section.Transforms)
+		mergedRoles = applyOrchestration(mergedRoles, section.Orchestration)
 		for name, role := range mergedRoles {
 			if err := validateRole(name, role); err != nil {
+				return nil, fmt.Errorf("sections[%d]: %w", i, err)
+			}
+		}
+		for name, directive := range section.Orchestration.Roles {
+			if err := validateOrchestrationRole(name, directive); err != nil {
 				return nil, fmt.Errorf("sections[%d]: %w", i, err)
 			}
 		}

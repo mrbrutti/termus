@@ -70,9 +70,23 @@ func mergeSection(base, override Section) Section {
 	}
 	out.Profile = mergeProfile(base.Profile, override.Profile)
 	out.Roles = mergeRoles(base.Roles, override.Roles)
+	out.Orchestration = mergeOrchestration(base.Orchestration, override.Orchestration)
 	out.Arrangement = mergeArrangement(base.Arrangement, override.Arrangement)
 	if len(override.Events) > 0 {
 		out.Events = append(append([]Event(nil), base.Events...), override.Events...)
+	}
+	return out
+}
+
+func mergeOrchestration(base, override Orchestration) Orchestration {
+	out := base
+	if len(override.Roles) > 0 {
+		if out.Roles == nil {
+			out.Roles = map[string]OrchestrationRole{}
+		}
+		for name, role := range override.Roles {
+			out.Roles[name] = role
+		}
 	}
 	return out
 }
@@ -425,5 +439,35 @@ func sectionEvents(section Section) []Event {
 	}
 	out := append([]Event(nil), section.Arrangement.Events...)
 	out = append(out, section.Events...)
+	return out
+}
+
+func applyOrchestration(roles map[string]Role, orch Orchestration) map[string]Role {
+	if len(roles) == 0 || len(orch.Roles) == 0 {
+		return roles
+	}
+	out := cloneRoles(roles)
+	for name, directive := range orch.Roles {
+		role := out[name]
+		if strings.TrimSpace(directive.Family) != "" {
+			role.Family = directive.Family
+		}
+		if len(directive.Tone) > 0 {
+			role.Tone = append([]string(nil), directive.Tone...)
+		}
+		if strings.TrimSpace(directive.Articulation) != "" {
+			role.Articulation = directive.Articulation
+		}
+		if strings.TrimSpace(directive.Register) != "" {
+			role.Register = directive.Register
+		}
+		if strings.TrimSpace(directive.Prominence) != "" {
+			role.Prominence = directive.Prominence
+		}
+		if directive.Active != nil {
+			role.Active = directive.Active
+		}
+		out[name] = role
+	}
 	return out
 }

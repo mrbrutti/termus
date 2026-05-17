@@ -704,6 +704,73 @@ sections:
 	}
 }
 
+func TestCompileSupportsOrchestrationDirectives(t *testing.T) {
+	const src = `
+title: Orchestration Directives
+style: jazz
+roles:
+  lead:
+    family: reed_lead
+    register: mid-high
+    prominence: lead
+    motif: "5 . 6 7 | 3 . 2 1"
+  comp:
+    family: acoustic_piano
+    register: mid
+    pattern: "x..x.x.. | .x..x..x"
+sections:
+  - id: a
+    duration: 24s
+    harmony: "Dm7 G7 | Cmaj7 A7 | Dm7 G7 | Cmaj7 Cmaj7"
+  - id: b
+    duration: 24s
+    harmony: "Fmaj7 E7 | Dm7 G7 | Em7 A7 | Dm7 G7"
+    orchestration:
+      roles:
+        lead:
+          family: brass
+          register: high
+          articulation: bright
+        comp:
+          family: organ
+          prominence: support
+`
+	file, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	compiled, err := Compile(file, 99, gen.ListeningModeEndless)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	var derived gen.AuthoredTrackPlan
+	for _, plan := range compiled.Plans {
+		if plan.Section == "b" {
+			derived = plan
+			break
+		}
+	}
+	var lead *gen.AuthoredRenderTrack
+	var comp *gen.AuthoredRenderTrack
+	for i := range derived.Tracks {
+		if derived.Tracks[i].Name == "lead" {
+			lead = &derived.Tracks[i]
+		}
+		if strings.HasPrefix(derived.Tracks[i].Name, "comp-") {
+			comp = &derived.Tracks[i]
+		}
+	}
+	if lead == nil || comp == nil {
+		t.Fatalf("expected lead and comp tracks, got lead=%v comp=%v", lead != nil, comp != nil)
+	}
+	if lead.Family != "brass" || lead.Register != "high" {
+		t.Fatalf("lead orchestration = family %q register %q", lead.Family, lead.Register)
+	}
+	if comp.Family != "organ" {
+		t.Fatalf("comp family = %q", comp.Family)
+	}
+}
+
 func TestBundledTracksParseAndCompile(t *testing.T) {
 	paths, err := filepath.Glob(filepath.Join("..", "..", "tracks", "*", "*.tm"))
 	if err != nil {
