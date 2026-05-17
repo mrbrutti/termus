@@ -12,6 +12,7 @@ type PlaylistMode int
 const (
 	PlaylistSameGenre PlaylistMode = iota
 	PlaylistMixed
+	PlaylistScore
 )
 
 // Track is one entry in a Playlist: an algorithm spec, its seed, and how long
@@ -20,6 +21,7 @@ type Track struct {
 	Spec     AlgoSpec
 	Seed     int64
 	Duration time.Duration
+	Title    string
 }
 
 // Playlist is an ordered list of Tracks with a human-readable display name.
