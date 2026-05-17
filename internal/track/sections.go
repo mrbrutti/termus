@@ -177,6 +177,13 @@ func cloneRoles(roles map[string]Role) map[string]Role {
 	}
 	out := make(map[string]Role, len(roles))
 	for name, role := range roles {
+		if len(role.Phrases) > 0 {
+			phrases := make(map[string]PhraseBlock, len(role.Phrases))
+			for phrase, block := range role.Phrases {
+				phrases[phrase] = block
+			}
+			role.Phrases = phrases
+		}
 		out[name] = role
 	}
 	return out
@@ -190,6 +197,12 @@ func transformRoleMotifs(roles map[string]Role, fn func(string) string) map[stri
 	for name, role := range roles {
 		if strings.TrimSpace(role.Motif) != "" {
 			role.Motif = fn(role.Motif)
+		}
+		for phrase, block := range role.Phrases {
+			if strings.TrimSpace(block.Motif) != "" {
+				block.Motif = fn(block.Motif)
+				role.Phrases[phrase] = block
+			}
 		}
 		out[name] = role
 	}

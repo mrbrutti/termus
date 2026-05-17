@@ -160,7 +160,7 @@
 
 ### Phase 2: Expand The `.tm` Language
 - [x] Add a first-class arrangement block to `.tm` with explicit scene events such as fills, stop-time bars, pedal holds, swells, doubles, breaks, tags, pickups, and endings.
-- [ ] Add phrase-block syntax to `.tm` for section-local melody, comp, bass, and drum writing instead of only global role motifs and patterns.
+- [x] Add phrase-block syntax to `.tm` for section-local melody, comp, bass, and drum writing instead of only global role motifs and patterns.
 - [ ] Add orchestration directives to `.tm` so roles can change instrument family, register, articulation, or prominence by section without redefining the whole track.
 - [ ] Add track-level variation budgets and anti-repetition constraints to `.tm` so authors can say how much mutation is allowed per section, phrase, or return.
 - [ ] Add linter rules for `.tm` that flag weak contrast, over-dense writing, missing cadence shape, too many simultaneous bright attacks, and sections that are too similar.

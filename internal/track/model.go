@@ -45,15 +45,23 @@ type Arrangement struct {
 }
 
 type Role struct {
-	Family       string   `yaml:"family,omitempty"`
-	Tone         []string `yaml:"tone,omitempty"`
-	Articulation string   `yaml:"articulation,omitempty"`
-	Register     string   `yaml:"register,omitempty"`
-	Prominence   string   `yaml:"prominence,omitempty"`
-	Pattern      string   `yaml:"pattern,omitempty"`
-	Motif        string   `yaml:"motif,omitempty"`
-	Harmony      string   `yaml:"harmony,omitempty"`
-	Active       *bool    `yaml:"active,omitempty"`
+	Family       string                 `yaml:"family,omitempty"`
+	Tone         []string               `yaml:"tone,omitempty"`
+	Articulation string                 `yaml:"articulation,omitempty"`
+	Register     string                 `yaml:"register,omitempty"`
+	Prominence   string                 `yaml:"prominence,omitempty"`
+	Pattern      string                 `yaml:"pattern,omitempty"`
+	Motif        string                 `yaml:"motif,omitempty"`
+	Harmony      string                 `yaml:"harmony,omitempty"`
+	Phrases      map[string]PhraseBlock `yaml:"phrases,omitempty"`
+	Active       *bool                  `yaml:"active,omitempty"`
+}
+
+type PhraseBlock struct {
+	Pattern string `yaml:"pattern,omitempty"`
+	Motif   string `yaml:"motif,omitempty"`
+	Harmony string `yaml:"harmony,omitempty"`
+	Active  *bool  `yaml:"active,omitempty"`
 }
 
 type Event struct {

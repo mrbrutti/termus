@@ -638,6 +638,72 @@ sections:
 	}
 }
 
+func TestCompileSupportsRolePhraseBlocks(t *testing.T) {
+	const src = `
+title: Phrase Blocks In Roles
+style: lofi
+roles:
+  keys:
+    family: electric_piano
+    pattern: "x..x .x.."
+    phrases:
+      release:
+        pattern: "x....... | ....x..."
+  lead:
+    family: reed_lead
+    motif: "5 . 6 7 | 3 . 2 1"
+    phrases:
+      release:
+        motif: "3 . 2 . 1 . . ."
+sections:
+  - id: score
+    duration: 24s
+    harmony: "Dm9 G13 | Cmaj9 A7 | Bbmaj9 A7 | Dm9 G13"
+`
+	file, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	compiled, err := Compile(file, 73, gen.ListeningModeEndless)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	var plan gen.AuthoredTrackPlan
+	for _, got := range compiled.Plans {
+		plan = got
+	}
+	if len(plan.PhraseSpans) != 2 {
+		t.Fatalf("expected 2 phrase spans, got %d", len(plan.PhraseSpans))
+	}
+	releaseStart := (plan.PhraseSpans[1].StartBar - 1) * authoredSlotsPerBar
+	releaseEnd := plan.PhraseSpans[1].EndBar * authoredSlotsPerBar
+	var lead *gen.AuthoredRenderTrack
+	var keys *gen.AuthoredRenderTrack
+	for i := range plan.Tracks {
+		if plan.Tracks[i].Name == "lead" {
+			lead = &plan.Tracks[i]
+		}
+		if strings.HasPrefix(plan.Tracks[i].Name, "keys-") {
+			keys = &plan.Tracks[i]
+		}
+	}
+	if lead == nil || keys == nil {
+		t.Fatalf("expected lead and keys tracks, got lead=%v keys=%v", lead != nil, keys != nil)
+	}
+	if got := ((lead.Notes[releaseStart] % 12) + 12) % 12; got != 5 {
+		t.Fatalf("expected release phrase to start on scale degree 3 over Dm9, got pitch class %d", got)
+	}
+	active := 0
+	for i := releaseStart; i < releaseEnd; i++ {
+		if keys.Notes[i] >= 0 {
+			active++
+		}
+	}
+	if active > 2*authoredSlotsPerBar {
+		t.Fatalf("expected release comp phrase to stay sparse, got %d active notes", active)
+	}
+}
+
 func TestBundledTracksParseAndCompile(t *testing.T) {
 	paths, err := filepath.Glob(filepath.Join("..", "..", "tracks", "*", "*.tm"))
 	if err != nil {

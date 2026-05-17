@@ -339,7 +339,7 @@ func applyFill(track *gen.AuthoredRenderTrack, ctx authoredSectionContext, event
 	if pattern == "" {
 		pattern = defaultFillPattern(base)
 	}
-	notes := compileDrumPattern(ctx, pattern, base, maxInt(1, (end-start+authoredSlotsPerBar-1)/authoredSlotsPerBar), nil)
+	notes := compileDrumPattern(ctx, base, Role{Family: "drums", Pattern: pattern}, maxInt(1, (end-start+authoredSlotsPerBar-1)/authoredSlotsPerBar), nil)
 	for i := start; i < end && i < len(track.Notes); i++ {
 		local := i - start
 		if local >= 0 && local < len(notes) {
@@ -841,7 +841,7 @@ func compileRoleTracks(ctx authoredSectionContext, name string, role Role, bars 
 	kind := authoredRoleKind(name, role)
 	switch kind {
 	case "drum":
-		notes := compileDrumPattern(ctx, role.Pattern, name, totalBars, phraseSpans)
+		notes := compileDrumPattern(ctx, name, role, totalBars, phraseSpans)
 		if len(notes) == 0 {
 			return nil, nil
 		}
@@ -1335,12 +1335,13 @@ func applyRoleCharacter(base authoredRoleTemplate, role Role) authoredRoleTempla
 	return base
 }
 
-func compileDrumPattern(ctx authoredSectionContext, pattern, roleName string, totalBars int, phraseSpans []gen.AuthoredPhraseSpan) []int {
-	grid := expandRhythmPattern(pattern, totalBars, defaultRhythmPattern(roleName))
+func compileDrumPattern(ctx authoredSectionContext, roleName string, role Role, totalBars int, phraseSpans []gen.AuthoredPhraseSpan) []int {
+	grid := expandPhraseRhythmPattern(role, totalBars, phraseSpans, defaultRhythmPattern(roleName))
 	out := make([]int, len(grid))
 	for i, active := range grid {
 		span, phraseIdx := phraseSpanForSlot(phraseSpans, i)
-		active = phraseRhythmActive(ctx, authoredRoleKind(roleName, Role{Family: "drums"}), roleName, Role{Family: "drums"}, span, phraseIdx, i, active)
+		localRole := roleForPhrase(role, span.Label)
+		active = phraseRhythmActive(ctx, authoredRoleKind(roleName, localRole), roleName, localRole, span, phraseIdx, i, active)
 		if active {
 			out[i] = drumNoteFor(ctx, roleName, i)
 		} else {
@@ -1351,13 +1352,14 @@ func compileDrumPattern(ctx authoredSectionContext, pattern, roleName string, to
 }
 
 func compileBassLine(ctx authoredSectionContext, name string, role Role, bars []authoredHarmonyBar, totalBars int, phraseSpans []gen.AuthoredPhraseSpan) []int {
-	grid := expandRhythmPattern(role.Pattern, totalBars, defaultRhythmPattern(name))
+	grid := expandPhraseRhythmPattern(role, totalBars, phraseSpans, defaultRhythmPattern(name))
 	out := make([]int, len(grid))
 	last := -1
 	for slot := range grid {
 		span, phraseIdx := phraseSpanForSlot(phraseSpans, slot)
-		mode := rolePhraseMode(ctx, "bass", name, role, span, phraseIdx)
-		if !phraseRhythmActive(ctx, "bass", name, role, span, phraseIdx, slot, grid[slot]) {
+		localRole := roleForPhrase(role, span.Label)
+		mode := rolePhraseMode(ctx, "bass", name, localRole, span, phraseIdx)
+		if !phraseRhythmActive(ctx, "bass", name, localRole, span, phraseIdx, slot, grid[slot]) {
 			out[slot] = -1
 			continue
 		}
@@ -1370,7 +1372,7 @@ func compileBassLine(ctx authoredSectionContext, name string, role Role, bars []
 		base := rootMidiForRegister(rootPC, role.Register, ctx.style, name)
 		note := base
 		switch {
-		case strings.Contains(strings.ToLower(role.Family), "synth_bass"):
+		case strings.Contains(strings.ToLower(localRole.Family), "synth_bass"):
 			switch {
 			case pos == 0:
 				note = base
@@ -1406,7 +1408,7 @@ func compileBassLine(ctx authoredSectionContext, name string, role Role, bars []
 		default:
 			note = placePitchNear(base+chordDegreeInterval(chord, 3), base+4)
 		}
-		if ctx.shouldLift() && pos == 4 && !strings.Contains(strings.ToLower(role.Family), "synth_bass") {
+		if ctx.shouldLift() && pos == 4 && !strings.Contains(strings.ToLower(localRole.Family), "synth_bass") {
 			note += 12
 		}
 		if ctx.has("cadence", "settle", "outro") && pos >= 6 {
@@ -1422,7 +1424,7 @@ func compileBassLine(ctx authoredSectionContext, name string, role Role, bars []
 }
 
 func compilePadVoices(ctx authoredSectionContext, name string, role Role, bars []authoredHarmonyBar, totalBars int, phraseSpans []gen.AuthoredPhraseSpan) [][]int {
-	grid := expandRhythmPattern(role.Pattern, totalBars, defaultRhythmPattern(name))
+	grid := expandPhraseRhythmPattern(role, totalBars, phraseSpans, defaultRhythmPattern(name))
 	maxVoices := 4
 	kind := authoredRoleKind(name, role)
 	voices := make([][]int, maxVoices)
@@ -1434,14 +1436,15 @@ func compilePadVoices(ctx authoredSectionContext, name string, role Role, bars [
 	}
 	for slot, active := range grid {
 		span, phraseIdx := phraseSpanForSlot(phraseSpans, slot)
-		mode := rolePhraseMode(ctx, kind, name, role, span, phraseIdx)
-		active = phraseRhythmActive(ctx, kind, name, role, span, phraseIdx, slot, active)
+		localRole := roleForPhrase(role, span.Label)
+		mode := rolePhraseMode(ctx, kind, name, localRole, span, phraseIdx)
+		active = phraseRhythmActive(ctx, kind, name, localRole, span, phraseIdx, slot, active)
 		if !active {
 			continue
 		}
 		chord := chordForSlot(bars, slot)
-		voicing := chordVoicing(ctx, name, role, chord, mode, phraseIdx)
-		center := roleRegisterCenter(role.Register, ctx.style, name) + ctx.registerShift()/2
+		voicing := chordVoicing(ctx, name, localRole, chord, mode, phraseIdx)
+		center := roleRegisterCenter(localRole.Register, ctx.style, name) + ctx.registerShift()/2
 		for i := range voices {
 			if i >= len(voicing) {
 				continue
@@ -1457,13 +1460,14 @@ func compileCompVoices(ctx authoredSectionContext, name string, role Role, bars 
 }
 
 func compileMelody(ctx authoredSectionContext, name string, role Role, bars []authoredHarmonyBar, totalBars int, phraseSpans []gen.AuthoredPhraseSpan) []int {
-	tokens := expandMelodyPattern(roleValue(role.Motif, role.Pattern), totalBars, defaultMelodyPattern(ctx.style, name))
+	tokens := expandPhraseMelodyPattern(role, totalBars, phraseSpans, defaultMelodyPattern(ctx.style, name))
 	out := make([]int, len(tokens))
 	center := roleRegisterCenter(role.Register, ctx.style, name) + ctx.registerShift()
 	last := center
 	for slot, token := range tokens {
 		span, phraseIdx := phraseSpanForSlot(phraseSpans, slot)
-		mode := rolePhraseMode(ctx, "melody", name, role, span, phraseIdx)
+		localRole := roleForPhrase(role, span.Label)
+		mode := rolePhraseMode(ctx, "melody", name, localRole, span, phraseIdx)
 		token = strings.TrimSpace(token)
 		if (ctx.shouldThin(slot) || mode == "tail") && token != "-" && slot%authoredSlotsPerBar > 4 {
 			out[slot] = -1
@@ -1895,6 +1899,66 @@ func defaultMelodyPattern(style, name string) string {
 	default:
 		return "5 . 3 . | 1 . . ."
 	}
+}
+
+func roleForPhrase(role Role, label string) Role {
+	if len(role.Phrases) == 0 {
+		return role
+	}
+	block, ok := role.Phrases[strings.ToLower(strings.TrimSpace(label))]
+	if !ok {
+		return role
+	}
+	out := role
+	if strings.TrimSpace(block.Pattern) != "" {
+		out.Pattern = block.Pattern
+	}
+	if strings.TrimSpace(block.Motif) != "" {
+		out.Motif = block.Motif
+	}
+	if strings.TrimSpace(block.Harmony) != "" {
+		out.Harmony = block.Harmony
+	}
+	if block.Active != nil {
+		out.Active = block.Active
+	}
+	return out
+}
+
+func expandPhraseRhythmPattern(role Role, totalBars int, phraseSpans []gen.AuthoredPhraseSpan, fallback string) []bool {
+	if len(phraseSpans) == 0 {
+		return expandRhythmPattern(role.Pattern, totalBars, fallback)
+	}
+	out := make([]bool, totalBars*authoredSlotsPerBar)
+	for _, span := range phraseSpans {
+		localRole := roleForPhrase(role, span.Label)
+		if localRole.Active != nil && !*localRole.Active {
+			continue
+		}
+		bars := maxInt(1, span.EndBar-span.StartBar+1)
+		local := expandRhythmPattern(localRole.Pattern, bars, fallback)
+		start := maxInt(0, (span.StartBar-1)*authoredSlotsPerBar)
+		copy(out[start:], local)
+	}
+	return out
+}
+
+func expandPhraseMelodyPattern(role Role, totalBars int, phraseSpans []gen.AuthoredPhraseSpan, fallback string) []string {
+	if len(phraseSpans) == 0 {
+		return expandMelodyPattern(roleValue(role.Motif, role.Pattern), totalBars, fallback)
+	}
+	out := repeatString(".", totalBars*authoredSlotsPerBar)
+	for _, span := range phraseSpans {
+		localRole := roleForPhrase(role, span.Label)
+		if localRole.Active != nil && !*localRole.Active {
+			continue
+		}
+		bars := maxInt(1, span.EndBar-span.StartBar+1)
+		local := expandMelodyPattern(roleValue(localRole.Motif, localRole.Pattern), bars, fallback)
+		start := maxInt(0, (span.StartBar-1)*authoredSlotsPerBar)
+		copy(out[start:], local)
+	}
+	return out
 }
 
 func expandRhythmPattern(pattern string, totalBars int, fallback string) []bool {

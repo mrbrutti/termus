@@ -58,6 +58,17 @@ func validateRole(name string, role Role) error {
 	if role.Register != "" && !registerRE.MatchString(role.Register) {
 		return fmt.Errorf("roles.%s.register: invalid register %q", name, role.Register)
 	}
+	for phrase, block := range role.Phrases {
+		if err := validatePattern(block.Pattern, "rhythm"); err != nil {
+			return fmt.Errorf("roles.%s.phrases.%s.pattern: %w", name, phrase, err)
+		}
+		if err := validatePattern(block.Motif, "melody"); err != nil {
+			return fmt.Errorf("roles.%s.phrases.%s.motif: %w", name, phrase, err)
+		}
+		if err := validatePattern(block.Harmony, "harmony"); err != nil {
+			return fmt.Errorf("roles.%s.phrases.%s.harmony: %w", name, phrase, err)
+		}
+	}
 	return nil
 }
 

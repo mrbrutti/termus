@@ -154,6 +154,14 @@ func mergeRoles(base map[string]Role, override map[string]Role) map[string]Role 
 		if strings.TrimSpace(role.Harmony) != "" {
 			current.Harmony = role.Harmony
 		}
+		if len(role.Phrases) > 0 {
+			if current.Phrases == nil {
+				current.Phrases = map[string]PhraseBlock{}
+			}
+			for phrase, block := range role.Phrases {
+				current.Phrases[phrase] = block
+			}
+		}
 		if role.Active != nil {
 			current.Active = role.Active
 		}
