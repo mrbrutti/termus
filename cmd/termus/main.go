@@ -19,7 +19,7 @@ import (
 	"github.com/mrbrutti/termus/internal/scope"
 	"github.com/mrbrutti/termus/internal/sf2"
 	"github.com/mrbrutti/termus/internal/synth"
-	"github.com/mrbrutti/termus/internal/tm"
+	"github.com/mrbrutti/termus/internal/track"
 	"github.com/mrbrutti/termus/internal/tui"
 )
 
@@ -43,6 +43,19 @@ func startupLabel(spec gen.AlgoSpec) string {
 		return spec.Name
 	}
 	return fmt.Sprintf("%s · %s", label, spec.Name)
+}
+
+func mListeningModeLabel(mode gen.ListeningMode) string {
+	switch mode {
+	case gen.ListeningModeAlbumSide:
+		return "album side"
+	case gen.ListeningModeHourStream:
+		return "hour stream"
+	case gen.ListeningModeRadio:
+		return "radio"
+	default:
+		return "endless"
+	}
 }
 
 func main() {
@@ -69,7 +82,9 @@ func main() {
 		"how long each playlist track plays before the crossfade")
 	listenModeName := flag.String("listen-mode", string(gen.ListeningModeEndless),
 		"listening mode: endless | album-side | hour-stream | radio")
-	tmPath := flag.String("tm", "", "path to a .tm scored composition file")
+	trackName := flag.String("track", "", "track id (e.g. lofi/soft-tape-rain-bus) or path to a .tm track file")
+	completionShell := flag.String("completion", "", "print a shell completion script (zsh|bash)")
+	completeTrackPrefix := flag.String("complete-track-prefix", "", "internal: print track ids matching a prefix")
 	outPath := flag.String("out", "", "render directly to a WAV file instead of launching live playback")
 	playlistOut := flag.String("playlist-out", "", "render a playlist to a directory of WAVs plus manifest.json")
 	exportStems := flag.Bool("stems", false, "with --out/--playlist-out, also export per-stem WAVs when supported")
@@ -77,6 +92,30 @@ func main() {
 	debugView := flag.Bool("debug", false, "show the musical debug inspector in the TUI")
 	renderSeconds := flag.Float64("seconds", defaultRenderSeconds, "render duration in seconds when --out is provided")
 	flag.Parse()
+
+	visited := map[string]bool{}
+	flag.Visit(func(f *flag.Flag) { visited[f.Name] = true })
+
+	if visited["completion"] {
+		if err := printCompletion(*completionShell); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		return
+	}
+	if visited["complete-track-prefix"] {
+		entries, err := discoverTracks()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		for _, entry := range entries {
+			if strings.HasPrefix(entry.ID, *completeTrackPrefix) {
+				fmt.Println(entry.ID)
+			}
+		}
+		return
+	}
 
 	listenMode, ok := gen.ResolveListeningMode(*listenModeName)
 	if !ok {
@@ -126,7 +165,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "--listen-mode radio requires live playback or --playlist-out")
 		os.Exit(2)
 	}
-	if *playlistOut != "" && effectivePlaylistMode == "" && *tmPath == "" {
+	if *playlistOut != "" && effectivePlaylistMode == "" && *trackName == "" {
 		fmt.Fprintln(os.Stderr, "--playlist-out requires --playlist same|mixed")
 		os.Exit(2)
 	}
@@ -138,33 +177,35 @@ func main() {
 		fmt.Fprintf(os.Stderr, "--playlist-duration must be > 0, got %s\n", effectivePlaylistDuration)
 		os.Exit(2)
 	}
-	if *tmPath != "" && effectivePlaylistMode != "" {
-		fmt.Fprintln(os.Stderr, "--tm already defines its own scored sections; do not combine it with --playlist")
+	if *trackName != "" && effectivePlaylistMode != "" {
+		fmt.Fprintln(os.Stderr, "-track already defines its own authored sections; do not combine it with --playlist")
 		os.Exit(2)
 	}
-	if *tmPath != "" && *outPath != "" {
-		fmt.Fprintln(os.Stderr, "--tm currently supports live playback or --playlist-out; use --playlist-out for batch rendering")
+	if *trackName != "" && *outPath != "" {
+		fmt.Fprintln(os.Stderr, "-track currently supports live playback or --playlist-out; use --playlist-out for batch rendering")
 		os.Exit(2)
 	}
 
 	var (
-		spec       gen.AlgoSpec
-		compiledTM *tm.Compiled
-		err        error
+		spec        gen.AlgoSpec
+		activeTrack *track.Compiled
+		err         error
 	)
-	if *tmPath != "" {
-		compiledTM, err = loadTMComposition(*tmPath, *seed, listenMode.Name)
+	trackEntries, _ := discoverTracks()
+	defaultTrackBrowse := *trackName == "" && !visited["algo"] && effectivePlaylistMode == "" && *outPath == "" && *playlistOut == "" && len(trackEntries) > 0
+	if *trackName != "" {
+		_, activeTrack, err = loadTrackSelection(trackEntries, *trackName, *seed, listenMode.Name)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "tm load failed:", err)
+			fmt.Fprintln(os.Stderr, "track load failed:", err)
 			os.Exit(2)
 		}
-		logTMWarnings(compiledTM)
-		if len(compiledTM.Playlist.Tracks) == 0 {
-			fmt.Fprintln(os.Stderr, "tm score has no sections")
+		logTrackWarnings(activeTrack)
+		if len(activeTrack.Playlist.Tracks) == 0 {
+			fmt.Fprintln(os.Stderr, "track has no sections")
 			os.Exit(2)
 		}
-		spec = compiledTM.Playlist.Tracks[0].Spec
-		if resolved, ok := gen.ResolveListeningMode(string(compiledTM.Playlist.ListenMode)); ok {
+		spec = activeTrack.Playlist.Tracks[0].Spec
+		if resolved, ok := gen.ResolveListeningMode(string(activeTrack.Playlist.ListenMode)); ok {
 			listenMode = resolved
 		}
 	} else {
@@ -177,20 +218,23 @@ func main() {
 		}
 	}
 	loadSpec := spec
-	if compiledTM != nil {
-		for _, track := range compiledTM.Playlist.Tracks {
+	if activeTrack != nil {
+		for _, track := range activeTrack.Playlist.Tracks {
 			if track.Spec.RequiresSF2 {
 				loadSpec = track.Spec
 				break
 			}
 		}
 	}
-	liveStartupMax := *outPath == "" && *playlistOut == "" && sfStrategy == "max" && *sf2Path == "" && loadSpec.RequiresSF2
+	liveStartupMax := *outPath == "" && *playlistOut == "" && sfStrategy == "max" && *sf2Path == "" && loadSpec.RequiresSF2 && !defaultTrackBrowse
 	var (
 		catalog *soundFontCatalog
 		sf      *meltysynth.SoundFont
 	)
-	if liveStartupMax {
+	if defaultTrackBrowse && *sf2Path == "" {
+		catalog = newSoundFontCatalog(sfStrategy, *sf2Preset)
+		gen.SetSF2Runtime(sfStrategy, catalog.snapshot())
+	} else if liveStartupMax {
 		catalog = newSoundFontCatalog("max", *sf2Preset)
 		gen.SetSF2Runtime("max", catalog.snapshot())
 	} else {
@@ -201,7 +245,7 @@ func main() {
 		}
 	}
 	var algo gen.Algorithm
-	if liveStartupMax {
+	if liveStartupMax || defaultTrackBrowse {
 		algo = silentAlgorithm{}
 	} else {
 		algo = spec.Build(sf)
@@ -209,13 +253,26 @@ func main() {
 	}
 	controlProfile := gen.DefaultControlProfile()
 	profileFor := func(s gen.AlgoSpec, algoSeed int64) gen.ControlProfile {
-		if compiledTM == nil {
+		if activeTrack == nil {
 			return controlProfile
 		}
-		if base, ok := compiledTM.Overrides[fmt.Sprintf("%s:%d", s.Name, algoSeed)]; ok {
+		if base, ok := activeTrack.Profiles[fmt.Sprintf("%s:%d", s.Name, algoSeed)]; ok {
 			return mergeProfiles(base, controlProfile)
 		}
 		return controlProfile
+	}
+	blueprintFor := func(s gen.AlgoSpec, algoSeed int64) *gen.TrackBlueprint {
+		if activeTrack == nil {
+			return nil
+		}
+		if base, ok := activeTrack.Blueprints[fmt.Sprintf("%s:%d", s.Name, algoSeed)]; ok {
+			cloned := base
+			return &cloned
+		}
+		return nil
+	}
+	selectionFor := func(s gen.AlgoSpec, algoSeed int64) gen.SF2Selection {
+		return gen.ResolveSF2Selection(s, blueprintFor(s, algoSeed), sfStrategy, *sf2Preset)
 	}
 
 	var ir []float64
@@ -244,18 +301,19 @@ func main() {
 	buildRenderedAlgo := func(s gen.AlgoSpec, algoSeed int64) gen.Algorithm {
 		chosen := sf
 		if catalog != nil && s.RequiresSF2 {
-			loaded, err := catalog.EnsureForSpec(s, io.Discard)
-			if err != nil {
+			selection := selectionFor(s, algoSeed)
+			if err := catalog.ensurePresets(io.Discard, selection.Presets); err != nil {
 				logCatalogEnsureError(s, err)
-				loaded = catalog.Pick(s)
 			}
-			chosen = loaded
+			chosen = catalog.Lookup(selection.Primary)
+			if chosen == nil {
+				chosen = catalog.Pick(s)
+			}
+			gen.SetSF2RuntimeWithRoutes(sfStrategy, catalog.snapshot(), map[string]map[int32]string{s.Name: selection.Routes})
 		}
 		a := s.Build(chosen)
-		if compiledTM != nil {
-			if blueprint, ok := compiledTM.Blueprints[fmt.Sprintf("%s:%d", s.Name, algoSeed)]; ok {
-				a = gen.ApplyScoreBlueprint(a, blueprint)
-			}
+		if blueprint := blueprintFor(s, algoSeed); blueprint != nil {
+			a = gen.ApplyTrackBlueprint(a, *blueprint)
 		}
 		a = gen.ConfigureControlProfile(a, profileFor(s, algoSeed))
 		a.Seed(algoSeed)
@@ -326,11 +384,15 @@ func main() {
 		if !s.RequiresSF2 {
 			return "synth"
 		}
+		if *sf2Path != "" {
+			return filepath.Base(*sf2Path)
+		}
+		selection := selectionFor(s, *seed)
 		if sfStrategy == "max" {
 			return "max"
 		}
-		if *sf2Path != "" {
-			return filepath.Base(*sf2Path)
+		if selection.Primary != "" {
+			return selection.Primary
 		}
 		if catalog == nil {
 			return "sf2"
@@ -339,8 +401,8 @@ func main() {
 	}
 	if *playlistOut != "" {
 		var pl *gen.Playlist
-		if compiledTM != nil {
-			pl = &compiledTM.Playlist
+		if activeTrack != nil {
+			pl = &activeTrack.Playlist
 		} else {
 			pl, err = buildPlaylist(effectivePlaylistMode, spec, genres, effectivePlaylistTracks, *seed, effectivePlaylistDuration, listenMode.Name)
 			if err != nil {
@@ -375,13 +437,38 @@ func main() {
 	buildFn := func(s gen.AlgoSpec, algoSeed int64) gen.Algorithm {
 		return gen.WrapDebugStatus(buildLiveAlgo(s, algoSeed), presetLabel(s))
 	}
+	trackLoader := func(id string) (*gen.Playlist, string, error) {
+		entry, compiled, err := loadTrackSelection(trackEntries, id, *seed, listenMode.Name)
+		if err != nil {
+			return nil, "", err
+		}
+		_ = entry
+		activeTrack = compiled
+		logTrackWarnings(compiled)
+		if len(compiled.Playlist.Tracks) == 0 {
+			return nil, "", fmt.Errorf("track has no sections")
+		}
+		modeLabel := mListeningModeLabel(compiled.Playlist.ListenMode)
+		return &compiled.Playlist, modeLabel, nil
+	}
+	trackNav := make([]tui.TrackNavEntry, 0, len(trackEntries))
+	for _, entry := range trackEntries {
+		trackNav = append(trackNav, tui.TrackNavEntry{
+			ID:          entry.ID,
+			Style:       entry.Style,
+			Title:       entry.Title,
+			Description: entry.Description,
+		})
+	}
+	openTrackBrowser := defaultTrackBrowse
 
 	model := tui.New(ring, root, spec.Label(), "Cmin", *seed, *initialVol).
 		WithDebug(*debugView).
 		WithListeningMode(listenMode.Label).
 		WithControlProfile(&controlProfile).
 		WithExportController(makeTUIExporter(buildAlgo, *initialVol)).
-		WithSwitcher(genres, startIdx, buildFn)
+		WithSwitcher(genres, startIdx, buildFn).
+		WithTrackBrowser(trackNav, trackLoader, openTrackBrowser)
 	if liveStartupMax {
 		model = model.WithStartupLoading(fmt.Sprintf("Loading MAX palette · %s", startupLabel(spec)), "preparing soundfonts", 0)
 	}
@@ -389,10 +476,10 @@ func main() {
 	// Optional playlist. When set, the TUI auto-advances tracks with a
 	// crossfade. The first track is whichever genre is currently playing —
 	// we leave the speaker alone and just arm the timer for the next swap.
-	if compiledTM != nil {
-		pl := &compiledTM.Playlist
+	if activeTrack != nil {
+		pl := &activeTrack.Playlist
 		model = model.WithPlaylist(pl, 0, 88200)
-		fmt.Fprintf(os.Stderr, "tm score %q · %d sections · mode %s\n",
+		fmt.Fprintf(os.Stderr, "track %q · %d sections · mode %s\n",
 			pl.Name, len(pl.Tracks), pl.ListenMode)
 	} else if effectivePlaylistMode != "" {
 		pl, err := buildPlaylist(effectivePlaylistMode, spec, genres, effectivePlaylistTracks, *seed, effectivePlaylistDuration, listenMode.Name)
@@ -450,7 +537,7 @@ func main() {
 					Percent: progress.Percent,
 				})
 			}
-			if err := catalog.ensurePresetsParallel(gen.MaxSF2PresetsForSpec(spec), 2, update); err != nil {
+			if err := catalog.ensurePresetsParallel(selectionFor(spec, *seed).Presets, 2, update); err != nil {
 				p.Send(audio.BackendState{Kind: audio.BackendStateInitFailed, Detail: err.Error()})
 				p.Send(tui.StartupLoadMsg{
 					Title:   fmt.Sprintf("Loading MAX palette · %s", startupLabel(spec)),
@@ -489,9 +576,9 @@ func main() {
 
 // neededPresets returns the deduped list of SoundFont preset names the app
 // must have available given the strategy. In "single" mode, that's just the
-// user's chosen preset. In "pro", we collect every SF2-backed algorithm's
-// PreferredSF2 so cycling and playlists can hot-swap to the right SF. In
-// "max", we load the full curated catalog.
+// user's chosen preset. In "pro", we collect the inventory-resolved primary
+// preset for every SF2-backed algorithm so cycling and playlists can hot-swap
+// to the right bank. In "max", we load the full curated catalog.
 func neededPresets(strategy, fallbackPreset string, initial gen.AlgoSpec) []string {
 	switch strategy {
 	case "max":
@@ -506,12 +593,16 @@ func neededPresets(strategy, fallbackPreset string, initial gen.AlgoSpec) []stri
 		}
 		for _, name := range gen.AllAlgoNames() {
 			s, _ := gen.Resolve(name)
-			if !s.RequiresSF2 || s.PreferredSF2 == "" {
+			if !s.RequiresSF2 {
 				continue
 			}
-			if !seen[s.PreferredSF2] {
-				seen[s.PreferredSF2] = true
-				out = append(out, s.PreferredSF2)
+			preset := gen.ProSF2PresetForSpec(s, fallbackPreset)
+			if preset == "" {
+				continue
+			}
+			if !seen[preset] {
+				seen[preset] = true
+				out = append(out, preset)
 			}
 		}
 		return out
@@ -541,6 +632,11 @@ func pickSF(by map[string]*meltysynth.SoundFont, s gen.AlgoSpec, fallback string
 	if !s.RequiresSF2 {
 		return nil
 	}
+	if primary := gen.ProSF2PresetForSpec(s, fallback); primary != "" {
+		if sf, ok := by[primary]; ok {
+			return sf
+		}
+	}
 	if sf, ok := by[s.PreferredSF2]; ok {
 		return sf
 	}
@@ -556,6 +652,11 @@ func pickSF(by map[string]*meltysynth.SoundFont, s gen.AlgoSpec, fallback string
 func pickSFName(by map[string]*meltysynth.SoundFont, s gen.AlgoSpec, fallback string) string {
 	if !s.RequiresSF2 {
 		return "synth"
+	}
+	if primary := gen.ProSF2PresetForSpec(s, fallback); primary != "" {
+		if _, ok := by[primary]; ok {
+			return primary
+		}
 	}
 	if _, ok := by[s.PreferredSF2]; ok && s.PreferredSF2 != "" {
 		return s.PreferredSF2

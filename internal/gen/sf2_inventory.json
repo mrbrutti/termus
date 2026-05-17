@@ -1,0 +1,68 @@
+[
+  {
+    "name": "general",
+    "styles": ["ambient", "lullaby", "classical", "lofi", "jazz", "bells", "phase", "drone"],
+    "families": ["acoustic_piano", "electric_piano", "bass", "reed_lead", "strings", "pad", "mallet", "drums", "choir", "woodwind", "guitar"],
+    "tones": ["balanced", "neutral", "safe", "generalist"]
+  },
+  {
+    "name": "sgm",
+    "styles": ["lofi", "jazz", "classical"],
+    "families": ["acoustic_piano", "electric_piano", "bass", "guitar", "drums"],
+    "tones": ["warm", "lush", "soft", "woody", "full"]
+  },
+  {
+    "name": "tyros4",
+    "styles": ["jazz", "lofi"],
+    "families": ["reed_lead", "brass", "strings", "drums"],
+    "tones": ["polished", "present", "brassy", "live", "bright"]
+  },
+  {
+    "name": "dsound4",
+    "styles": ["lofi", "classical", "ambient"],
+    "families": ["electric_piano", "acoustic_piano", "bass", "pad", "strings"],
+    "tones": ["balanced", "modern", "clean", "wide"]
+  },
+  {
+    "name": "fatboy",
+    "styles": ["lofi", "phase", "ambient"],
+    "families": ["drums", "bass", "electric_piano", "pad", "synth_bass"],
+    "tones": ["clean", "dry", "tight", "dusty", "direct"]
+  },
+  {
+    "name": "timbres-of-heaven",
+    "styles": ["classical", "bells", "ambient", "jazz"],
+    "families": ["strings", "woodwind", "brass", "choir", "acoustic_piano"],
+    "tones": ["lush", "orchestral", "rich", "airy"]
+  },
+  {
+    "name": "merlin-symphony",
+    "styles": ["classical", "ambient", "drone"],
+    "families": ["strings", "woodwind", "pad", "choir"],
+    "tones": ["soft", "cinematic", "floating", "orchestral"]
+  },
+  {
+    "name": "fairy-tale",
+    "styles": ["bells", "lullaby", "ambient"],
+    "families": ["mallet", "bells", "music_box", "choir", "pad"],
+    "tones": ["glass", "sparkle", "luminous", "celestial", "delicate"]
+  },
+  {
+    "name": "fm-dx",
+    "styles": ["phase", "drone", "ambient", "bells"],
+    "families": ["electric_piano", "bells", "pad", "synth_bass", "lead"],
+    "tones": ["metallic", "digital", "retro", "shimmer", "icy"]
+  },
+  {
+    "name": "musescore-general",
+    "styles": ["classical", "ambient", "phase", "bells"],
+    "families": ["strings", "woodwind", "mallet", "choir", "acoustic_piano"],
+    "tones": ["polite", "balanced", "soft", "clear"]
+  },
+  {
+    "name": "arachno",
+    "styles": ["ambient", "bells", "drone", "phase"],
+    "families": ["pad", "bells", "lead", "choir", "synth_bass"],
+    "tones": ["retro", "warm", "wide", "dreamy", "synthy"]
+  }
+]

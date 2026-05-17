@@ -3,12 +3,15 @@ package gen
 import "testing"
 
 func TestParseChillBlueprintHarmonyAndRoles(t *testing.T) {
-	got := parseChillBlueprint(ScoreBlueprint{
+	got := parseChillBlueprint(TrackBlueprint{
 		Harmony: "Dm9 G13 | Cmaj9 Am7",
-		Lead:    "9 . b9 7 | 5 - 3 1",
-		Comp:    "x . . x | . x . x",
-		Drums:   "bd: x... x..x | sd: ..x. ..x. | hh: x.x.x.x. | fill: .... ...x",
-		Arrange: "bass drums comp +lead +texture",
+		Roles: map[string]RoleBlueprint{
+			"lead":    {Motif: "9 . b9 7 | 5 - 3 1", Active: true},
+			"keys":    {Pattern: "x . . x | . x . x", Active: true},
+			"texture": {Pattern: "x . . x | . x . x", Active: true},
+			"drums":   {Pattern: "bd: x... x..x | sd: ..x. ..x. | hh: x.x.x.x. | fill: .... ...x", Active: true},
+			"comp":    {Active: true},
+		},
 	})
 	if !got.hasTonic || got.tonicPC != 2 {
 		t.Fatalf("tonic = (%v,%d), want (true,2)", got.hasTonic, got.tonicPC)

@@ -21,16 +21,21 @@ type chillBlueprint struct {
 	drums        chillDrumBlueprint
 }
 
-func (a *Chill) ApplyScoreBlueprint(blueprint ScoreBlueprint) {
+func (a *Chill) ApplyTrackBlueprint(blueprint TrackBlueprint) {
 	a.authored = parseChillBlueprint(blueprint)
 }
 
-func parseChillBlueprint(blueprint ScoreBlueprint) chillBlueprint {
+func parseChillBlueprint(blueprint TrackBlueprint) chillBlueprint {
+	leadRole := roleFrom(blueprint, "lead")
+	keysRole := roleFrom(blueprint, "keys", "comp")
+	textureRole := roleFrom(blueprint, "texture", "vibes")
+	guitarRole := roleFrom(blueprint, "guitar", "counter")
+	drumRole := roleFrom(blueprint, "drums")
 	out := chillBlueprint{
 		progression: parseChillHarmony(blueprint.Harmony),
-		saxPhrase:   parseChillMelody(blueprint.Lead),
-		roles:       parseArrangeRoles(blueprint.Arrange),
-		drums:       parseChillDrums(blueprint.Drums),
+		saxPhrase:   parseChillMelody(roleValue(leadRole.Motif, leadRole.Pattern)),
+		roles:       parseRoleActivity(blueprint.Roles),
+		drums:       parseChillDrums(drumRole.Pattern),
 	}
 	if len(out.progression) > 0 {
 		base := 0
@@ -42,8 +47,8 @@ func parseChillBlueprint(blueprint ScoreBlueprint) chillBlueprint {
 		out.hasTonic = true
 		out.tonicPC = wrapPitchClass(base)
 	}
-	out.vibePhrase = parseChillComp(blueprint.Comp, []int{chillPlanNinth, chillPlanEleventh, chillPlanThirteenth, chillPlanResolveThird})
-	out.guitarPhrase = parseChillComp(blueprint.Comp, []int{chillPlanNinth, chillPlanSuspendFourth, chillPlanResolveThird, chillPlanThirteenth})
+	out.vibePhrase = parseChillComp(roleValue(textureRole.Pattern, keysRole.Pattern), []int{chillPlanNinth, chillPlanEleventh, chillPlanThirteenth, chillPlanResolveThird})
+	out.guitarPhrase = parseChillComp(roleValue(guitarRole.Pattern, keysRole.Pattern), []int{chillPlanNinth, chillPlanSuspendFourth, chillPlanResolveThird, chillPlanThirteenth})
 	return out
 }
 
@@ -204,19 +209,36 @@ func chillPlanToken(token string, last int) int {
 	}
 }
 
-func parseArrangeRoles(src string) map[string]bool {
-	fields := scorePatternTokens(src)
-	if len(fields) == 0 {
+func parseRoleActivity(roles map[string]RoleBlueprint) map[string]bool {
+	if len(roles) == 0 {
 		return nil
 	}
-	out := make(map[string]bool, len(fields))
-	for _, token := range fields {
-		token = strings.TrimPrefix(strings.ToLower(token), "+")
-		if token != "" {
-			out[token] = true
-		}
+	out := make(map[string]bool, len(roles))
+	for name, role := range roles {
+		out[strings.ToLower(name)] = role.Active
 	}
 	return out
+}
+
+func roleFrom(blueprint TrackBlueprint, names ...string) RoleBlueprint {
+	for _, name := range names {
+		if role, ok := blueprint.Roles[name]; ok {
+			return role
+		}
+		if role, ok := blueprint.Roles[strings.ToLower(name)]; ok {
+			return role
+		}
+	}
+	return RoleBlueprint{}
+}
+
+func roleValue(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func parseChillDrums(src string) chillDrumBlueprint {

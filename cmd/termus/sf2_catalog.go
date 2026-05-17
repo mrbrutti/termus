@@ -88,6 +88,15 @@ func (c *soundFontCatalog) Pick(spec gen.AlgoSpec) *meltysynth.SoundFont {
 	return c.pick(spec)
 }
 
+func (c *soundFontCatalog) Lookup(name string) *meltysynth.SoundFont {
+	if c == nil || name == "" {
+		return nil
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.byName[name]
+}
+
 func (c *soundFontCatalog) PickName(spec gen.AlgoSpec) string {
 	if c == nil || !spec.RequiresSF2 {
 		return "synth"

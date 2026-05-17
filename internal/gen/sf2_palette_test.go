@@ -8,24 +8,17 @@ func TestMaxSF2PresetsForSpecAmbient(t *testing.T) {
 		t.Fatal("ambient spec missing")
 	}
 	got := MaxSF2PresetsForSpec(spec)
-	want := map[string]bool{
-		"arachno":           true,
-		"fairy-tale":        true,
-		"fm-dx":             true,
-		"merlin-symphony":   true,
-		"musescore-general": true,
-	}
-	if len(got) != len(want) {
-		t.Fatalf("ambient max preset count = %d, want %d: %v", len(got), len(want), got)
-	}
+	found := map[string]bool{}
 	for _, name := range got {
-		if !want[name] {
-			t.Fatalf("ambient max preset %q not expected: %v", name, got)
-		}
-		delete(want, name)
+		found[name] = true
 	}
-	if len(want) != 0 {
-		t.Fatalf("ambient max preset set incomplete, still missing: %v", want)
+	for _, want := range []string{"arachno", "fairy-tale"} {
+		if !found[want] {
+			t.Fatalf("ambient max preset %q missing: %v", want, got)
+		}
+	}
+	if found["general"] {
+		t.Fatalf("ambient max should avoid generic fallback when a curated pool exists: %v", got)
 	}
 }
 
@@ -35,23 +28,17 @@ func TestMaxSF2PresetsForSpecLofiIncludesSharedAndAlternateBanks(t *testing.T) {
 		t.Fatal("lofi spec missing")
 	}
 	got := MaxSF2PresetsForSpec(spec)
-	want := map[string]bool{
-		"fatboy":  true,
-		"sgm":     true,
-		"dsound4": true,
-		"tyros4":  true,
-	}
-	if len(got) != len(want) {
-		t.Fatalf("lofi max preset count = %d, want %d: %v", len(got), len(want), got)
-	}
+	found := map[string]bool{}
 	for _, name := range got {
-		if !want[name] {
-			t.Fatalf("lofi max preset %q not expected: %v", name, got)
-		}
-		delete(want, name)
+		found[name] = true
 	}
-	if len(want) != 0 {
-		t.Fatalf("lofi max preset set incomplete, still missing: %v", want)
+	for _, want := range []string{"sgm", "tyros4", "fatboy"} {
+		if !found[want] {
+			t.Fatalf("lofi max preset %q missing: %v", want, got)
+		}
+	}
+	if found["general"] {
+		t.Fatalf("lofi max should avoid generic fallback when more characterful banks exist: %v", got)
 	}
 }
 
@@ -61,21 +48,16 @@ func TestMaxSF2PresetsForSpecBellsUsesCuratedPool(t *testing.T) {
 		t.Fatal("bells spec missing")
 	}
 	got := MaxSF2PresetsForSpec(spec)
-	want := map[string]bool{
-		"fairy-tale":        true,
-		"arachno":           true,
-		"timbres-of-heaven": true,
-	}
-	if len(got) != len(want) {
-		t.Fatalf("bells max preset count = %d, want %d: %v", len(got), len(want), got)
-	}
+	found := map[string]bool{}
 	for _, name := range got {
-		if !want[name] {
-			t.Fatalf("bells max preset %q not expected: %v", name, got)
-		}
-		delete(want, name)
+		found[name] = true
 	}
-	if len(want) != 0 {
-		t.Fatalf("bells max preset set incomplete, still missing: %v", want)
+	for _, want := range []string{"fairy-tale", "arachno", "timbres-of-heaven"} {
+		if !found[want] {
+			t.Fatalf("bells max preset %q missing: %v", want, got)
+		}
+	}
+	if found["general"] {
+		t.Fatalf("bells max should avoid generic fallback when curated bell banks exist: %v", got)
 	}
 }

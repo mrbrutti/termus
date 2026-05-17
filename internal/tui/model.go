@@ -18,6 +18,15 @@ import (
 // over the loaded SoundFont (or nil) and any per-build wiring like IR setup.
 type BuildAlgoFn func(spec gen.AlgoSpec, seed int64) gen.Algorithm
 
+type TrackNavEntry struct {
+	ID          string
+	Style       string
+	Title       string
+	Description string
+}
+
+type TrackLoader func(id string) (*gen.Playlist, string, error)
+
 type AudioControl struct {
 	Retry      func()
 	RenderOnly func()
@@ -51,6 +60,7 @@ type Model struct {
 	recording          bool
 	debugVisible       bool
 	helpVisible        bool
+	trackVisible       bool
 	libraryVisible     bool
 	inspectorVisible   bool
 	exportVisible      bool
@@ -76,6 +86,10 @@ type Model struct {
 	musicProfile      *gen.ControlProfile
 	morphMode         int
 	audioControl      *AudioControl
+	trackLoader       TrackLoader
+	tracks            []TrackNavEntry
+	trackIdx          int
+	activeTrackID     string
 
 	// Algorithm switching ([n]/[p]).
 	genres          []gen.AlgoSpec // ordered list of switchable algorithms
@@ -196,6 +210,16 @@ func (m Model) WithPlaylist(p *gen.Playlist, startIdx int, fadeFrames int) Model
 	if p != nil && startIdx < len(p.Tracks) {
 		m.trackStartedAt = time.Now()
 		m.nextTrackAt = time.Now().Add(p.Tracks[startIdx].Duration)
+	}
+	return m
+}
+
+func (m Model) WithTrackBrowser(entries []TrackNavEntry, loader TrackLoader, visible bool) Model {
+	m.tracks = append([]TrackNavEntry(nil), entries...)
+	m.trackLoader = loader
+	m.trackVisible = visible
+	if m.trackIdx >= len(m.tracks) {
+		m.trackIdx = maxInt(0, len(m.tracks)-1)
 	}
 	return m
 }
@@ -377,10 +401,76 @@ func (m *Model) keepSeed() {
 	m.flashStatus(fmt.Sprintf("kept %s/%d (%d)", spec.Label(), m.seed, len(m.kept)), 2*time.Second)
 }
 
+func (m *Model) toggleTracks() {
+	if len(m.tracks) == 0 {
+		m.flashStatus("tracks: none found", 2*time.Second)
+		return
+	}
+	m.trackVisible = !m.trackVisible
+	if m.trackVisible {
+		m.helpVisible = false
+		m.libraryVisible = false
+		m.inspectorVisible = false
+		m.exportVisible = false
+		m.controlsVisible = false
+		m.flashStatus("tracks: on", 2*time.Second)
+		return
+	}
+	m.flashStatus("tracks: off", 2*time.Second)
+}
+
+func (m *Model) moveTrack(delta int) {
+	if len(m.tracks) == 0 {
+		m.trackIdx = 0
+		return
+	}
+	m.trackIdx = (m.trackIdx + delta + len(m.tracks)) % len(m.tracks)
+}
+
+func (m *Model) loadSelectedTrack() {
+	if m.trackLoader == nil || len(m.tracks) == 0 || m.buildFn == nil {
+		return
+	}
+	entry := m.tracks[m.trackIdx]
+	pl, modeLabel, err := m.trackLoader(entry.ID)
+	if err != nil {
+		m.flashStatus("track load failed", 3*time.Second)
+		return
+	}
+	if pl == nil || len(pl.Tracks) == 0 {
+		m.flashStatus("track empty", 3*time.Second)
+		return
+	}
+	first := pl.Tracks[0]
+	algo := m.buildFn(first.Spec, first.Seed)
+	m.cmd.SwapAlgorithmFade(algo, m.morphFadeFrames())
+	m.playlist = pl
+	m.playlistIdx = 0
+	m.playlistFade = 88200
+	m.trackStartedAt = time.Now()
+	m.nextTrackAt = time.Now().Add(first.Duration)
+	m.algo = first.Spec.Label()
+	m.seed = first.Seed
+	m.activeTrackID = entry.ID
+	m.trackVisible = false
+	m.touchCurrentSeed()
+	if modeLabel != "" {
+		m.listeningMode = modeLabel
+	}
+	for i, g := range m.genres {
+		if g.Name == first.Spec.Name {
+			m.genreIdx = i
+			break
+		}
+	}
+	m.flashStatus("track: "+entry.Title, 3*time.Second)
+}
+
 func (m *Model) toggleLibrary() {
 	m.libraryVisible = !m.libraryVisible
 	if m.libraryVisible {
 		m.helpVisible = false
+		m.trackVisible = false
 		m.inspectorVisible = false
 		m.exportVisible = false
 		if m.libraryIdx >= len(m.savedSeeds) {
@@ -396,6 +486,7 @@ func (m *Model) toggleInspector() {
 	m.inspectorVisible = !m.inspectorVisible
 	if m.inspectorVisible {
 		m.helpVisible = false
+		m.trackVisible = false
 		m.libraryVisible = false
 		m.exportVisible = false
 		m.flashStatus("inspector: on", 2*time.Second)
@@ -415,6 +506,7 @@ func (m *Model) toggleExportDrawer() {
 	m.exportVisible = !m.exportVisible
 	if m.exportVisible {
 		m.helpVisible = false
+		m.trackVisible = false
 		m.libraryVisible = false
 		m.inspectorVisible = false
 		m.flashStatus("export: on", 2*time.Second)
@@ -427,6 +519,7 @@ func (m *Model) toggleControls() {
 	m.controlsVisible = !m.controlsVisible
 	if m.controlsVisible {
 		m.helpVisible = false
+		m.trackVisible = false
 		m.libraryVisible = false
 		m.inspectorVisible = false
 		m.exportVisible = false
@@ -689,6 +782,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.splashVisible {
 			m.splashVisible = false
 		}
+		if m.trackVisible {
+			switch msg.String() {
+			case "q", "ctrl+c":
+				return m, tea.Quit
+			case "t", "esc":
+				m.toggleTracks()
+			case "up":
+				m.moveTrack(-1)
+			case "down":
+				m.moveTrack(1)
+			case "enter":
+				m.loadSelectedTrack()
+			}
+			return m, nil
+		}
 		if m.libraryVisible {
 			switch msg.String() {
 			case "q", "ctrl+c":
@@ -779,6 +887,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.showVolumeOverlay()
 		case actionRecord:
 			m.toggleRecording()
+		case actionTracks:
+			m.toggleTracks()
 		case actionTheme:
 			if len(m.themes) > 1 {
 				m.themeIdx = (m.themeIdx + 1) % len(m.themes)
@@ -805,6 +915,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case actionHelp:
 			m.helpVisible = !m.helpVisible
 			if m.helpVisible {
+				m.trackVisible = false
 				m.libraryVisible = false
 				m.inspectorVisible = false
 				m.exportVisible = false
@@ -905,6 +1016,8 @@ func (m Model) View() string {
 	body := scopeStr
 	if m.helpVisible {
 		body = helpPanel(m, innerW, innerH, theme)
+	} else if m.trackVisible {
+		body = trackPanel(m, innerW, innerH, theme)
 	} else if m.libraryVisible {
 		body = libraryPanel(m, innerW, innerH, theme)
 	} else if m.inspectorVisible {

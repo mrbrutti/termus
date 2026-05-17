@@ -195,6 +195,16 @@ func (m Model) nowControlItems() []controlItem {
 				return nil
 			},
 		},
+		{
+			Title:    "track browser",
+			Value:    onOff(m.trackVisible),
+			Hint:     "enter open",
+			Disabled: len(m.tracks) == 0,
+			Activate: func(m *Model) tea.Cmd {
+				m.toggleTracks()
+				return nil
+			},
+		},
 	}
 }
 

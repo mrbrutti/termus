@@ -3,17 +3,33 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/mrbrutti/termus/internal/gen"
-	"github.com/mrbrutti/termus/internal/tm"
+	"github.com/mrbrutti/termus/internal/track"
 )
 
-func loadTMComposition(path string, defaultSeed int64, defaultListenMode gen.ListeningMode) (*tm.Compiled, error) {
-	score, err := tm.ParseFile(path)
-	if err != nil {
-		return nil, err
+func discoverTracks() ([]track.Entry, error) {
+	return track.Discover()
+}
+
+func loadTrackSelection(entries []track.Entry, value string, defaultSeed int64, defaultListenMode gen.ListeningMode) (track.Entry, *track.Compiled, error) {
+	if strings.TrimSpace(value) == "" {
+		return track.Entry{}, nil, fmt.Errorf("empty track selection")
 	}
-	return tm.Compile(score, defaultSeed, defaultListenMode)
+	entry, ok := track.Resolve(entries, value)
+	if !ok {
+		return track.Entry{}, nil, fmt.Errorf("unknown track %q", value)
+	}
+	file, err := track.ParseFile(entry.Path)
+	if err != nil {
+		return track.Entry{}, nil, err
+	}
+	compiled, err := track.Compile(file, defaultSeed, defaultListenMode)
+	if err != nil {
+		return track.Entry{}, nil, err
+	}
+	return entry, compiled, nil
 }
 
 func mergeProfiles(base, overlay gen.ControlProfile) gen.ControlProfile {
@@ -40,11 +56,11 @@ func clampProfile(v int) int {
 	}
 }
 
-func logTMWarnings(compiled *tm.Compiled) {
+func logTrackWarnings(compiled *track.Compiled) {
 	if compiled == nil {
 		return
 	}
 	for _, warning := range compiled.Warnings {
-		fmt.Fprintf(os.Stderr, "tm lint %s: %s\n", warning.Path, warning.Message)
+		fmt.Fprintf(os.Stderr, "track lint %s: %s\n", warning.Path, warning.Message)
 	}
 }
