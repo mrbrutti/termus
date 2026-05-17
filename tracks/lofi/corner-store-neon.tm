@@ -1,9 +1,9 @@
-title: Soft Tape / Corner Store Neon
-description: Brighter storefront groove with tighter drums, flute-like hooks, and a lifted chorus section.
+title: Corner Store Neon
+description: Flute-hook lofi with a steadier low end, brighter chorus, and more obvious storefront pulse.
 style: lofi
 listen_mode: album-side
 seed: 88119
-tags: [lofi, neon, storefront, brighter, late]
+tags: [lofi, neon, storefront, flute, pulse]
 key: Fmin
 tempo: 82
 globals:
@@ -45,16 +45,9 @@ roles:
     articulation: pocket
     prominence: support
     pattern: "x.xxx.x. | x.x.xx.x"
-  vibes:
-    family: mallet
-    tone: [glass, delicate]
-    articulation: halo
-    register: high
-    prominence: air
-    pattern: "..x..x.. | ....x..."
-  lead:
-    family: reed_lead
-    tone: [present, intimate]
+  flute:
+    family: woodwind
+    tone: [soft, breathy]
     articulation: lyrical
     register: high
     prominence: lead
@@ -66,6 +59,13 @@ roles:
     register: mid
     prominence: support
     pattern: "x....... | ....x..."
+  vibes:
+    family: mallet
+    tone: [glass, delicate]
+    articulation: halo
+    register: air
+    prominence: air
+    pattern: "....x... | ..x....."
 sections:
   - id: intro
     title: cooler hum
@@ -78,10 +78,10 @@ sections:
       brightness: warm
       motion: still
     roles:
-      lead:
+      flute:
         active: false
-      hat:
-        pattern: "x...x... | x...x..."
+      pad:
+        active: false
   - id: verse-a
     title: neon aisle
     duration: 55s
@@ -89,8 +89,9 @@ sections:
     scene: "head pulse"
     variation: "introduce-hook"
     roles:
-      lead:
-        motif: "9 . b9 . 7 . 5 . | 6 . 5 . 3 . 2 1"
+      flute:
+        active: true
+        motif: "9 . 7 . 5 . 6 5 | 3 . 2 . 1 . . ."
   - id: chorus
     title: street reflection
     duration: 55s
@@ -102,7 +103,7 @@ sections:
       brightness: bright
       motion: moving
     roles:
-      lead:
+      flute:
         motif: "11 . 9 . 7 . 9 11 | 7 . 5 . 3 . 2 1"
       pad:
         active: true
@@ -119,12 +120,12 @@ sections:
       brightness: warm
       motion: still
     roles:
-      lead:
+      flute:
         motif: "5 . . . 3 . . . | 1 . . . . . . ."
-      snare:
-        pattern: "........ | ....x..."
       pad:
         active: false
+      hat:
+        pattern: "x...x... | ....x..."
   - id: outro
     title: shutters down
     duration: 40s
@@ -132,5 +133,6 @@ sections:
     scene: "outro settle"
     variation: "cadence"
     roles:
-      lead:
-        motif: "3 . 2 . 1 . . . | . . . . . . . ."
+      flute:
+        motif: "3 . . 2 . . 1 . | . . . . . . . ."
+

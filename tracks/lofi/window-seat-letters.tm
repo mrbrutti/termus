@@ -1,25 +1,25 @@
-title: Soft Tape / Window Seat Letters
-description: Mid-tempo notebook beat with guitar replies, a denser back half, and a soft handwritten outro.
+title: Window Seat Letters
+description: Notebook lofi with upright piano comp, clarinet lead fragments, and a suspended radiator middle.
 style: lofi
 listen_mode: album-side
 seed: 51203
-tags: [lofi, letters, train, study, warm]
+tags: [lofi, letters, train, piano, clarinet]
 key: Cmin
-tempo: 76
+tempo: 74
 globals:
   density: steady
-  brightness: balanced
+  brightness: warm
   motion: gentle
   reverb: room
   phrase: long
 roles:
-  keys:
-    family: electric_piano
-    tone: [warm, dusty, soft]
+  piano:
+    family: acoustic_piano
+    tone: [warm, soft]
     articulation: stab
     register: mid
     prominence: support
-    pattern: "x...x..x | x.x...x."
+    pattern: "x...x... | .x..x..x"
   bass:
     family: bass
     tone: [round, woody]
@@ -44,28 +44,28 @@ roles:
     tone: [dry, light]
     articulation: pocket
     prominence: support
-    pattern: "x.x.x.x. | x.x.xx.."
+    pattern: "x.x...x. | x...x.x."
+  clarinet:
+    family: woodwind
+    tone: [soft, breathy]
+    articulation: lyrical
+    register: mid-high
+    prominence: lead
+    motif: "5 . . 6 . . 7 9 | 7 . . 5 . 3 2 1"
   guitar:
     family: guitar
     tone: [soft, warm]
     articulation: answer
     register: mid
     prominence: support
-    pattern: ".x....x. | ..x.x..."
-  vibes:
-    family: mallet
-    tone: [soft, glass]
-    articulation: halo
-    register: high
+    pattern: "..x...x. | .x....x."
+  pad:
+    family: pad
+    tone: [soft, wide]
+    articulation: sustain
+    register: mid
     prominence: air
-    pattern: "....x... | ..x....."
-  lead:
-    family: reed_lead
-    tone: [breathy, intimate]
-    articulation: lyrical
-    register: mid-high
-    prominence: lead
-    motif: "5 . . 6 7 . 9 7 | 5 . 3 . 2 . 1 ."
+    pattern: "x....... | ....x..."
 sections:
   - id: intro
     title: folded paper
@@ -78,12 +78,12 @@ sections:
       brightness: warm
       motion: still
     roles:
-      lead:
+      clarinet:
         active: false
       guitar:
         active: false
-      hat:
-        pattern: "x...x... | x...x..."
+      pad:
+        active: false
   - id: verse-a
     title: margin note
     duration: 55s
@@ -91,8 +91,9 @@ sections:
     scene: "head note"
     variation: "introduce-hook"
     roles:
-      lead:
-        motif: "9 . 7 . 5 . 6 5 | 3 . 2 . 1 . . ."
+      clarinet:
+        active: true
+        motif: "9 . . 7 . . 5 3 | 5 . . 6 . . 7 5"
   - id: verse-b
     title: underlined answer
     duration: 55s
@@ -103,18 +104,18 @@ sections:
       density: busy
       motion: moving
     roles:
-      lead:
-        motif: "5 . 6 . 7 . 9 b9 | 7 . 5 . 3 . 2 1"
+      clarinet:
+        motif: "11 . . 9 . . 7 5 | 7 . . 5 . 3 2 1"
       guitar:
         active: true
-        pattern: ".x..x..x | ..x..x.."
+        pattern: ".x..x..x | ..x...x."
       kick:
         pattern: "x..xx..x | x...x..x"
   - id: bridge
-    title: radiator paragraph
+    title: radiator glow
     duration: 50s
     harmony: "Abmaj9 G7 | Cm9 Cm9 | Ebmaj9 D7 | Gm9 C7"
-    scene: "bridge intimate"
+    scene: "bridge suspended"
     variation: "subtract"
     profile:
       density: light
@@ -122,22 +123,21 @@ sections:
       motion: still
       reverb: halo
     roles:
-      lead:
-        motif: "11 . 9 . 7 . . . | 5 . 3 . 1 . . ."
+      clarinet:
+        motif: "5 . . . 3 . . . | 1 . . . . . . ."
       guitar:
         active: false
-      vibes:
-        pattern: "x....... | ....x..."
-      snare:
-        pattern: "........ | ....x..."
+      hat:
+        pattern: "x...x... | ....x..."
+      pad:
+        active: true
   - id: outro
     title: last paragraph
-    duration: 45s
+    duration: 40s
     harmony: "Cm9 F13 | Bbmaj9 G7 | Cm9 Abmaj9 | F13 G7"
     scene: "outro fade"
     variation: "cadence"
     roles:
-      lead:
-        motif: "3 . 2 . 1 . . . | . . . . . . . ."
-      guitar:
-        active: false
+      clarinet:
+        motif: "3 . . 2 . . 1 . | . . . . . . . ."
+

@@ -1,38 +1,38 @@
-title: Soft Tape / Library Vent Loop
-description: Study-floor loop with brushed energy, sparse top lines, and a muted fluorescent middle.
+title: Library Vent Loop
+description: Vibraphone-front lofi with lighter drums, sparse electric bass, and a glassy midsection.
 style: lofi
 listen_mode: album-side
 seed: 70301
-tags: [lofi, library, study, fluorescent, loop]
+tags: [lofi, library, vibraphone, study, loop]
 key: Amin
-tempo: 72
+tempo: 70
 globals:
   density: steady
-  brightness: warm
+  brightness: balanced
   motion: gentle
   reverb: room
   phrase: long
 roles:
   keys:
     family: electric_piano
-    tone: [warm, dusty, soft]
+    tone: [warm, soft]
     articulation: stab
     register: mid
     prominence: support
     pattern: "x...x... | x..x.x.."
   bass:
-    family: bass
-    tone: [round, woody]
+    family: synth_bass
+    tone: [direct, warm]
     articulation: legato
     register: low
     prominence: anchor
-    pattern: "x...x... | x...x..x"
+    pattern: "x....... | x...x..."
   kick:
     family: drums
     tone: [dusty, soft]
     articulation: pocket
     prominence: anchor
-    pattern: "x...x... | x...x..."
+    pattern: "x....... | x...x..."
   snare:
     family: drums
     tone: [soft, dry]
@@ -44,28 +44,21 @@ roles:
     tone: [dry, light]
     articulation: pocket
     prominence: support
-    pattern: "x...x.x. | x...x.x."
+    pattern: "x...x.x. | x...x..."
   vibes:
     family: mallet
     tone: [soft, glass]
-    articulation: halo
-    register: high
-    prominence: air
-    pattern: "....x... | ..x....."
-  guitar:
-    family: guitar
-    tone: [soft, warm]
-    articulation: answer
-    register: mid
-    prominence: support
-    pattern: ".x....x. | ....x..x"
-  lead:
-    family: reed_lead
-    tone: [breathy, intimate]
     articulation: lyrical
-    register: mid-high
+    register: high
     prominence: lead
-    motif: "5 . . 7 . . 9 7 | 5 . . 3 . 2 1 ."
+    motif: "5 . 7 . 9 . 7 5 | 3 . 2 . 1 . . ."
+  texture:
+    family: pad
+    tone: [soft, wide]
+    articulation: sustain
+    register: air
+    prominence: air
+    pattern: "........ | ....x..."
 sections:
   - id: intro
     title: desk lamp
@@ -78,9 +71,7 @@ sections:
       brightness: warm
       motion: still
     roles:
-      lead:
-        active: false
-      guitar:
+      vibes:
         active: false
   - id: verse-a
     title: highlighted page
@@ -89,48 +80,47 @@ sections:
     scene: "head repeat"
     variation: "introduce-hook"
     roles:
-      lead:
+      vibes:
+        active: true
         motif: "9 . 7 . 5 . 6 5 | 3 . 2 . 1 . . ."
       hat:
-        pattern: "x.x.x.x. | x...x.x."
+        pattern: "x.x...x. | x...x.x."
   - id: middle
     title: fluorescent blur
-    duration: 50s
+    duration: 45s
     harmony: "Fmaj9 E7 | Am9 Am9 | Cmaj9 B7 | Em9 A7"
-    scene: "middle thin"
-    variation: "subtract"
+    scene: "middle glassy"
+    variation: "thin"
     profile:
       density: light
-      brightness: warm
+      brightness: balanced
       motion: still
       reverb: halo
     roles:
-      lead:
+      vibes:
         motif: "5 . . . 3 . . . | 1 . . . . . . ."
-      guitar:
-        active: false
+      texture:
+        active: true
+        pattern: "x....... | ....x..."
       hat:
         pattern: "x...x... | ....x..."
-      vibes:
-        pattern: "x....... | ....x..."
   - id: verse-b
-    title: margin return
+    title: page turn
     duration: 55s
     harmony: "Em9 A13 | Dmaj9 B7 | Am9 D13 | Gmaj9 E7"
-    scene: "reply denser"
+    scene: "reply brighter"
     variation: "answer-lift"
     profile:
       density: busy
-      brightness: balanced
+      brightness: bright
       motion: moving
     roles:
-      lead:
-        motif: "5 . 6 7 9 . 7 5 | 3 . 2 . 1 . 7 5"
-      guitar:
-        active: true
-        pattern: ".x..x..x | ..x...x."
+      vibes:
+        motif: "11 . 9 . 7 . 9 7 | 5 . 3 . 2 . 1 ."
       kick:
-        pattern: "x..xx..x | x...x..x"
+        pattern: "x...x..x | x...x..."
+      hat:
+        pattern: "x.x.x.x. | x.xxx.x."
   - id: outro
     title: air vent fade
     duration: 40s
@@ -138,5 +128,6 @@ sections:
     scene: "outro close"
     variation: "cadence"
     roles:
-      lead:
-        motif: "3 . 2 . 1 . . . | . . . . . . . ."
+      vibes:
+        motif: "3 . . 2 . . 1 . | . . . . . . . ."
+

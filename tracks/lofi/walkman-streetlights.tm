@@ -1,9 +1,9 @@
-title: Soft Tape / Walkman Streetlights
-description: Night-drive tape beat with a stronger low end, sharper hooks, and a brighter freeway chorus.
+title: Walkman Streetlights
+description: More driving cassette beat with guitar lead, synth bass, and a wider freeway chorus than the rest of the pack.
 style: lofi
 listen_mode: album-side
 seed: 64211
-tags: [lofi, walkman, streetlights, drive, tape]
+tags: [lofi, walkman, streetlights, guitar, drive]
 key: Emin
 tempo: 84
 globals:
@@ -20,9 +20,9 @@ roles:
     register: mid
     prominence: support
     pattern: "x.x...x. | x..x.x.."
-  bass:
-    family: bass
-    tone: [round, woody]
+  sub:
+    family: synth_bass
+    tone: [direct, warm]
     articulation: legato
     register: low
     prominence: anchor
@@ -45,16 +45,9 @@ roles:
     articulation: pocket
     prominence: support
     pattern: "x.xxx.x. | x.xxxxxx"
-  guitar:
+  guitar-lead:
     family: guitar
     tone: [soft, warm]
-    articulation: answer
-    register: mid
-    prominence: support
-    pattern: ".x..x..x | ..x..x.."
-  lead:
-    family: reed_lead
-    tone: [present, intimate]
     articulation: lyrical
     register: high
     prominence: lead
@@ -66,6 +59,13 @@ roles:
     register: mid
     prominence: support
     pattern: "x....... | ....x..."
+  vibes:
+    family: mallet
+    tone: [soft, glass]
+    articulation: halo
+    register: air
+    prominence: air
+    pattern: "..x..... | ....x..."
 sections:
   - id: intro
     title: tape click
@@ -78,9 +78,9 @@ sections:
       brightness: warm
       motion: still
     roles:
-      lead:
+      guitar-lead:
         active: false
-      guitar:
+      pad:
         active: false
   - id: verse-a
     title: crosswalk loop
@@ -89,7 +89,8 @@ sections:
     scene: "head drive"
     variation: "introduce-hook"
     roles:
-      lead:
+      guitar-lead:
+        active: true
         motif: "9 . 7 . 5 . 6 5 | 3 . 2 . 1 . . ."
   - id: chorus
     title: freeway lift
@@ -102,7 +103,7 @@ sections:
       brightness: bright
       motion: moving
     roles:
-      lead:
+      guitar-lead:
         motif: "11 . 9 . 7 . 9 11 | 7 . 5 . 3 . 2 1"
       pad:
         active: true
@@ -120,10 +121,8 @@ sections:
       motion: gentle
       reverb: halo
     roles:
-      lead:
+      guitar-lead:
         motif: "5 . . . 3 . . . | 1 . . . . . . ."
-      guitar:
-        active: false
       pad:
         active: false
       hat:
@@ -135,5 +134,5 @@ sections:
     scene: "outro settle"
     variation: "cadence"
     roles:
-      lead:
-        motif: "3 . 2 . 1 . . . | . . . . . . . ."
+      guitar-lead:
+        motif: "3 . . 2 . . 1 . | . . . . . . . ."

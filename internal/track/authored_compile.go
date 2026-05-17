@@ -545,6 +545,82 @@ func authoredTemplateFor(style, name string, role Role) authoredRoleTemplate {
 			base.Legato, base.TieRepeats = true, true
 		}
 	}
+	if assigned {
+		switch family {
+		case "acoustic_piano":
+			base.Program = 0
+			base.Chorus = 0
+			if lowerName == "keys" || lowerName == "comp" || lowerName == "chords" {
+				base.Brightness = maxInt32(base.Brightness, 84)
+			}
+		case "electric_piano":
+			base.Program = 5
+			base.Chorus = maxInt32(base.Chorus, 24)
+		case "woodwind":
+			base.Program = 73
+			base.Legato, base.TieRepeats = true, true
+			if base.OverlapSec == 0 {
+				base.OverlapSec = 0.010
+			}
+		case "reed_lead":
+			if lowerName == "alto" || lowerName == "tenor" || lowerName == "sax" || lowerName == "lead" || lowerName == "hook" || lowerName == "counter" {
+				base.Program = 66
+			}
+			base.Legato, base.TieRepeats = true, true
+			if base.OverlapSec == 0 {
+				base.OverlapSec = 0.010
+			}
+		case "brass":
+			base.Program = 56
+			base.Brightness = maxInt32(base.Brightness, 88)
+			base.Gate = maxFloat(base.Gate, 0.78)
+		case "guitar":
+			if strings.Contains(lowerName, "lead") || lowerName == "hook" || lowerName == "counter" {
+				base.Program = 26
+				base.Channel = 4
+				base.Pan = 84
+				base.Legato, base.TieRepeats = true, true
+				if base.OverlapSec == 0 {
+					base.OverlapSec = 0.008
+				}
+			} else {
+				base.Program = 24
+			}
+		case "mallet":
+			base.Program = 11
+			if strings.Contains(lowerName, "lead") || lowerName == "vibes" || lowerName == "vibraphone" {
+				base.Channel = maxInt32(base.Channel, 2)
+				base.Legato, base.TieRepeats = false, false
+				base.Gate = minFloat(base.Gate, 0.82)
+			}
+		case "bells":
+			base.Program = 14
+		case "music_box":
+			base.Program = 10
+		case "pad":
+			base.Program = 89
+			base.Legato, base.TieRepeats = true, true
+			base.Gate = maxFloat(base.Gate, 1.10)
+		case "choir":
+			base.Program = 52
+			base.Legato, base.TieRepeats = true, true
+			base.Gate = maxFloat(base.Gate, 1.06)
+		case "strings":
+			if lowerName == "harp" {
+				base.Program = 46
+				base.Gate = minFloat(base.Gate, 0.80)
+			} else {
+				base.Program = 48
+				base.Legato, base.TieRepeats = true, true
+				base.Gate = maxFloat(base.Gate, 1.04)
+			}
+		case "synth_bass":
+			base.Program = 39
+			base.Gate = maxFloat(base.Gate, 1.08)
+		case "bass":
+			base.Program = 32
+		}
+	}
 	if !assigned {
 		switch family {
 		case "acoustic_piano":
@@ -1092,6 +1168,27 @@ func isAllRest(notes []int) bool {
 }
 
 func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func maxInt32(a, b int32) int32 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func minFloat(a, b float64) float64 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func maxFloat(a, b float64) float64 {
 	if a > b {
 		return a
 	}
