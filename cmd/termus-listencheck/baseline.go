@@ -15,6 +15,10 @@ const (
 	centroidToleranceR = 0.10
 )
 
+// measurement mirrors audiotest.Measurement. Kept local so the JSON output
+// schema is owned by the listencheck command, not by an internal package.
+// If audiotest.Measurement gains a field, update this struct AND
+// measurementFromAudiotest below together.
 type measurement struct {
 	Frames     int     `json:"frames"`
 	SampleRate float64 `json:"sample_rate"`
