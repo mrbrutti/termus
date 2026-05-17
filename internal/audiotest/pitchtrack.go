@@ -63,10 +63,11 @@ func ModulationDepthCents(cents []float64) float64 {
 // second (~ nominalHz for a monophonic signal).
 //
 // The algorithm finds the first lag where the normalised autocorrelation
-// crosses from positive to negative (half-period of the modulation), then
-// searches for the peak beyond that point (the full-period peak). This avoids
-// the spurious maximum at very small lags where adjacent cents values are
-// nearly identical and the ACF is monotonically decreasing.
+// crosses from positive to negative (quarter-period of the modulation),
+// then searches for the peak beyond that point (the full-period peak).
+// This avoids the spurious maximum at very small lags where adjacent
+// cents values are nearly identical and the ACF is monotonically
+// decreasing.
 func ModulationRateHz(cents []float64, perSecond float64) float64 {
 	n := len(cents)
 	if n < 32 {
