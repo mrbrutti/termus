@@ -1,6 +1,9 @@
 package gen
 
-import "sort"
+import (
+	"math/rand"
+	"sort"
+)
 
 var sf2MaxPalette = map[string]map[int32]string{
 	"ambient": {
@@ -23,9 +26,10 @@ var sf2MaxPalette = map[string]map[int32]string{
 		1: "fairy-tale",
 		2: "fairy-tale",
 		3: "fairy-tale",
-		4: "arachno",
-		5: "timbres-of-heaven",
-		6: "fm-dx",
+		4: "fairy-tale",
+		5: "fairy-tale",
+		6: "fairy-tale",
+		7: "fairy-tale",
 	},
 	"lullaby": {
 		0: "musescore-general",
@@ -65,6 +69,10 @@ var sf2MaxPalette = map[string]map[int32]string{
 	},
 }
 
+var sf2MaxPaletteExtras = map[string][]string{
+	"bells": {"arachno", "timbres-of-heaven"},
+}
+
 func applyMaxSF2Palette(core *sf2Core, algoName string) {
 	if core == nil || !core.usingMaxPalette() {
 		return
@@ -78,6 +86,52 @@ func applyMaxSF2Palette(core *sf2Core, algoName string) {
 	}
 }
 
+func applyGlassMaxPalette(core *sf2Core, rng *rand.Rand) {
+	if core == nil || !core.usingMaxPalette() {
+		return
+	}
+	scene := glassMaxScenes[0]
+	if rng != nil {
+		scene = glassMaxScenes[rng.Intn(len(glassMaxScenes))]
+	}
+	for channel, preset := range scene {
+		core.routeChannelPreset(channel, preset)
+	}
+}
+
+var glassMaxScenes = []map[int32]string{
+	{
+		0: "fairy-tale",
+		1: "fairy-tale",
+		2: "fairy-tale",
+		3: "fairy-tale",
+		4: "fairy-tale",
+		5: "fairy-tale",
+		6: "fairy-tale",
+		7: "fairy-tale",
+	},
+	{
+		0: "fairy-tale",
+		1: "fairy-tale",
+		2: "fairy-tale",
+		3: "fairy-tale",
+		4: "arachno",
+		5: "arachno",
+		6: "fairy-tale",
+		7: "fairy-tale",
+	},
+	{
+		0: "fairy-tale",
+		1: "fairy-tale",
+		2: "fairy-tale",
+		3: "fairy-tale",
+		4: "fairy-tale",
+		5: "fairy-tale",
+		6: "timbres-of-heaven",
+		7: "fairy-tale",
+	},
+}
+
 func MaxSF2PresetsForSpec(spec AlgoSpec) []string {
 	if !spec.RequiresSF2 {
 		return nil
@@ -89,6 +143,13 @@ func MaxSF2PresetsForSpec(spec AlgoSpec) []string {
 		out = append(out, spec.PreferredSF2)
 	}
 	for _, preset := range sf2MaxPalette[spec.Name] {
+		if preset == "" || seen[preset] {
+			continue
+		}
+		seen[preset] = true
+		out = append(out, preset)
+	}
+	for _, preset := range sf2MaxPaletteExtras[spec.Name] {
 		if preset == "" || seen[preset] {
 			continue
 		}

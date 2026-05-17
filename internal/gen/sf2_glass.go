@@ -118,59 +118,66 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	// Master gain raised aggressively (3.0 → 4.2) — bell content is sparse
 	// by nature so the long silences pull the RMS down even with reasonable
 	// peaks. Need significantly more gain than a denser genre would.
-	core, err := newSF2Core(a.sf, 4.2, seedVal)
+	core, err := newSF2Core(a.sf, 3.8, seedVal)
 	if err != nil {
 		a.core = nil
 		return
 	}
-	applyMaxSF2Palette(core, "bells")
+	applyGlassMaxPalette(core, a.rng)
 
 	// Channel layout:
 	//   0 — Tubular Bells   (program 14)  main bell motif
 	//   1 — Celesta         (program 8)   upper-mid sparkle
 	//   2 — Glockenspiel    (program 9)   high register
 	//   3 — Music Box       (program 10)  occasional ornament
-	//   4 — Warm Pad        (program 89)  soft bed
-	//   5 — Choir Aahs      (program 52)  vocal bed
-	//   6 — Synth Bass 2    (program 39)  sub-bass pedal
+	//   4 — Warm Pad A      (program 89)  left texture bed
+	//   5 — Warm Pad B      (program 89)  right texture bed
+	//   6 — Choir Aahs      (program 52)  vocal bed
+	//   7 — Synth Bass 2    (program 39)  sub-bass pedal
 	core.setProgram(0, 14)
 	core.setProgram(1, 8)
 	core.setProgram(2, 9)
 	core.setProgram(3, 10)
 	core.setProgram(4, 89)
-	core.setProgram(5, 52)
-	core.setProgram(6, 39)
+	core.setProgram(5, 89)
+	core.setProgram(6, 52)
+	core.setProgram(7, 39)
 	core.setPan(0, 64)
 	core.setPan(1, 80)
 	core.setPan(2, 96)
 	core.setPan(3, 32)
-	core.setPan(4, 72)
-	core.setPan(5, 56)
-	core.setPan(6, 64)
+	core.setPan(4, 80)
+	core.setPan(5, 48)
+	core.setPan(6, 56)
+	core.setPan(7, 64)
 
 	// Bells/celesta/glock kept very bright for sparkle; pad darkened.
-	core.setChannelCutoff(0, 120)
-	core.setChannelCutoff(1, 120)
-	core.setChannelCutoff(2, 120)
-	core.setChannelCutoff(3, 110)
-	core.setChannelCutoff(4, 60)
-	core.setChannelCutoff(5, 76)
-	core.setChannelCutoff(6, 50)
+	core.setChannelCutoff(0, 114)
+	core.setChannelCutoff(1, 116)
+	core.setChannelCutoff(2, 118)
+	core.setChannelCutoff(3, 104)
+	core.setChannelCutoff(4, 54)
+	core.setChannelCutoff(5, 58)
+	core.setChannelCutoff(6, 72)
+	core.setChannelCutoff(7, 48)
 
 	// Slow pad LFO so the bed breathes underneath the bells.
 	core.addFilterLFO(4, 1.0/16.0, 60, 24)
-	core.addFilterLFO(5, 1.0/23.0, 72, 20)
+	core.addFilterLFO(5, 1.0/23.0, 64, 18)
+	core.addFilterLFO(6, 1.0/29.0, 74, 12)
 
 	// Reverb: everyone in halo except bass.
-	core.setReverbSend(0, 120)
-	core.setReverbSend(1, 120)
-	core.setReverbSend(2, 120)
-	core.setReverbSend(3, 110)
-	core.setReverbSend(4, 96)
-	core.setReverbSend(5, 100)
-	core.setReverbSend(6, 30)
+	core.setReverbSend(0, 112)
+	core.setReverbSend(1, 114)
+	core.setReverbSend(2, 116)
+	core.setReverbSend(3, 104)
+	core.setReverbSend(4, 88)
+	core.setReverbSend(5, 92)
+	core.setReverbSend(6, 96)
+	core.setReverbSend(7, 24)
 	core.setChorusSend(4, 32)
 	core.setChorusSend(5, 28)
+	core.setChorusSend(6, 18)
 
 	// --- Tubular bells: a coherent pentatonic phrase resolved against the
 	// current chord at fire time, so the motif survives while the harmony moves.
@@ -237,14 +244,14 @@ func (a *SF2Glass) Seed(seedVal int64) {
 	for ti, period := range []float64{31.3 * phraseScale, 43.7 * phraseScale} {
 		voice := ti
 		core.addTrack(SF2Track{
-			Channel: 4, Velocity: 44, Notes: []int{a.padNote(voice)},
+			Channel: int32(4 + ti), Velocity: 40, Notes: []int{a.padNote(voice)},
 			PeriodSec: period, Phase01: a.rng.Float64(),
 			MutationRate:       0.30,
 			MutateOne:          func(_ int, _ int) int { return a.padNote(voice) },
 			ResolveNote:        func(_ int, _ int) int { return a.padNote(voice) },
-			ResolveModWheel:    func(slot int, key int) SF2ExpressionCurve { return gentleVibratoCurve(0, 14, 8) },
-			ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(60, 72, 62) },
-			ResolveDetuneCents: slotDetunePattern(-3, 2, -1, 4),
+			ResolveModWheel:    func(slot int, key int) SF2ExpressionCurve { return gentleVibratoCurve(0, 12, 6) },
+			ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(56, 66, 58) },
+			ResolveDetuneCents: slotDetunePattern(-2, 1, -1, 2),
 			Gate:               0.98,
 			Legato:             true,
 			VelocityJitter:     6, TimingJitterSec: 0.08,
@@ -253,14 +260,14 @@ func (a *SF2Glass) Seed(seedVal int64) {
 
 	// --- Choir aahs: 1 voice in upper register, very slow.
 	core.addTrack(SF2Track{
-		Channel: 5, Velocity: 40, Notes: []int{a.padNote(1) + 12},
+		Channel: 6, Velocity: 36, Notes: []int{a.padNote(1) + 12},
 		PeriodSec: 53.9 * phraseScale, Phase01: a.rng.Float64(),
 		MutationRate:       0.35,
 		MutateOne:          func(_ int, _ int) int { return a.padNote(1) + 12 },
 		ResolveNote:        func(_ int, _ int) int { return a.padNote(1) + 12 },
-		ResolveModWheel:    func(slot int, key int) SF2ExpressionCurve { return gentleVibratoCurve(0, 16, 9) },
-		ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(76, 88, 78) },
-		ResolveDetuneCents: slotDetunePattern(1, -2, 2, -1),
+		ResolveModWheel:    func(slot int, key int) SF2ExpressionCurve { return gentleVibratoCurve(0, 12, 7) },
+		ResolveBrightness:  func(slot int, key int) SF2ExpressionCurve { return brightnessBloomCurve(72, 82, 74) },
+		ResolveDetuneCents: slotDetunePattern(1, -1, 1, -1),
 		Gate:               0.98,
 		Legato:             true,
 		VelocityJitter:     6, TimingJitterSec: 0.10,
@@ -268,7 +275,7 @@ func (a *SF2Glass) Seed(seedVal int64) {
 
 	// --- Sub-bass pedal: holds the chord root.
 	core.addTrack(SF2Track{
-		Channel: 6, Velocity: 60, Notes: []int{a.bassRoot()},
+		Channel: 7, Velocity: 56, Notes: []int{a.bassRoot()},
 		PeriodSec: 51.3 * phraseScale, Phase01: 0,
 		MutationRate:   0.50,
 		MutateOne:      func(_ int, _ int) int { return a.bassRoot() },
@@ -533,23 +540,26 @@ func (a *SF2Glass) applyArrangement() {
 	a.core.setReverbSend(1, SectionCC(120, lead.ReverbDelta+reverbDelta))
 	a.core.setReverbSend(2, SectionCC(120, lead.ReverbDelta+reverbDelta))
 	a.core.setReverbSend(3, SectionCC(110, texture.ReverbDelta+reverbDelta))
-	a.core.setReverbSend(4, SectionCC(96, texture.ReverbDelta+reverbDelta))
-	a.core.setReverbSend(5, SectionCC(100, texture.ReverbDelta+reverbDelta))
-	a.core.setReverbSend(6, SectionCC(30, bass.ReverbDelta+reverbDelta/3))
-	a.core.setChannelCutoff(0, SectionCC(120, lead.BrightnessDelta+brightDelta))
-	a.core.setChannelCutoff(1, SectionCC(120, lead.BrightnessDelta+brightDelta))
-	a.core.setChannelCutoff(2, SectionCC(120, lead.BrightnessDelta+brightDelta))
-	a.core.setChannelCutoff(3, SectionCC(110, texture.BrightnessDelta+brightDelta))
-	a.core.setChannelCutoff(4, SectionCC(60, texture.BrightnessDelta+brightDelta))
-	a.core.setChannelCutoff(5, SectionCC(76, texture.BrightnessDelta+brightDelta))
-	a.core.setChannelCutoff(6, SectionCC(50, bass.BrightnessDelta+brightDelta/2))
-	a.core.setChannelExpression(0, SectionCC(110, lead.ExpressionDelta+densityDelta))
-	a.core.setChannelExpression(1, SectionCC(104, lead.ExpressionDelta+densityDelta))
-	a.core.setChannelExpression(2, SectionCC(96, lead.ExpressionDelta+densityDelta/2))
-	a.core.setChannelExpression(3, SectionCC(98, texture.ExpressionDelta+densityDelta/2))
-	a.core.setChannelExpression(4, SectionCC(96, texture.ExpressionDelta+densityDelta/2))
-	a.core.setChannelExpression(5, SectionCC(98, texture.ExpressionDelta+densityDelta/2))
-	a.core.setChannelExpression(6, SectionCC(100, bass.ExpressionDelta+droneDelta))
+	a.core.setReverbSend(4, SectionCC(88, texture.ReverbDelta+reverbDelta))
+	a.core.setReverbSend(5, SectionCC(92, texture.ReverbDelta+reverbDelta))
+	a.core.setReverbSend(6, SectionCC(96, texture.ReverbDelta+reverbDelta))
+	a.core.setReverbSend(7, SectionCC(24, bass.ReverbDelta+reverbDelta/3))
+	a.core.setChannelCutoff(0, SectionCC(114, lead.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(1, SectionCC(116, lead.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(2, SectionCC(118, lead.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(3, SectionCC(104, texture.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(4, SectionCC(54, texture.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(5, SectionCC(58, texture.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(6, SectionCC(72, texture.BrightnessDelta+brightDelta))
+	a.core.setChannelCutoff(7, SectionCC(48, bass.BrightnessDelta+brightDelta/2))
+	a.core.setChannelExpression(0, SectionCC(106, lead.ExpressionDelta+densityDelta))
+	a.core.setChannelExpression(1, SectionCC(100, lead.ExpressionDelta+densityDelta))
+	a.core.setChannelExpression(2, SectionCC(92, lead.ExpressionDelta+densityDelta/2))
+	a.core.setChannelExpression(3, SectionCC(94, texture.ExpressionDelta+densityDelta/2))
+	a.core.setChannelExpression(4, SectionCC(92, texture.ExpressionDelta+densityDelta/2))
+	a.core.setChannelExpression(5, SectionCC(94, texture.ExpressionDelta+densityDelta/2))
+	a.core.setChannelExpression(6, SectionCC(96, texture.ExpressionDelta+densityDelta/2))
+	a.core.setChannelExpression(7, SectionCC(96, bass.ExpressionDelta+droneDelta))
 }
 
 func (a *SF2Glass) SectionGain() float64 {

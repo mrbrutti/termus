@@ -19,8 +19,8 @@ func (a *SF2Glass) ExportMIDI(path string, seconds float64) error {
 func (a *SF2Glass) ExportStems(dir string, seconds float64, volume int) ([]string, error) {
 	return exportSF2Stems(a, a.sf, a.core, dir, seconds, volume, []stemDefinition{
 		{Name: "bells", Channels: []int32{0, 1, 2, 3}},
-		{Name: "textures", Channels: []int32{4, 5}},
-		{Name: "bass", Channels: []int32{6}},
+		{Name: "textures", Channels: []int32{4, 5, 6}},
+		{Name: "bass", Channels: []int32{7}},
 	})
 }
 

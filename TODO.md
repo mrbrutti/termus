@@ -111,10 +111,10 @@
 ## Style Rule Pass
 
 ### MAX Palette Rules
-- [ ] Reframe `max` as a curated role-based SoundFont pool per algorithm instead of always-on full-bank layering, so each station can borrow a wider palette without losing its core identity.
+- [x] Reframe `max` as a curated role-based SoundFont pool per algorithm instead of always-on full-bank layering, so each station can borrow a wider palette without losing its core identity.
 
 ### Glass Chapel
-- [ ] Fix `Glass Chapel`'s shared-channel pad interference, reduce trashy texture interactions, and retune its `max` palette / voicing so the bell station stays clean and luminous instead of brittle.
+- [x] Fix `Glass Chapel`'s shared-channel pad interference, reduce trashy texture interactions, and retune its `max` palette / voicing so the bell station stays clean and luminous instead of brittle.
 
 ### Jazz Guide Rules
 - [ ] Encode jazz style-guide rules into `jazz`: stronger guide-tone motion, 2-bar / 4-bar phrase sentences, better turnaround targeting, and more conversational comping/solo interaction.
