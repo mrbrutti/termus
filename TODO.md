@@ -127,3 +127,20 @@
 
 ### Genre Density Policy
 - [x] Add genre-specific density policies so note activity increases in `jazz` / `lofi` while `ambient` / `bells` / `drone` stay selective and spacious over long listening.
+
+## TM Composition Language
+
+### Schema
+- [x] Add a richer `.tm` composition language with structured metadata plus embedded mini-languages for rhythm, melody, harmony, and arrangement so AI can author auditable long-form pieces instead of only steering generators by seed.
+
+### Parser And Linter
+- [x] Implement `.tm` parsing, validation, and linting for section durations, algorithm names, listening modes, pattern syntax, and structural contrast checks.
+
+### Compilation
+- [x] Compile `.tm` compositions into the existing playback/export pipeline as authored scored playlists with per-section control profiles and section titles.
+
+### CLI Support
+- [x] Add CLI support for loading `.tm` files in live playback and batch export paths without exposing a new user REPL.
+
+### Authored Pack
+- [x] Add an initial authored `.tm` pack for `lofi`, `jazz`, and `bells` so we can test whether authored long-form pieces sound more like real music than pure seed-driven generation.
