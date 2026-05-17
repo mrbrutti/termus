@@ -255,6 +255,128 @@ sections:
 	}
 }
 
+func TestParseAuthoredChordPreservesColor(t *testing.T) {
+	tests := []struct {
+		token    string
+		kind     string
+		wantBass int
+		hasBass  bool
+		degrees  map[int]int
+	}{
+		{
+			token:    "Dmaj9",
+			kind:     "maj",
+			wantBass: 2,
+			degrees: map[int]int{
+				3: 4,
+				5: 7,
+				7: 11,
+				9: 14,
+			},
+		},
+		{
+			token:    "G13",
+			kind:     "dom",
+			wantBass: 7,
+			degrees: map[int]int{
+				3:  4,
+				7:  10,
+				9:  14,
+				13: 21,
+			},
+		},
+		{
+			token:    "Em7b5",
+			kind:     "half-dim",
+			wantBass: 4,
+			degrees: map[int]int{
+				3: 3,
+				5: 6,
+				7: 10,
+			},
+		},
+		{
+			token:    "Asus4",
+			kind:     "sus",
+			wantBass: 9,
+			degrees: map[int]int{
+				3:  5,
+				5:  7,
+				7:  10,
+				11: 17,
+			},
+		},
+		{
+			token:    "C7b9",
+			kind:     "dom",
+			wantBass: 0,
+			degrees: map[int]int{
+				3: 4,
+				7: 10,
+				9: 13,
+			},
+		},
+		{
+			token:    "A/C#",
+			kind:     "dom",
+			wantBass: 1,
+			hasBass:  true,
+			degrees: map[int]int{
+				3: 4,
+				5: 7,
+				7: 10,
+			},
+		},
+	}
+	for _, tt := range tests {
+		chord, ok := parseAuthoredChord(tt.token)
+		if !ok {
+			t.Fatalf("parseAuthoredChord(%q) failed", tt.token)
+		}
+		if chord.Kind != tt.kind {
+			t.Fatalf("%q kind = %q, want %q", tt.token, chord.Kind, tt.kind)
+		}
+		if chord.BassPC != tt.wantBass {
+			t.Fatalf("%q bass = %d, want %d", tt.token, chord.BassPC, tt.wantBass)
+		}
+		if chord.HasBass != tt.hasBass {
+			t.Fatalf("%q hasBass = %v, want %v", tt.token, chord.HasBass, tt.hasBass)
+		}
+		for degree, interval := range tt.degrees {
+			if got := chord.Degrees[degree]; got != interval {
+				t.Fatalf("%q degree %d = %d, want %d", tt.token, degree, got, interval)
+			}
+		}
+	}
+}
+
+func TestCompileBassLineHonorsSlashBass(t *testing.T) {
+	chord, ok := parseAuthoredChord("Dmaj9/F#")
+	if !ok {
+		t.Fatal("failed to parse slash chord")
+	}
+	ctx := authoredSectionContext{
+		style:   "lofi",
+		profile: gen.DefaultControlProfile(),
+	}
+	role := Role{
+		Family:   "bass",
+		Register: "low",
+		Pattern:  "x... ....",
+	}
+	notes := compileBassLine(ctx, "bass", role, []authoredHarmonyBar{{chords: []authoredChord{chord}}}, 1, []gen.AuthoredPhraseSpan{{
+		StartBar: 1,
+		EndBar:   1,
+		Label:    "statement",
+	}})
+	if len(notes) == 0 || notes[0] < 0 {
+		t.Fatalf("expected bass note, got %v", notes)
+	}
+	if got := ((notes[0] % 12) + 12) % 12; got != chord.BassPC {
+		t.Fatalf("bass pitch class = %d, want %d", got, chord.BassPC)
+	}
+}
+
 func TestBundledTracksParseAndCompile(t *testing.T) {
 	paths, err := filepath.Glob(filepath.Join("..", "..", "tracks", "*", "*.tm"))
 	if err != nil {

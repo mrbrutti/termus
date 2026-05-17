@@ -19,10 +19,14 @@ type authoredHarmonyBar struct {
 }
 
 type authoredChord struct {
-	Label  string
-	RootPC int
-	Kind   string
-	Scale  []int
+	Label    string
+	RootPC   int
+	BassPC   int
+	HasBass  bool
+	Kind     string
+	Scale    []int
+	Degrees  map[int]int
+	Interval []int
 }
 
 type authoredRoleTemplate struct {
@@ -531,32 +535,102 @@ func parseAuthoredChord(token string) (authoredChord, bool) {
 	if token == "" {
 		return authoredChord{}, false
 	}
-	root, rest, ok := parseRootToken(token)
+	main := token
+	bassPart := ""
+	if idx := strings.Index(token, "/"); idx >= 0 {
+		main = strings.TrimSpace(token[:idx])
+		bassPart = strings.TrimSpace(token[idx+1:])
+	}
+	root, rest, ok := parseRootToken(main)
 	if !ok {
 		return authoredChord{}, false
 	}
 	lower := strings.ToLower(rest)
-	chord := authoredChord{Label: token, RootPC: root}
+	chord := authoredChord{Label: token, RootPC: root, BassPC: root}
+	if bassPart != "" {
+		if bassRoot, _, ok := parseRootToken(bassPart); ok {
+			chord.BassPC = bassRoot
+			chord.HasBass = true
+		}
+	}
+	degrees := map[int]int{1: 0}
 	switch {
 	case strings.Contains(lower, "m7b5") || strings.Contains(lower, "ø"):
 		chord.Kind = "half-dim"
 		chord.Scale = []int{0, 1, 3, 5, 6, 8, 10}
+		degrees[3], degrees[5], degrees[7] = 3, 6, 10
 	case strings.Contains(lower, "dim"):
 		chord.Kind = "dim"
 		chord.Scale = []int{0, 2, 3, 5, 6, 8, 9}
+		degrees[3], degrees[5], degrees[7] = 3, 6, 9
 	case strings.Contains(lower, "sus"):
 		chord.Kind = "sus"
 		chord.Scale = []int{0, 2, 5, 7, 9, 10}
+		degrees[3], degrees[5], degrees[7] = 5, 7, 10
 	case strings.Contains(lower, "maj"):
 		chord.Kind = "maj"
 		chord.Scale = []int{0, 2, 4, 5, 7, 9, 11}
+		degrees[3], degrees[5], degrees[7] = 4, 7, 11
 	case strings.Contains(lower, "m"):
 		chord.Kind = "min"
 		chord.Scale = []int{0, 2, 3, 5, 7, 9, 10}
+		degrees[3], degrees[5], degrees[7] = 3, 7, 10
 	default:
 		chord.Kind = "dom"
 		chord.Scale = []int{0, 2, 4, 5, 7, 9, 10}
+		degrees[3], degrees[5], degrees[7] = 4, 7, 10
 	}
+	if strings.Contains(lower, "#5") || strings.Contains(lower, "aug") {
+		degrees[5] = 8
+	}
+	if strings.Contains(lower, "b5") && chord.Kind != "half-dim" {
+		degrees[5] = 6
+	}
+	if strings.Contains(lower, "sus2") {
+		degrees[3] = 2
+	}
+	if strings.Contains(lower, "maj6") || (strings.Contains(lower, "6") && !strings.Contains(lower, "16") && !strings.Contains(lower, "13")) {
+		degrees[13] = 9
+	}
+	if strings.Contains(lower, "9") {
+		degrees[9] = 14
+	}
+	if strings.Contains(lower, "b9") {
+		degrees[9] = 13
+	}
+	if strings.Contains(lower, "#9") {
+		degrees[9] = 15
+	}
+	if strings.Contains(lower, "11") || strings.Contains(lower, "sus") {
+		degrees[11] = 17
+	}
+	if strings.Contains(lower, "#11") {
+		degrees[11] = 18
+	}
+	if strings.Contains(lower, "b11") {
+		degrees[11] = 16
+	}
+	if strings.Contains(lower, "13") {
+		degrees[13] = 21
+	}
+	if strings.Contains(lower, "b13") {
+		degrees[13] = 20
+	}
+	if _, ok := degrees[13]; ok {
+		if _, has9 := degrees[9]; !has9 {
+			degrees[9] = 14
+		}
+	}
+	if _, ok := degrees[11]; ok {
+		if _, has9 := degrees[9]; !has9 {
+			degrees[9] = 14
+		}
+	}
+	if strings.Contains(lower, "add9") {
+		degrees[9] = 14
+	}
+	chord.Degrees = degrees
+	chord.Interval = sortedChordDegrees(degrees)
 	return chord, true
 }
 
@@ -1151,7 +1225,11 @@ func compileBassLine(ctx authoredSectionContext, name string, role Role, bars []
 		}
 		pos := slot % authoredSlotsPerBar
 		chord := chordForSlot(bars, slot)
-		base := rootMidiForRegister(chord.RootPC, role.Register, ctx.style, name)
+		rootPC := chord.RootPC
+		if chord.HasBass && pos <= 1 {
+			rootPC = chord.BassPC
+		}
+		base := rootMidiForRegister(rootPC, role.Register, ctx.style, name)
 		note := base
 		switch {
 		case strings.Contains(strings.ToLower(role.Family), "synth_bass"):
@@ -1731,6 +1809,9 @@ func chordVoicing(ctx authoredSectionContext, name string, role Role, chord auth
 }
 
 func chordDegreeInterval(ch authoredChord, degree int) int {
+	if interval, ok := ch.Degrees[degree]; ok {
+		return interval
+	}
 	scale := ch.Scale
 	switch degree {
 	case 1:
@@ -1750,6 +1831,22 @@ func chordDegreeInterval(ch authoredChord, degree int) int {
 	default:
 		return 0
 	}
+}
+
+func sortedChordDegrees(degrees map[int]int) []int {
+	if len(degrees) == 0 {
+		return nil
+	}
+	keys := make([]int, 0, len(degrees))
+	for degree := range degrees {
+		keys = append(keys, degree)
+	}
+	sort.Ints(keys)
+	out := make([]int, 0, len(keys))
+	for _, degree := range keys {
+		out = append(out, degrees[degree])
+	}
+	return out
 }
 
 func scaleInterval(scale []int, idx int) int {
