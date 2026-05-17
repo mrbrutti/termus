@@ -179,7 +179,7 @@
 - [x] Build deeper comp vocabularies per style with real voicing families, rhythmic cells, sectional stabs, held pads, and answer figures instead of one generalized support stream.
 
 ### Phase 5: Style Packs And Genre Identity
-- [ ] Define explicit style packs that interpret the same `.tm` language differently for `lofi`, `jazz`, `ambient`, `bells`, `classical`, `drone`, `phase`, and `lullaby`.
+- [x] Define explicit style packs that interpret the same `.tm` language differently for `lofi`, `jazz`, `ambient`, `bells`, `classical`, `drone`, `phase`, and `lullaby`.
 - [ ] Give each style pack multiple substyles so tracks within a genre can diverge meaningfully, for example multiple lofi bands, multiple jazz ensembles, and multiple bell/ambient schools.
 - [ ] Add genre-specific phrase and arrangement libraries drawn from real musical practice: heads, shout choruses, turnarounds, suspended bridges, tape-beat breakdowns, nocturne cadences, and devotional bell scenes.
 - [ ] Curate at least 10 clearly differentiated authored tracks per genre once the unified engine is in place, and reject or rewrite tracks that still collapse into one house sound.
