@@ -74,6 +74,36 @@ sections:
 	}
 }
 
+func TestCompileUsesResolvedSubstyleDefaults(t *testing.T) {
+	const withSubstyle = `
+title: Neon Study
+style: lofi
+substyle: guitar-neon
+roles:
+  lead:
+    family: guitar
+sections:
+  - id: intro
+    duration: 16s
+    harmony: "Dm9 G13 | Cmaj9 A7"
+`
+	file, err := Parse([]byte(withSubstyle))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	compiled, err := Compile(file, 11, gen.ListeningModeEndless)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	var plan gen.AuthoredTrackPlan
+	for _, got := range compiled.Plans {
+		plan = got
+	}
+	if got, want := int(plan.BPM), 84; got != want {
+		t.Fatalf("plan bpm = %d, want %d", got, want)
+	}
+}
+
 func TestCompileRejectsBadPattern(t *testing.T) {
 	const src = `
 title: Broken
@@ -1313,5 +1343,30 @@ func TestResolveAcceptsDirectPath(t *testing.T) {
 	}
 	if entry.Path != entries[0].Path {
 		t.Fatalf("resolved path = %q, want %q", entry.Path, entries[0].Path)
+	}
+}
+
+func TestDiscoverSurfacesResolvedSubstyle(t *testing.T) {
+	entries, err := Discover(filepath.Join("..", "..", "tracks"))
+	if err != nil {
+		t.Fatalf("Discover: %v", err)
+	}
+	if len(entries) == 0 {
+		t.Fatal("expected bundled track entries")
+	}
+	var found Entry
+	ok := false
+	for _, entry := range entries {
+		if entry.ID == "jazz/basement-blue-hour" {
+			found = entry
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		t.Fatal("expected jazz/basement-blue-hour in discovered entries")
+	}
+	if got, want := found.Substyle, "vibes-cellar"; got != want {
+		t.Fatalf("substyle = %q, want %q", got, want)
 	}
 }

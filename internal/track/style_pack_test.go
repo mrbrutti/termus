@@ -37,3 +37,27 @@ func TestStylePackPhraseBars(t *testing.T) {
 		t.Fatalf("jazz phrase bars = %d, want 4", got)
 	}
 }
+
+func TestResolveStylePackUsesExplicitOrInferredSubstyle(t *testing.T) {
+	pack := resolveStylePack("lofi", "guitar-neon", "Soft Tape / Rain Bus", []string{"lofi", "rain"})
+	if got, want := pack.Substyle, "guitar-neon"; got != want {
+		t.Fatalf("explicit substyle = %q, want %q", got, want)
+	}
+	if got, want := pack.DefaultBPM, 84.0; got != want {
+		t.Fatalf("explicit substyle bpm = %.1f, want %.1f", got, want)
+	}
+	if got, want := pack.defaultMelody("lead"), "5 . 7 . | 9 . 5 ."; got != want {
+		t.Fatalf("explicit substyle melody = %q, want %q", got, want)
+	}
+
+	inferred := resolveStylePack("jazz", "", "Basement Blue Hour", []string{"jazz", "basement", "vibes"})
+	if got, want := inferred.Substyle, "vibes-cellar"; got != want {
+		t.Fatalf("inferred substyle = %q, want %q", got, want)
+	}
+	if got, want := inferred.DefaultBPM, 132.0; got != want {
+		t.Fatalf("inferred substyle bpm = %.1f, want %.1f", got, want)
+	}
+	if got, want := inferred.defaultMelody("lead"), "5 . 7 9 | 6 . 5 3"; got != want {
+		t.Fatalf("inferred substyle melody = %q, want %q", got, want)
+	}
+}

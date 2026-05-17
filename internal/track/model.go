@@ -10,6 +10,7 @@ type File struct {
 	Title           string          `yaml:"title"`
 	Description     string          `yaml:"description,omitempty"`
 	Style           string          `yaml:"style"`
+	Substyle        string          `yaml:"substyle,omitempty"`
 	ListenMode      string          `yaml:"listen_mode,omitempty"`
 	Seed            int64           `yaml:"seed,omitempty"`
 	Tags            []string        `yaml:"tags,omitempty"`
@@ -132,6 +133,7 @@ type Entry struct {
 	ID          string
 	Path        string
 	Style       string
+	Substyle    string
 	Title       string
 	Description string
 	Tags        []string

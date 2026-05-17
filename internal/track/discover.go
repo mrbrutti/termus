@@ -83,6 +83,7 @@ func Resolve(entries []Entry, input string) (Entry, bool) {
 				ID:          id,
 				Path:        input,
 				Style:       style,
+				Substyle:    resolveStylePack(style, file.Substyle, file.Title, file.Tags).Substyle,
 				Title:       file.Title,
 				Description: file.Description,
 				Tags:        append([]string(nil), file.Tags...),
@@ -113,10 +114,12 @@ func loadEntry(root, path string) (Entry, error) {
 	if style == "" {
 		style = filepath.Dir(rel)
 	}
+	pack := resolveStylePack(style, file.Substyle, file.Title, file.Tags)
 	return Entry{
 		ID:          rel,
 		Path:        path,
 		Style:       style,
+		Substyle:    pack.Substyle,
 		Title:       file.Title,
 		Description: file.Description,
 		Tags:        append([]string(nil), file.Tags...),

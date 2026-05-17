@@ -54,10 +54,10 @@ type authoredSectionContext struct {
 	rng       *rand.Rand
 }
 
-func ctxForSection(style string, section Section, profile gen.ControlProfile, seed int64) authoredSectionContext {
+func ctxForSection(pack stylePack, section Section, profile gen.ControlProfile, seed int64) authoredSectionContext {
 	return authoredSectionContext{
-		style:     style,
-		pack:      stylePackFor(style),
+		style:     pack.Name,
+		pack:      pack,
 		sectionID: firstNonBlank(section.Title, section.ID),
 		variation: strings.ToLower(strings.TrimSpace(section.Variation)),
 		scene:     strings.ToLower(strings.TrimSpace(section.Scene)),
@@ -67,7 +67,8 @@ func ctxForSection(style string, section Section, profile gen.ControlProfile, se
 }
 
 func buildAuthoredPlan(spec gen.AlgoSpec, file *File, section Section, roles map[string]Role, dur time.Duration, profile gen.ControlProfile, seed int64) (gen.AuthoredTrackPlan, error) {
-	bpm := resolveTempoBPM(firstNonBlank(section.Tempo, file.Tempo), spec.Name)
+	pack := resolveStylePack(spec.Name, file.Substyle, file.Title, file.Tags)
+	bpm := resolveTempoBPM(firstNonBlank(section.Tempo, file.Tempo), pack)
 	barSec := 240.0 / bpm
 	harmonyBars, err := parseHarmonyBars(section.Harmony)
 	if err != nil {
@@ -83,7 +84,8 @@ func buildAuthoredPlan(spec gen.AlgoSpec, file *File, section Section, roles map
 	}
 	harmonyBars = repeatHarmonyBars(harmonyBars, targetBars)
 	slotCount := targetBars * authoredSlotsPerBar
-	phraseSpans := compilePhraseSpans(ctxForSection(spec.Name, section, profile, seed), targetBars)
+	ctx := ctxForSection(pack, section, profile, seed)
+	phraseSpans := compilePhraseSpans(ctx, targetBars)
 	plan := gen.AuthoredTrackPlan{
 		Style:       spec.Name,
 		Section:     firstNonBlank(section.Title, section.ID),
@@ -96,7 +98,6 @@ func buildAuthoredPlan(spec gen.AlgoSpec, file *File, section Section, roles map
 		ChordSpans:  compileChordSpans(harmonyBars),
 		PhraseSpans: phraseSpans,
 	}
-	ctx := ctxForSection(spec.Name, section, profile, seed)
 	roleNames := make([]string, 0, len(roles))
 	for name, role := range roles {
 		active := role.Active == nil || *role.Active
@@ -125,11 +126,11 @@ func buildAuthoredPlan(spec gen.AlgoSpec, file *File, section Section, roles map
 	return plan, nil
 }
 
-func resolveTempoBPM(raw, style string) float64 {
+func resolveTempoBPM(raw string, pack stylePack) float64 {
 	if bpm, err := strconv.ParseFloat(strings.TrimSpace(raw), 64); err == nil && bpm > 20 {
 		return bpm
 	}
-	return stylePackFor(style).DefaultBPM
+	return pack.DefaultBPM
 }
 
 func (c authoredSectionContext) descriptor() string {
@@ -197,7 +198,7 @@ func compilePhraseSpans(ctx authoredSectionContext, totalBars int) []gen.Authore
 	if totalBars <= 0 {
 		return nil
 	}
-	phraseBars := phraseBlockSize(ctx.style, totalBars)
+	phraseBars := phraseBlockSize(ctx.pack, totalBars)
 	if phraseBars <= 0 {
 		phraseBars = totalBars
 	}
@@ -228,8 +229,8 @@ func compilePhraseSpans(ctx authoredSectionContext, totalBars int) []gen.Authore
 	return out
 }
 
-func phraseBlockSize(style string, totalBars int) int {
-	return stylePackFor(style).phraseBars(totalBars)
+func phraseBlockSize(pack stylePack, totalBars int) int {
+	return pack.phraseBars(totalBars)
 }
 
 func phraseSpanForSlot(spans []gen.AuthoredPhraseSpan, slot int) (gen.AuthoredPhraseSpan, int) {
@@ -1505,7 +1506,7 @@ func applyRoleCharacter(base authoredRoleTemplate, role Role) authoredRoleTempla
 }
 
 func compileDrumPattern(ctx authoredSectionContext, roleName string, role Role, totalBars int, phraseSpans []gen.AuthoredPhraseSpan) []int {
-	grid := expandPhraseRhythmPattern(role, totalBars, phraseSpans, defaultRhythmPatternForStyle(ctx.style, roleName))
+	grid := expandPhraseRhythmPattern(role, totalBars, phraseSpans, defaultRhythmPatternForPack(ctx.pack, roleName))
 	out := make([]int, len(grid))
 	for i, active := range grid {
 		span, phraseIdx := phraseSpanForSlot(phraseSpans, i)
@@ -1593,7 +1594,7 @@ func drumSlotEvent(ctx authoredSectionContext, roleName string, span gen.Authore
 }
 
 func compileBassLine(ctx authoredSectionContext, name string, role Role, bars []authoredHarmonyBar, totalBars int, phraseSpans []gen.AuthoredPhraseSpan) []int {
-	grid := expandPhraseRhythmPattern(role, totalBars, phraseSpans, defaultRhythmPatternForStyle(ctx.style, name))
+	grid := expandPhraseRhythmPattern(role, totalBars, phraseSpans, defaultRhythmPatternForPack(ctx.pack, name))
 	out := make([]int, len(grid))
 	last := -1
 	for slot := range grid {
@@ -1700,7 +1701,7 @@ func approachMidi(target, around int) int {
 }
 
 func compilePadVoices(ctx authoredSectionContext, name string, role Role, bars []authoredHarmonyBar, totalBars int, phraseSpans []gen.AuthoredPhraseSpan) [][]int {
-	grid := expandPhraseRhythmPattern(role, totalBars, phraseSpans, defaultRhythmPatternForStyle(ctx.style, name))
+	grid := expandPhraseRhythmPattern(role, totalBars, phraseSpans, defaultRhythmPatternForPack(ctx.pack, name))
 	maxVoices := 4
 	kind := authoredRoleKind(name, role)
 	voices := make([][]int, maxVoices)
@@ -1732,7 +1733,7 @@ func compilePadVoices(ctx authoredSectionContext, name string, role Role, bars [
 }
 
 func compileCompVoices(ctx authoredSectionContext, name string, role Role, bars []authoredHarmonyBar, totalBars int, phraseSpans []gen.AuthoredPhraseSpan) [][]int {
-	grid := expandPhraseRhythmPattern(role, totalBars, phraseSpans, defaultRhythmPatternForStyle(ctx.style, name))
+	grid := expandPhraseRhythmPattern(role, totalBars, phraseSpans, defaultRhythmPatternForPack(ctx.pack, name))
 	maxVoices := 4
 	voices := make([][]int, maxVoices)
 	for i := range voices {
@@ -1789,7 +1790,7 @@ func compSlotActive(ctx authoredSectionContext, name string, role Role, mode str
 }
 
 func compileMelody(ctx authoredSectionContext, name string, role Role, bars []authoredHarmonyBar, totalBars int, phraseSpans []gen.AuthoredPhraseSpan) []int {
-	tokens := expandPhraseMelodyPattern(role, totalBars, phraseSpans, defaultMelodyPattern(ctx.style, name))
+	tokens := expandPhraseMelodyPattern(role, totalBars, phraseSpans, defaultMelodyPatternForPack(ctx.pack, name))
 	out := make([]int, len(tokens))
 	center := roleRegisterCenter(role.Register, ctx.style, name) + ctx.registerShift()
 	last := center
@@ -2375,11 +2376,15 @@ func authoredVoiceTracks(ctx authoredSectionContext, name string, role Role, tem
 }
 
 func defaultRhythmPattern(name string) string {
-	return defaultRhythmPatternForStyle("", name)
+	return defaultRhythmPatternForPack(stylePackFor(""), name)
 }
 
 func defaultRhythmPatternForStyle(style, name string) string {
-	if pattern := stylePackFor(style).defaultRhythm(name); strings.TrimSpace(pattern) != "" {
+	return defaultRhythmPatternForPack(stylePackFor(style), name)
+}
+
+func defaultRhythmPatternForPack(pack stylePack, name string) string {
+	if pattern := pack.defaultRhythm(name); strings.TrimSpace(pattern) != "" {
 		return pattern
 	}
 	switch strings.ToLower(name) {
@@ -2403,15 +2408,19 @@ func defaultRhythmPatternForStyle(style, name string) string {
 }
 
 func defaultMelodyPattern(style, name string) string {
-	if pattern := stylePackFor(style).defaultMelody(name); strings.TrimSpace(pattern) != "" {
+	return defaultMelodyPatternForPack(stylePackFor(style), name)
+}
+
+func defaultMelodyPatternForPack(pack stylePack, name string) string {
+	if pattern := pack.defaultMelody(name); strings.TrimSpace(pattern) != "" {
 		return pattern
 	}
 	switch {
 	case strings.Contains(strings.ToLower(name), "bell"):
 		return "5 . . 7 | 9 . 7 5"
-	case style == "jazz":
+	case pack.Name == "jazz":
 		return "5 . 6 7 | 9 . 7 3"
-	case style == "lofi":
+	case pack.Name == "lofi":
 		return "5 . . 7 | 9 . 7 5"
 	default:
 		return "5 . 3 . | 1 . . ."
