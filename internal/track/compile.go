@@ -30,6 +30,7 @@ func Compile(file *File, defaultSeed int64, defaultListenMode gen.ListeningMode)
 	if !ok {
 		return nil, fmt.Errorf("unknown style %q", file.Style)
 	}
+	pack := resolveStylePack(file.Style, file.Substyle, file.Title, file.Tags)
 	listenMode := defaultListenMode
 	if listenMode == "" {
 		listenMode = gen.ListeningModeEndless
@@ -78,6 +79,7 @@ func Compile(file *File, defaultSeed int64, defaultListenMode gen.ListeningMode)
 		mergedRoles := mergeRoles(file.Roles, section.Roles)
 		mergedRoles = applyRoleTransforms(mergedRoles, section.Transforms)
 		mergedRoles = applyOrchestration(mergedRoles, section.Orchestration)
+		section, mergedRoles = applyStyleLibrary(pack, section, mergedRoles)
 		for name, role := range mergedRoles {
 			if err := validateRole(name, role); err != nil {
 				return nil, fmt.Errorf("sections[%d]: %w", i, err)
