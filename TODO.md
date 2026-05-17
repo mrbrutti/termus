@@ -156,7 +156,7 @@
 - [x] Compile each section into explicit role timelines and phrase blocks rather than one continuous slot stream per role, so verse / bridge / breakdown / outro can contain genuinely different written material.
 - [x] Preserve full chord quality, extensions, slash bass, suspensions, and borrowed colors in the IR instead of flattening harmony into coarse major/minor/dominant buckets.
 - [x] Add section-local phrase ownership for bass, comp, lead, texture, and drums so a track can write different material per section instead of reusing one motif family all song.
-- [ ] Support section inheritance and transforms in `.tm` (`derive`, `sequence`, `invert`, `thin`, `lift-register`, `cadence rewrite`) so authors can write A / A' / B relationships without duplicating raw material.
+- [x] Support section inheritance and transforms in `.tm` (`derive`, `sequence`, `invert`, `thin`, `lift-register`, `cadence rewrite`) so authors can write A / A' / B relationships without duplicating raw material.
 
 ### Phase 2: Expand The `.tm` Language
 - [ ] Add a first-class arrangement block to `.tm` with explicit scene events such as fills, stop-time bars, pedal holds, swells, doubles, breaks, tags, pickups, and endings.

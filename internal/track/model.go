@@ -24,6 +24,8 @@ type File struct {
 type Section struct {
 	ID         string          `yaml:"id,omitempty"`
 	Title      string          `yaml:"title,omitempty"`
+	Derive     string          `yaml:"derive,omitempty"`
+	Transforms []string        `yaml:"transforms,omitempty"`
 	Duration   string          `yaml:"duration"`
 	Seed       *int64          `yaml:"seed,omitempty"`
 	SeedOffset *int64          `yaml:"seed_offset,omitempty"`

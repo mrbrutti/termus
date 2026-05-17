@@ -21,6 +21,10 @@ func Compile(file *File, defaultSeed int64, defaultListenMode gen.ListeningMode)
 	if len(file.Sections) == 0 {
 		return nil, fmt.Errorf("at least one section is required")
 	}
+	sections, err := resolveSections(file)
+	if err != nil {
+		return nil, err
+	}
 	spec, ok := gen.Resolve(file.Style)
 	if !ok {
 		return nil, fmt.Errorf("unknown style %q", file.Style)
@@ -49,17 +53,17 @@ func Compile(file *File, defaultSeed int64, defaultListenMode gen.ListeningMode)
 			Name:       file.Title,
 			Mode:       gen.PlaylistScore,
 			ListenMode: listenMode,
-			Tracks:     make([]gen.Track, 0, len(file.Sections)),
+			Tracks:     make([]gen.Track, 0, len(sections)),
 		},
-		Profiles: make(map[string]gen.ControlProfile, len(file.Sections)),
-		Plans:    make(map[string]gen.AuthoredTrackPlan, len(file.Sections)),
+		Profiles: make(map[string]gen.ControlProfile, len(sections)),
+		Plans:    make(map[string]gen.AuthoredTrackPlan, len(sections)),
 	}
 	for name, role := range file.Roles {
 		if err := validateRole(name, role); err != nil {
 			return nil, err
 		}
 	}
-	for i, section := range file.Sections {
+	for i, section := range sections {
 		dur, err := time.ParseDuration(section.Duration)
 		if err != nil || dur <= 0 {
 			return nil, fmt.Errorf("sections[%d].duration: invalid duration %q", i, section.Duration)
@@ -71,6 +75,7 @@ func Compile(file *File, defaultSeed int64, defaultListenMode gen.ListeningMode)
 			return nil, fmt.Errorf("sections[%d].scene: %w", i, err)
 		}
 		mergedRoles := mergeRoles(file.Roles, section.Roles)
+		mergedRoles = applyRoleTransforms(mergedRoles, section.Transforms)
 		for name, role := range mergedRoles {
 			if err := validateRole(name, role); err != nil {
 				return nil, fmt.Errorf("sections[%d]: %w", i, err)
@@ -112,7 +117,9 @@ func Compile(file *File, defaultSeed int64, defaultListenMode gen.ListeningMode)
 		}
 		compiled.Plans[key] = plan
 	}
-	compiled.Warnings = lintFile(file, compiled.Playlist.Tracks)
+	resolvedFile := *file
+	resolvedFile.Sections = sections
+	compiled.Warnings = lintFile(&resolvedFile, compiled.Playlist.Tracks)
 	return compiled, nil
 }
 

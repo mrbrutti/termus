@@ -474,6 +474,97 @@ sections:
 	}
 }
 
+func TestResolveSectionsSupportsDeriveAndTransforms(t *testing.T) {
+	const src = `
+title: Derived Head
+style: jazz
+key: Dmajor
+roles:
+  lead:
+    family: reed_lead
+    register: mid
+    motif: "5 . 6 7 | 3 . 2 1"
+  keys:
+    family: acoustic_piano
+    register: mid
+    pattern: "x..x .x.."
+sections:
+  - id: a
+    title: head
+    duration: 24s
+    harmony: "Dmaj9 A/C# | Bm9 Gmaj9"
+    scene: "head"
+    variation: "statement"
+  - id: a-prime
+    derive: a
+    title: head answer
+    duration: 24s
+    transforms: [sequence, lift-register, cadence-rewrite]
+`
+	file, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	sections, err := resolveSections(file)
+	if err != nil {
+		t.Fatalf("resolveSections: %v", err)
+	}
+	if len(sections) != 2 {
+		t.Fatalf("resolved sections = %d, want 2", len(sections))
+	}
+	derived := sections[1]
+	if !strings.Contains(derived.Variation, "sequence-up") || !strings.Contains(derived.Variation, "cadence") {
+		t.Fatalf("derived variation = %q", derived.Variation)
+	}
+	if !strings.Contains(derived.Harmony, "Dmaj9") {
+		t.Fatalf("derived harmony = %q", derived.Harmony)
+	}
+
+	compiled, err := Compile(file, 88, gen.ListeningModeEndless)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	if len(compiled.Playlist.Tracks) != 2 {
+		t.Fatalf("compiled tracks = %d, want 2", len(compiled.Playlist.Tracks))
+	}
+	var secondPlan gen.AuthoredTrackPlan
+	found := false
+	for key, plan := range compiled.Plans {
+		if strings.Contains(key, ":1097") {
+			secondPlan = plan
+			found = true
+		}
+	}
+	if !found {
+		for _, plan := range compiled.Plans {
+			if plan.Section == "head answer" {
+				secondPlan = plan
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
+		t.Fatal("expected derived section plan")
+	}
+	var leadTrack *gen.AuthoredRenderTrack
+	for i := range secondPlan.Tracks {
+		if secondPlan.Tracks[i].Name == "lead" {
+			leadTrack = &secondPlan.Tracks[i]
+			break
+		}
+	}
+	if leadTrack == nil {
+		t.Fatal("expected derived lead track")
+	}
+	if leadTrack.Register != "mid-high" {
+		t.Fatalf("derived lead register = %q", leadTrack.Register)
+	}
+	if got := secondPlan.PhraseSpans[len(secondPlan.PhraseSpans)-1].Label; got != "cadence" {
+		t.Fatalf("derived last phrase = %q, want cadence", got)
+	}
+}
+
 func TestBundledTracksParseAndCompile(t *testing.T) {
 	paths, err := filepath.Glob(filepath.Join("..", "..", "tracks", "*", "*.tm"))
 	if err != nil {
