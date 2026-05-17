@@ -193,6 +193,8 @@ const (
 	jazzVoicingB
 )
 
+const jazzSaxSlotsPerBar = 8
+
 type jazzAccentPattern struct {
 	and2  []bool
 	beat4 []bool
@@ -402,7 +404,7 @@ func (a *Jazz) rebuildEpisodeMaterials() {
 	pattern := a.chooseAccentPattern(numBars)
 	a.accentAnd2, a.accentBeat4, a.accentAnd4 = pattern.and2, pattern.beat4, pattern.and4
 	a.saxMotifs = a.chooseSaxMotifs()
-	a.saxPlan = a.makeSaxPlan(2 * numBars)
+	a.saxPlan = a.makeSaxPlan(jazzSaxSlotsPerBar * numBars)
 }
 
 func (a *Jazz) Seed(seedVal int64) {
@@ -652,8 +654,9 @@ func (a *Jazz) Seed(seedVal int64) {
 		FireProbability: 0.90,
 	})
 
-	// --- Sax solo: 2-slot-per-bar phrase with explicit rests, so the line can
-	// breathe and answer itself across 1-2 bar spans.
+	// --- Sax solo: swung-8th phrase grid with 4-bar sentences and explicit
+	// rests, so the line can actually shape a question/answer rather than
+	// placing isolated half-bar hits.
 	saxNotes := make([]int, len(a.saxPlan))
 	for i := range saxNotes {
 		saxNotes[i] = a.saxNoteAt(i)
@@ -847,8 +850,20 @@ func (a *Jazz) allowCompDialogue(bar int, lateHalf bool) bool {
 }
 
 func (a *Jazz) saxActivityInBar(bar int) (front, back bool) {
-	base := bar * 2
-	return a.saxPlanCodeAt(base) != jazzPlanRest, a.saxPlanCodeAt(base+1) != jazzPlanRest
+	base := bar * jazzSaxSlotsPerBar
+	for i := 0; i < jazzSaxSlotsPerBar/2; i++ {
+		if a.saxPlanCodeAt(base+i) != jazzPlanRest {
+			front = true
+			break
+		}
+	}
+	for i := jazzSaxSlotsPerBar / 2; i < jazzSaxSlotsPerBar; i++ {
+		if a.saxPlanCodeAt(base+i) != jazzPlanRest {
+			back = true
+			break
+		}
+	}
+	return front, back
 }
 
 // saxNoteAt resolves one slot of the phrase plan. The plan includes explicit
@@ -858,7 +873,7 @@ func (a *Jazz) saxNoteAt(slot int) int {
 	if len(a.progression) == 0 {
 		return 72
 	}
-	chordIdx := (slot / 2) % len(a.progression)
+	chordIdx := (slot / jazzSaxSlotsPerBar) % len(a.progression)
 	chord := a.progression[chordIdx]
 	next := a.progression[(chordIdx+1)%len(a.progression)]
 	switch a.saxPlanCodeAt(slot) {
@@ -995,20 +1010,31 @@ func (a *Jazz) makeCompAccentPlans(numBars int) ([]bool, []bool, []bool) {
 	beat4 := make([]bool, numBars)
 	and4 := make([]bool, numBars)
 	cells := []struct {
-		and2  bool
-		beat4 bool
-		and4  bool
+		and2  [2]bool
+		beat4 [2]bool
+		and4  [2]bool
 	}{
-		{and2: true, beat4: false, and4: false},
-		{and2: true, beat4: true, and4: false},
-		{and2: false, beat4: false, and4: true},
-		{and2: false, beat4: true, and4: true},
+		{and2: [2]bool{true, false}, beat4: [2]bool{false, true}, and4: [2]bool{false, true}},
+		{and2: [2]bool{true, true}, beat4: [2]bool{false, true}, and4: [2]bool{false, false}},
+		{and2: [2]bool{false, true}, beat4: [2]bool{false, false}, and4: [2]bool{true, true}},
+		{and2: [2]bool{true, false}, beat4: [2]bool{true, true}, and4: [2]bool{false, false}},
 	}
-	for i := 0; i < numBars; i++ {
+	for i := 0; i < numBars; i += 2 {
 		cell := cells[a.rng.Intn(len(cells))]
-		and2[i] = cell.and2
-		beat4[i] = cell.beat4
-		and4[i] = cell.and4
+		span := 2
+		if remaining := numBars - i; remaining < span {
+			span = remaining
+		}
+		for j := 0; j < span; j++ {
+			and2[i+j] = cell.and2[j]
+			beat4[i+j] = cell.beat4[j]
+			and4[i+j] = cell.and4[j]
+		}
+		lastBar := i + span - 1
+		if lastBar == numBars-1 || (lastBar+1)%4 == 0 {
+			beat4[lastBar] = true
+			and4[lastBar] = true
+		}
 	}
 	return and2, beat4, and4
 }
@@ -1029,27 +1055,75 @@ func (a *Jazz) saxPlanCodeAt(slot int) int {
 	return phrase[slot]
 }
 
-func (a *Jazz) makeSaxMotifs() MotifMemory {
-	callTemplates := [][]int{
-		{jazzPlanRest, jazzPlanNinth, jazzPlanApproachBelow, jazzPlanResolveThird},
-		{jazzPlanThird, jazzPlanRest, jazzPlanSuspendFourth, jazzPlanResolveThird},
-		{jazzPlanRest, jazzPlanSeventh, jazzPlanApproachAbove, jazzPlanAnticipateNextRoot},
+func jazzPhraseBar(tokens ...int) []int {
+	out := make([]int, jazzSaxSlotsPerBar)
+	for i := range out {
+		out[i] = jazzPlanRest
 	}
-	call := callTemplates[a.rng.Intn(len(callTemplates))]
-	answer := []int{jazzPlanThird, jazzPlanNinth, jazzPlanApproachBelow, jazzPlanResolveThird}
-	aPhrase := stitchPhrase(call, answer)
+	copy(out, tokens)
+	return out
+}
+
+func (a *Jazz) makeSaxMotifs() MotifMemory {
+	questionBars := [][][]int{
+		{
+			{jazzPlanRest, jazzPlanThird, jazzPlanRest, jazzPlanFifth, jazzPlanRest, jazzPlanSeventh, jazzPlanApproachBelow, jazzPlanResolveThird},
+			{jazzPlanRest, jazzPlanNinth, jazzPlanRest, jazzPlanThird, jazzPlanRest, jazzPlanFifth, jazzPlanApproachAbove, jazzPlanAnticipateNextRoot},
+		},
+		{
+			{jazzPlanRest, jazzPlanSeventh, jazzPlanRest, jazzPlanNinth, jazzPlanRest, jazzPlanThird, jazzPlanApproachAbove, jazzPlanResolveThird},
+			{jazzPlanRest, jazzPlanFifth, jazzPlanRest, jazzPlanSeventh, jazzPlanRest, jazzPlanNinth, jazzPlanApproachBelow, jazzPlanAnticipateNextRoot},
+		},
+		{
+			{jazzPlanRest, jazzPlanThird, jazzPlanRest, jazzPlanSuspendFourth, jazzPlanResolveThird, jazzPlanRest, jazzPlanSeventh, jazzPlanApproachBelow},
+			{jazzPlanRest, jazzPlanNinth, jazzPlanRest, jazzPlanFifth, jazzPlanRest, jazzPlanSeventh, jazzPlanApproachAbove, jazzPlanAnticipateNextRoot},
+		},
+	}
+	answerBars := [][][]int{
+		{
+			{jazzPlanRoot, jazzPlanRest, jazzPlanThird, jazzPlanRest, jazzPlanNinth, jazzPlanRest, jazzPlanSeventh, jazzPlanApproachBelow},
+			{jazzPlanResolveThird, jazzPlanRest, jazzPlanFifth, jazzPlanRest, jazzPlanSeventh, jazzPlanApproachBelow, jazzPlanAnticipateNextRoot, jazzPlanRoot},
+		},
+		{
+			{jazzPlanThird, jazzPlanRest, jazzPlanSeventh, jazzPlanRest, jazzPlanNinth, jazzPlanRest, jazzPlanFifth, jazzPlanApproachAbove},
+			{jazzPlanResolveThird, jazzPlanRest, jazzPlanThird, jazzPlanRest, jazzPlanNinth, jazzPlanApproachBelow, jazzPlanAnticipateNextRoot, jazzPlanRoot},
+		},
+		{
+			{jazzPlanRoot, jazzPlanRest, jazzPlanSuspendFourth, jazzPlanResolveThird, jazzPlanRest, jazzPlanSeventh, jazzPlanRest, jazzPlanApproachBelow},
+			{jazzPlanResolveThird, jazzPlanRest, jazzPlanFifth, jazzPlanRest, jazzPlanThird, jazzPlanApproachAbove, jazzPlanAnticipateNextRoot, jazzPlanRoot},
+		},
+	}
+	question := questionBars[a.rng.Intn(len(questionBars))]
+	answer := answerBars[a.rng.Intn(len(answerBars))]
+	aPhrase := stitchPhrase(
+		jazzPhraseBar(question[0]...),
+		jazzPhraseBar(question[1]...),
+		jazzPhraseBar(answer[0]...),
+		jazzPhraseBar(answer[1]...),
+	)
 	aPrime := sequencePhrase(aPhrase, map[int]int{
 		jazzPlanNinth:              jazzPlanSeventh,
 		jazzPlanSeventh:            jazzPlanNinth,
 		jazzPlanApproachBelow:      jazzPlanApproachAbove,
 		jazzPlanAnticipateNextRoot: jazzPlanApproachBelow,
+		jazzPlanRoot:               jazzPlanThird,
 	})
 	bPhrase := stitchPhrase(
-		[]int{jazzPlanRest, jazzPlanSeventh, jazzPlanApproachAbove, jazzPlanAnticipateNextRoot},
-		[]int{jazzPlanThird, jazzPlanSuspendFourth, jazzPlanApproachBelow, jazzPlanResolveThird},
+		jazzPhraseBar(jazzPlanRest, jazzPlanSeventh, jazzPlanRest, jazzPlanNinth, jazzPlanRest, jazzPlanApproachAbove, jazzPlanResolveThird, jazzPlanRest),
+		jazzPhraseBar(jazzPlanRest, jazzPlanThird, jazzPlanRest, jazzPlanFifth, jazzPlanRest, jazzPlanSeventh, jazzPlanApproachBelow, jazzPlanAnticipateNextRoot),
+		jazzPhraseBar(jazzPlanRoot, jazzPlanRest, jazzPlanThird, jazzPlanRest, jazzPlanSuspendFourth, jazzPlanResolveThird, jazzPlanRest, jazzPlanNinth),
+		jazzPhraseBar(jazzPlanSeventh, jazzPlanRest, jazzPlanFifth, jazzPlanRest, jazzPlanThird, jazzPlanApproachAbove, jazzPlanAnticipateNextRoot, jazzPlanRoot),
 	)
-	cadence := stitchPhrase(aPhrase[:4], []int{jazzPlanThird, jazzPlanNinth, jazzPlanApproachBelow, jazzPlanRoot})
-	outro := stitchPhrase([]int{jazzPlanRest, jazzPlanThird, jazzPlanResolveThird, jazzPlanRoot})
+	cadence := stitchPhrase(
+		jazzPhraseBar(question[0]...),
+		jazzPhraseBar(question[1]...),
+		jazzPhraseBar(jazzPlanRoot, jazzPlanRest, jazzPlanThird, jazzPlanRest, jazzPlanSeventh, jazzPlanRest, jazzPlanApproachBelow, jazzPlanResolveThird),
+		jazzPhraseBar(jazzPlanNinth, jazzPlanRest, jazzPlanSeventh, jazzPlanRest, jazzPlanApproachBelow, jazzPlanAnticipateNextRoot, jazzPlanRoot, jazzPlanRest),
+	)
+	outro := stitchPhrase(
+		jazzPhraseBar(jazzPlanRest, jazzPlanThird, jazzPlanRest, jazzPlanResolveThird, jazzPlanRest, jazzPlanRoot, jazzPlanRest, jazzPlanRest),
+		jazzPhraseBar(jazzPlanRest, jazzPlanSeventh, jazzPlanRest, jazzPlanThird, jazzPlanRest, jazzPlanRoot, jazzPlanRest, jazzPlanRest),
+	)
 	return MotifMemory{
 		A:       aPhrase,
 		Aprime:  aPrime,

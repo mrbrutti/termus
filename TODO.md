@@ -117,7 +117,7 @@
 - [x] Fix `Glass Chapel`'s shared-channel pad interference, reduce trashy texture interactions, and retune its `max` palette / voicing so the bell station stays clean and luminous instead of brittle.
 
 ### Jazz Guide Rules
-- [ ] Encode jazz style-guide rules into `jazz`: stronger guide-tone motion, 2-bar / 4-bar phrase sentences, better turnaround targeting, and more conversational comping/solo interaction.
+- [x] Encode jazz style-guide rules into `jazz`: stronger guide-tone motion, 2-bar / 4-bar phrase sentences, better turnaround targeting, and more conversational comping/solo interaction.
 
 ### Lo-fi Guide Rules
 - [ ] Encode lo-fi style-guide rules into `lofi`: groove pocket over jitter, richer extension vocabulary, more soulful loop mutation, and calmer/supportive texture use.
