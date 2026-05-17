@@ -208,6 +208,18 @@ type sf2Core struct {
 	cracklePopLeft  int64 // remaining samples on current pop
 	cracklePopVal   float64
 
+	// Optional shared-type wow/flutter pitch modulator — lofi only.
+	// Applied before the EQ so it modulates the full mix. nil = bypass.
+	wowFlutter *synth.WowFlutter
+
+	// Optional shared-type Tape saturator — replaces the legacy
+	// tapeSatAmount path when non-nil. nil = fall through to legacy inline.
+	sharedTape *synth.Tape
+
+	// Optional shared-type Vinyl noise/crackle — replaces the legacy
+	// crackleProb path when non-nil. nil = fall through to legacy inline.
+	sharedVinyl *synth.Vinyl
+
 	// Optional convolution reverb. When non-nil, applied in parallel with
 	// the dry signal at convWet mix level. Each channel has its own
 	// instance, both seeded from the same IR. nil disables convolution.
@@ -714,6 +726,29 @@ func (e *sf2Core) stepCrackle() float64 {
 		return e.cracklePopVal
 	}
 	return 0
+}
+
+// setWowFlutter installs a WowFlutter pitch modulator on the master bus.
+// Applied before the EQ so the full mix is pitch-modulated. nil or a zero
+// config disables it. Intended for lofi only — other styles leave this nil.
+func (e *sf2Core) setWowFlutter(cfg synth.WowFlutterConfig) {
+	e.wowFlutter = synth.NewWowFlutter(float64(synth.SampleRate), cfg)
+}
+
+// setSharedTape installs a synth.Tape saturator on the master bus, replacing
+// the legacy inline tapeSatAmount path. Call with DriveDB 0 to disable.
+func (e *sf2Core) setSharedTape(cfg synth.TapeConfig) {
+	if cfg.DriveDB == 0 {
+		e.sharedTape = nil
+		return
+	}
+	e.sharedTape = synth.NewTape(cfg)
+}
+
+// setSharedVinyl installs a synth.Vinyl noise/crackle generator on the master
+// bus, replacing the legacy inline crackleProb path. Nil disables it.
+func (e *sf2Core) setSharedVinyl(sampleRate float64, cfg synth.VinylConfig) {
+	e.sharedVinyl = synth.NewVinyl(sampleRate, cfg)
 }
 
 // setConvolutionIR installs a convolution reverb on the master bus. The IR is
@@ -1250,11 +1285,23 @@ func (e *sf2Core) renderInto(left, right []float64) {
 		}
 	}
 
-	// Master bus: gain → EQ → optional conv wet → optional LP → optional hiss
+	// Master bus: [wow/flutter] → gain → EQ → optional conv wet → optional LP
+	//              → optional hiss → sidechain duck → tape sat → vinyl crackle
 	//              → compressor → soft-clip.
+	//
+	// WowFlutter (lofi only) sits before gain so it modulates the full mix
+	// at a consistent level; its fractional-delay line output is stable in
+	// amplitude so inserting before gain is equivalent to after.
 	for i := 0; i < n; i++ {
-		l := float64(e.bufF32L[i]) * e.masterGain
-		r := float64(e.bufF32R[i]) * e.masterGain
+		l := float64(e.bufF32L[i])
+		r := float64(e.bufF32R[i])
+		// Optional wow/flutter pitch modulator — lofi only. Applied first so
+		// the pitch modulation affects the complete pre-gain signal.
+		if e.wowFlutter != nil {
+			l, r = e.wowFlutter.Tick(l, r)
+		}
+		l *= e.masterGain
+		r *= e.masterGain
 		l = e.eqLowL.Tick(l)
 		r = e.eqLowR.Tick(r)
 		l = e.eqHighL.Tick(l)
@@ -1281,16 +1328,23 @@ func (e *sf2Core) renderInto(left, right []float64) {
 			l *= duck
 			r *= duck
 		}
-		// Tape saturation — soft-knee tanh shaping with amount-dependent
-		// drive. Approximates analog tape magnetization without dramatic
-		// peak compression; preserves transients better than SoftClip alone.
-		if e.tapeSatAmount > 0 {
+		// Tape saturation — prefer the shared synth.Tape type when installed
+		// (lofi uses it); fall back to the legacy inline path otherwise.
+		if e.sharedTape != nil {
+			l = e.sharedTape.Tick(l)
+			r = e.sharedTape.Tick(r)
+		} else if e.tapeSatAmount > 0 {
 			drive := 1.0 + 1.5*e.tapeSatAmount
 			l = math.Tanh(l*drive) / drive
 			r = math.Tanh(r*drive) / drive
 		}
-		// Vinyl crackle — single mono noise source mixed into both channels.
-		if e.crackleProb > 0 {
+		// Vinyl crackle — prefer the shared synth.Vinyl type when installed
+		// (lofi uses it); fall back to the legacy inline path otherwise.
+		if e.sharedVinyl != nil {
+			vL, vR := e.sharedVinyl.Tick()
+			l += vL
+			r += vR
+		} else if e.crackleProb > 0 {
 			c := e.stepCrackle()
 			l += c
 			r += c

@@ -215,6 +215,9 @@ type VinylConfig struct {
 	// PopRateHz is the average number of pop transients per second
 	// (Poisson process). 0 disables pops. Typical lofi: 4–10.
 	PopRateHz float64
+	// PopAmpLinear overrides the peak pop amplitude (0–1 linear).
+	// 0 means "use default" (0.7). The old inline chill code used 0.022.
+	PopAmpLinear float64
 	// Seed makes the noise/pop sequences reproducible.
 	Seed int64
 }
@@ -240,11 +243,15 @@ type Vinyl struct {
 
 // NewVinyl constructs a Vinyl noise bed. -inf level + 0 pops = silence.
 func NewVinyl(sampleRate float64, cfg VinylConfig) *Vinyl {
+	popAmp := 0.7 // default peak amplitude for a pop transient
+	if cfg.PopAmpLinear > 0 {
+		popAmp = cfg.PopAmpLinear
+	}
 	v := &Vinyl{
 		sampleRate: sampleRate,
 		state:      uint64(cfg.Seed)*6364136223846793005 + 1442695040888963407,
 		popProb:    cfg.PopRateHz / sampleRate,
-		popAmp:     0.7, // peak amplitude of a pop transient
+		popAmp:     popAmp,
 		lpCoeff:    1.0 - math.Exp(-2*math.Pi*4000/sampleRate), // 4 kHz one-pole LP
 	}
 	if math.IsInf(cfg.NoiseLevelDB, -1) {
