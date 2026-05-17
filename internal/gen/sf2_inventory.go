@@ -198,9 +198,7 @@ func resolveRouteAssignments(style string, intents []SF2RoleIntent, primary, fal
 			if ok {
 				score += programScore
 			}
-			if strings.EqualFold(name, primary) {
-				score += 4
-			}
+			score += routeCohesionScore(style, preset, intent, primary)
 			if score > bestScore {
 				best = name
 				bestScore = score
@@ -216,6 +214,68 @@ func resolveRouteAssignments(style string, intents []SF2RoleIntent, primary, fal
 		programs[intent.Channel] = bestProgram
 	}
 	return routes, programs
+}
+
+func routeCohesionScore(style string, preset sf2PresetProfile, intent SF2RoleIntent, primary string) int {
+	score := 0
+	if strings.EqualFold(preset.Name, primary) {
+		score += 4
+	}
+	if !styleNeedsSoftCohesion(style) {
+		return score
+	}
+	if strings.EqualFold(preset.Name, primary) {
+		score += 8
+	}
+	switch strings.ToLower(strings.TrimSpace(intent.Prominence)) {
+	case "support", "anchor":
+		if !strings.EqualFold(preset.Name, primary) {
+			score -= 10
+		}
+	case "air":
+		if !strings.EqualFold(preset.Name, primary) && supportFamily(intent.Family) {
+			score -= 6
+		}
+	}
+	if supportFamily(intent.Family) && !strings.EqualFold(preset.Name, primary) {
+		score -= 10
+	}
+	if sparkleFamily(intent.Family) && !strings.EqualFold(preset.Name, primary) {
+		score += 4
+	}
+	if containsFold(preset.Tones, "brassy") || containsFold(preset.Tones, "present") {
+		if strings.EqualFold(intent.Prominence, "support") || strings.EqualFold(intent.Prominence, "air") {
+			score -= 4
+		}
+	}
+	return score
+}
+
+func styleNeedsSoftCohesion(style string) bool {
+	switch strings.ToLower(strings.TrimSpace(style)) {
+	case "ambient", "bells", "drone", "lullaby", "phase":
+		return true
+	default:
+		return false
+	}
+}
+
+func supportFamily(family string) bool {
+	switch strings.ToLower(strings.TrimSpace(family)) {
+	case "pad", "choir", "strings", "bass", "synth_bass":
+		return true
+	default:
+		return false
+	}
+}
+
+func sparkleFamily(family string) bool {
+	switch strings.ToLower(strings.TrimSpace(family)) {
+	case "bells", "mallet", "music_box", "woodwind":
+		return true
+	default:
+		return false
+	}
 }
 
 func presetAggregateScore(style string, preset sf2PresetProfile, intents []SF2RoleIntent, cohesion map[string]bool) int {
@@ -357,6 +417,17 @@ func programMatchScore(style string, preset sf2PresetProfile, program sf2Program
 	}
 	if containsFold(preset.Styles, style) {
 		score += 4
+	}
+	if styleNeedsSoftCohesion(style) && (strings.EqualFold(intent.Family, "bass") || strings.EqualFold(intent.Family, "synth_bass")) {
+		if containsFold(program.Articulations, "walk") {
+			score -= 8
+		}
+		if strings.EqualFold(program.Family, "synth_bass") {
+			score += 5
+		}
+		if containsFold(program.Tones, "dreamy") || containsFold(program.Tones, "floating") || containsFold(program.Tones, "warm") {
+			score += 3
+		}
 	}
 	switch strings.ToLower(strings.TrimSpace(program.Realism)) {
 	case "utility":
@@ -746,7 +817,7 @@ func defaultRolePlan(style string) []SF2RoleIntent {
 			{Channel: 4, Role: "pad", Family: "pad", Tone: []string{"soft", "wide"}, Prominence: "support", Active: true},
 			{Channel: 5, Role: "choir", Family: "choir", Tone: []string{"airy"}, Prominence: "support", Active: true},
 			{Channel: 6, Role: "strings", Family: "strings", Tone: []string{"soft"}, Prominence: "support", Active: true},
-			{Channel: 7, Role: "bass", Family: "bass", Tone: []string{"soft"}, Prominence: "anchor", Active: true},
+			{Channel: 7, Role: "bass", Family: "synth_bass", Tone: []string{"soft", "warm"}, Prominence: "anchor", Active: true},
 		}
 	case "lullaby":
 		return []SF2RoleIntent{
