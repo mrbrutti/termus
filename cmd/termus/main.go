@@ -58,6 +58,19 @@ func mListeningModeLabel(mode gen.ListeningMode) string {
 	}
 }
 
+func shouldOpenTrackLibraryByDefault(entries []track.Entry, visited map[string]bool, trackName, playlistMode, outPath, playlistOut string) bool {
+	return strings.TrimSpace(trackName) == "" &&
+		!visited["algo"] &&
+		strings.TrimSpace(playlistMode) == "" &&
+		strings.TrimSpace(outPath) == "" &&
+		strings.TrimSpace(playlistOut) == "" &&
+		len(entries) > 0
+}
+
+func shouldWarmStartupSF2(defaultTrackBrowse, liveRun bool, spec gen.AlgoSpec) bool {
+	return liveRun && spec.RequiresSF2 && !defaultTrackBrowse
+}
+
 func main() {
 	seed := flag.Int64("seed", time.Now().UnixNano(), "RNG seed (default: time-based)")
 	algoName := flag.String("algo", "ambient",
@@ -192,7 +205,7 @@ func main() {
 		err         error
 	)
 	trackEntries, _ := discoverTracks()
-	defaultTrackBrowse := *trackName == "" && !visited["algo"] && effectivePlaylistMode == "" && *outPath == "" && *playlistOut == "" && len(trackEntries) > 0
+	defaultTrackBrowse := shouldOpenTrackLibraryByDefault(trackEntries, visited, *trackName, effectivePlaylistMode, *outPath, *playlistOut)
 	if *trackName != "" {
 		_, activeTrack, err = loadTrackSelection(trackEntries, *trackName, *seed, listenMode.Name)
 		if err != nil {
@@ -227,15 +240,15 @@ func main() {
 		}
 	}
 	liveRun := *outPath == "" && *playlistOut == ""
-	startupNeedsLibrary := defaultTrackBrowse && len(trackEntries) > 0
-	startupNeedsSF2 := loadSpec.RequiresSF2 || startupNeedsLibrary
-	liveStartupLoader := liveRun && startupNeedsSF2
+	startupNeedsSF2 := shouldWarmStartupSF2(defaultTrackBrowse, liveRun, loadSpec)
+	liveStartupLoader := startupNeedsSF2
 	var (
 		catalog *soundFontCatalog
 		sf      *meltysynth.SoundFont
+		sfMu    sync.Mutex
 	)
 	if liveRun {
-		if startupNeedsSF2 && *sf2Path == "" {
+		if (startupNeedsSF2 || defaultTrackBrowse) && *sf2Path == "" {
 			catalog = newSoundFontCatalog(sfStrategy, *sf2Preset)
 			gen.SetSF2Runtime(sfStrategy, catalog.snapshot())
 		}
@@ -247,7 +260,7 @@ func main() {
 		}
 	}
 	var algo gen.Algorithm
-	if liveStartupLoader {
+	if liveStartupLoader || defaultTrackBrowse {
 		algo = silentAlgorithm{}
 	} else {
 		algo = spec.Build(sf)
@@ -306,6 +319,20 @@ func main() {
 	buildRenderedAlgo := func(s gen.AlgoSpec, algoSeed int64) gen.Algorithm {
 		chosen := sf
 		selection := gen.SF2Selection{}
+		if chosen == nil && *sf2Path != "" && s.RequiresSF2 {
+			sfMu.Lock()
+			if sf == nil {
+				loaded, err := sf2.Open(*sf2Path)
+				if err != nil {
+					sfMu.Unlock()
+					logCatalogEnsureError(s, err)
+				} else {
+					sf = loaded
+				}
+			}
+			chosen = sf
+			sfMu.Unlock()
+		}
 		if catalog != nil && s.RequiresSF2 {
 			selection = selectionFor(s, algoSeed)
 			if err := catalog.ensurePresets(io.Discard, selection.Presets); err != nil {
@@ -588,9 +615,6 @@ func main() {
 				p.Send(tui.StartupLoadMsg{Title: title, Detail: "starting audio...", Percent: 1})
 			} else {
 				presets := startupPresetNames(sfStrategy, *sf2Preset)
-				if startupNeedsLibrary && sfStrategy == "max" {
-					presets = sf2.AllPresetNames()
-				}
 				if err := catalog.ensurePresetsParallel(presets, startupLoadConcurrency(sfStrategy), update); err != nil {
 					p.Send(audio.BackendState{Kind: audio.BackendStateInitFailed, Detail: err.Error()})
 					p.Send(tui.StartupLoadMsg{Title: title, Detail: "load failed: " + err.Error(), Percent: 0, Done: true})
