@@ -144,3 +144,7 @@
 
 ### Authored Pack
 - [x] Add an initial authored `.tm` pack for `lofi`, `jazz`, and `bells` so we can test whether authored long-form pieces sound more like real music than pure seed-driven generation.
+
+### Score-Driven Lo-fi
+- [x] Make `.tm` audit fields actually drive the `lofi` generator's harmony, lead contour, comp rhythm, groove density, and role activation instead of only acting as annotations on top of seed/profile changes.
+- [x] Expand the authored lo-fi score library with longer, more contrast-heavy studies so we can audition multiple believable tape-era moods instead of one thin example.
