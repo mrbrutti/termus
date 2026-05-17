@@ -163,3 +163,133 @@ func (w *WowFlutter) readLerp(buf []float64, pos float64) float64 {
 
 	return buf[i0]*(1-frac) + buf[i1]*frac
 }
+
+// TapeConfig configures the Tape saturation processor.
+type TapeConfig struct {
+	// DriveDB is the input gain in dB before the saturation nonlinearity.
+	// 0 = bypass (linear). Typical lofi: 3–6 dB. Above 12 dB the sound
+	// becomes obviously distorted.
+	DriveDB float64
+}
+
+// Tape is an asymmetric soft-clip saturator. The asymmetry adds 2nd-harmonic
+// content (tape's characteristic warmth) on top of the odd-harmonic clip
+// that pure tanh would produce.
+type Tape struct {
+	drive  float64
+	makeup float64
+}
+
+// NewTape constructs a Tape saturator. Drive of 0 dB is the identity function.
+func NewTape(cfg TapeConfig) *Tape {
+	drive := math.Pow(10, cfg.DriveDB/20)
+	// Approximate unity loudness compensation: peak of tanh(x) for x in
+	// [-drive, drive] is tanh(drive); we scale by 1/tanh(drive) so a
+	// full-scale input still hits ~ unity.
+	makeup := 1.0
+	if cfg.DriveDB > 0 {
+		makeup = 1.0 / math.Tanh(drive)
+	}
+	return &Tape{drive: drive, makeup: makeup}
+}
+
+// Tick applies the saturator to a single sample.
+func (t *Tape) Tick(x float64) float64 {
+	if t.drive == 1 && t.makeup == 1 {
+		return x
+	}
+	// Asymmetric bias adds even harmonics: shift the operating point
+	// slightly off zero before the nonlinearity. Use a small fixed bias
+	// (5% of drive) — anything larger pushes a DC offset into the chain
+	// that the downstream EQ would need to remove.
+	const biasRatio = 0.05
+	y := math.Tanh(t.drive*x+t.drive*biasRatio) - math.Tanh(t.drive*biasRatio)
+	return y * t.makeup
+}
+
+// VinylConfig configures the Vinyl noise/crackle bed.
+type VinylConfig struct {
+	// NoiseLevelDB is the RMS of the continuous noise bed in dBFS.
+	// math.Inf(-1) (i.e. "off") disables noise. Typical lofi: -27 dB.
+	NoiseLevelDB float64
+	// PopRateHz is the average number of pop transients per second
+	// (Poisson process). 0 disables pops. Typical lofi: 4–10.
+	PopRateHz float64
+	// Seed makes the noise/pop sequences reproducible.
+	Seed int64
+}
+
+// Vinyl produces a stereo noise bed reminiscent of a vinyl record's surface
+// noise. The continuous bed is lowpassed white noise (band-limited to a
+// "warm" character); pops are short, sharp transients placed via a Poisson
+// process at the configured rate.
+type Vinyl struct {
+	sampleRate float64
+
+	noiseAmp float64
+	popProb  float64
+	popAmp   float64
+
+	// xorshift state — fast, deterministic, no allocation per Tick.
+	state uint64
+
+	// 1-pole lowpass for the bed (gives it warmer-than-white character).
+	lpL, lpR float64
+	lpCoeff  float64
+}
+
+// NewVinyl constructs a Vinyl noise bed. -inf level + 0 pops = silence.
+func NewVinyl(sampleRate float64, cfg VinylConfig) *Vinyl {
+	v := &Vinyl{
+		sampleRate: sampleRate,
+		state:      uint64(cfg.Seed)*6364136223846793005 + 1442695040888963407,
+		popProb:    cfg.PopRateHz / sampleRate,
+		popAmp:     0.7, // peak amplitude of a pop transient
+		lpCoeff:    1.0 - math.Exp(-2*math.Pi*4000/sampleRate), // 4 kHz one-pole LP
+	}
+	if math.IsInf(cfg.NoiseLevelDB, -1) {
+		v.noiseAmp = 0
+	} else {
+		// noiseAmp is the peak; RMS for uniform white is amp/sqrt(3),
+		// so dBFS = 20·log10(amp/sqrt(3)).
+		// amp = 10^(dB/20) · sqrt(3)
+		v.noiseAmp = math.Pow(10, cfg.NoiseLevelDB/20) * math.Sqrt(3)
+	}
+	if cfg.PopRateHz <= 0 {
+		v.popProb = 0
+	}
+	return v
+}
+
+// Tick advances the noise generator by one sample and returns a stereo frame.
+// The two channels are independent (decorrelated noise, but identical RMS).
+func (v *Vinyl) Tick() (float64, float64) {
+	uL := v.next()
+	uR := v.next()
+	xL := (uL*2 - 1) * v.noiseAmp
+	xR := (uR*2 - 1) * v.noiseAmp
+	// 1-pole LP
+	v.lpL += v.lpCoeff * (xL - v.lpL)
+	v.lpR += v.lpCoeff * (xR - v.lpR)
+	outL := v.lpL
+	outR := v.lpR
+	// Pops (correlated L/R — a real vinyl pop is mono-ish).
+	if v.popProb > 0 && v.nextFloat() < v.popProb {
+		pop := (v.nextFloat()*2 - 1) * v.popAmp
+		outL += pop
+		outR += pop
+	}
+	return outL, outR
+}
+
+// nextFloat returns a uniform float in [0, 1) via xorshift*.
+func (v *Vinyl) nextFloat() float64 {
+	v.state ^= v.state >> 12
+	v.state ^= v.state << 25
+	v.state ^= v.state >> 27
+	v.state *= 2685821657736338717
+	return float64(v.state>>11) / (1 << 53)
+}
+
+// next is a synonym used in Tick for clarity.
+func (v *Vinyl) next() float64 { return v.nextFloat() }

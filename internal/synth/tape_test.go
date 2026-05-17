@@ -2,6 +2,7 @@
 package synth_test
 
 import (
+	"math"
 	"testing"
 
 	"github.com/mrbrutti/termus/internal/audiotest"
@@ -108,4 +109,88 @@ func absf(x float64) float64 {
 		return -x
 	}
 	return x
+}
+
+func abs(x float64) float64 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+func TestTapeIdentityWhenDriveZero(t *testing.T) {
+	tp := synth.NewTape(synth.TapeConfig{DriveDB: 0})
+	for _, x := range []float64{-0.9, -0.3, 0, 0.3, 0.9} {
+		got := tp.Tick(x)
+		if abs(got-x) > 1e-9 {
+			t.Fatalf("Tape(drive=0).Tick(%g) = %g, want %g", x, got, x)
+		}
+	}
+}
+
+func TestTapeIntroducesEvenHarmonics(t *testing.T) {
+	// Drive a 440 Hz sine through Tape; assert spectral centroid > input centroid.
+	tp := synth.NewTape(synth.TapeConfig{DriveDB: 6})
+	const sr = 44100.0
+	in := audiotest.Sine(440, 0.9, sr, 16384)
+	out := make([]float64, len(in))
+	for i, x := range in {
+		out[i] = tp.Tick(x)
+	}
+	inCentroid := audiotest.SpectralCentroidHz(in, sr)
+	outCentroid := audiotest.SpectralCentroidHz(out, sr)
+	if outCentroid <= inCentroid {
+		t.Fatalf("Tape didn't add harmonics: in centroid %.1f, out centroid %.1f", inCentroid, outCentroid)
+	}
+}
+
+func TestTapeSoftClipsExtremeValues(t *testing.T) {
+	tp := synth.NewTape(synth.TapeConfig{DriveDB: 12})
+	// Above unity, output should compress (not pass through linearly).
+	got := tp.Tick(2.0)
+	if got >= 1.99 || got <= -0.99 {
+		t.Fatalf("Tape(drive=12).Tick(2.0) = %g, want compressed under 1", got)
+	}
+}
+
+func TestVinylProducesNonZeroNoiseBed(t *testing.T) {
+	v := synth.NewVinyl(44100, synth.VinylConfig{
+		NoiseLevelDB: -27,
+		PopRateHz:    6,
+		Seed:         42,
+	})
+	const sr = 44100
+	out := make([]float64, 2*sr)
+	for i := range out {
+		l, _ := v.Tick()
+		out[i] = l
+	}
+	rms := audiotest.RMS(out)
+	rmsDB := audiotest.ToDB(rms)
+	// Should be in the right ballpark: -27 dB ± 4 dB (Poisson pops shift RMS).
+	if rmsDB < -34 || rmsDB > -20 {
+		t.Fatalf("vinyl RMS = %.1f dB, want around -27 ± 4", rmsDB)
+	}
+}
+
+func TestVinylSeedIsDeterministic(t *testing.T) {
+	a := synth.NewVinyl(44100, synth.VinylConfig{NoiseLevelDB: -24, PopRateHz: 6, Seed: 7})
+	b := synth.NewVinyl(44100, synth.VinylConfig{NoiseLevelDB: -24, PopRateHz: 6, Seed: 7})
+	for i := 0; i < 1000; i++ {
+		la, ra := a.Tick()
+		lb, rb := b.Tick()
+		if la != lb || ra != rb {
+			t.Fatalf("vinyl not deterministic at sample %d: a=(%g,%g) b=(%g,%g)", i, la, ra, lb, rb)
+		}
+	}
+}
+
+func TestVinylRespectsZeroLevel(t *testing.T) {
+	v := synth.NewVinyl(44100, synth.VinylConfig{NoiseLevelDB: math.Inf(-1), PopRateHz: 0, Seed: 1})
+	for i := 0; i < 1000; i++ {
+		l, r := v.Tick()
+		if l != 0 || r != 0 {
+			t.Fatalf("expected silence at -inf dB; got (%g, %g) at sample %d", l, r, i)
+		}
+	}
 }
