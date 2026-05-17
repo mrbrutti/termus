@@ -199,6 +199,38 @@ func TestControlsPanelShowsAudioRecoveryActions(t *testing.T) {
 	}
 }
 
+func TestControlsPanelShowsTrackStructureInspector(t *testing.T) {
+	m := Model{
+		controlsVisible: true,
+		controlTab:      controlTabDebug,
+		algo:            "Lofi",
+		seed:            42,
+		debug:           gen.DebugStatus{Section: "intro", Chord: "Dm9"},
+		activeTrackID:   "lofi/demo",
+		tracks: []TrackNavEntry{{
+			ID:           "lofi/demo",
+			Style:        "lofi",
+			Substyle:     "dusty-rhodes",
+			Title:        "Demo Track",
+			SectionCount: 3,
+			EventCount:   4,
+			Complexity:   "arranged",
+			Ensemble:     []string{"ep", "bass", "drums", "reed"},
+			Structure: []TrackNavSection{
+				{ID: "intro", Label: "Intro", Harmony: "Dm9 G13", Events: []string{"pickup"}, RoleNames: []string{"ep", "bass"}},
+				{ID: "head", Label: "Head", Harmony: "Bbmaj9 C13", Events: []string{"fill"}, RoleNames: []string{"ep", "reed", "drums"}},
+			},
+		}},
+		themes: []ColorTheme{DefaultTheme()},
+	}
+	panel := controlsPanel(m, 100, 24, DefaultTheme())
+	for _, want := range []string{"TRACK FORM", "Demo Track", "live  Intro", "pickup", "ep · bass"} {
+		if !strings.Contains(panel, want) {
+			t.Fatalf("track structure inspector missing %q:\n%s", want, panel)
+		}
+	}
+}
+
 func TestSplashPanelShowsOnboarding(t *testing.T) {
 	m := Model{
 		splashVisible: true,

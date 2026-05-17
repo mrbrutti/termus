@@ -37,6 +37,7 @@ type TrackNavEntry struct {
 }
 
 type TrackNavSection struct {
+	ID        string
 	Label     string
 	Harmony   string
 	RoleNames []string

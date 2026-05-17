@@ -175,6 +175,7 @@ func buildEntrySummary(file *File, pack stylePack) ([]string, []EntrySection, []
 		events := reviewEventLabels(sectionEvents(section))
 		totalEvents += len(events)
 		structure = append(structure, EntrySection{
+			ID:        section.ID,
 			Label:     label,
 			Harmony:   section.Harmony,
 			RoleNames: roleNames,

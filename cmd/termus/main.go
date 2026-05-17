@@ -473,6 +473,7 @@ func main() {
 		structure := make([]tui.TrackNavSection, 0, len(entry.Structure))
 		for _, section := range entry.Structure {
 			structure = append(structure, tui.TrackNavSection{
+				ID:        section.ID,
 				Label:     section.Label,
 				Harmony:   section.Harmony,
 				RoleNames: append([]string(nil), section.RoleNames...),

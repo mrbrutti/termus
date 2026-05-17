@@ -192,5 +192,5 @@
 
 ### Phase 7: Product Fit
 - [x] Make the track browser show compact but useful authored metadata such as section count, ensemble, substyle glyphs, and arrangement complexity without wasting vertical space.
-- [ ] Add a track-structure inspector in the control center so we can see section order, events, harmony, and active ensemble while a score is playing.
+- [x] Add a track-structure inspector in the control center so we can see section order, events, harmony, and active ensemble while a score is playing.
 - [ ] Make default startup favor the authored track library once the unified engine is mature enough that curated tracks consistently outperform raw procedural playback.

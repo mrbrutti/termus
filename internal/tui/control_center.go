@@ -674,6 +674,13 @@ func (m Model) debugControlItems() []controlItem {
 	if presetValue == "" {
 		presetValue = "—"
 	}
+	trackValue := "procedural"
+	if entry, ok := m.trackStructureEntry(); ok {
+		trackValue = entry.Title
+		if strings.TrimSpace(trackValue) == "" {
+			trackValue = entry.ID
+		}
+	}
 	return []controlItem{
 		{
 			Title: "debug overlay",
@@ -688,6 +695,12 @@ func (m Model) debugControlItems() []controlItem {
 				}
 				return nil
 			},
+		},
+		{
+			Title:    "authored track",
+			Value:    trackValue,
+			Hint:     "structure below",
+			Disabled: true,
 		},
 		{
 			Title:    "current state",
@@ -754,6 +767,11 @@ func controlsPanel(m Model, w, h int, theme ColorTheme) string {
 	)
 	for i, item := range items {
 		lines = append(lines, renderControlItem(theme, i == m.controlRow, item, rightW))
+	}
+	if m.controlTab == controlTabDebug {
+		if preview := renderControlTrackStructure(m, theme, rightW, bodyH-len(lines)-5); preview != "" {
+			lines = append(lines, "", preview)
+		}
 	}
 	sidebar := lipgloss.NewStyle().Width(sidebarW).Render(strings.Join(sidebarLines, "\n"))
 	content := lipgloss.NewStyle().Width(rightW).Render(strings.Join(lines, "\n"))
@@ -826,6 +844,124 @@ func controlCenterSummary(m Model) string {
 		parts = append(parts, m.debug.Preset)
 	}
 	return strings.Join(parts, " · ")
+}
+
+func (m Model) trackStructureEntry() (TrackNavEntry, bool) {
+	if strings.TrimSpace(m.activeTrackID) != "" {
+		for _, entry := range m.tracks {
+			if entry.ID == m.activeTrackID {
+				return entry, true
+			}
+		}
+	}
+	if m.trackIdx >= 0 && m.trackIdx < len(m.tracks) {
+		return m.tracks[m.trackIdx], true
+	}
+	return TrackNavEntry{}, false
+}
+
+func renderControlTrackStructure(m Model, theme ColorTheme, width, budget int) string {
+	entry, ok := m.trackStructureEntry()
+	if !ok {
+		return lipgloss.NewStyle().Faint(true).Render("No authored track loaded.")
+	}
+	lines := []string{
+		lipgloss.NewStyle().Foreground(theme.BarFg).Faint(true).Render("TRACK FORM"),
+		lipgloss.NewStyle().Foreground(theme.BarHi).Render(trimToWidth(trackStyleGlyph(entry.Style)+trackSubstyleGlyph(entry.Substyle)+" "+firstNonEmpty(entry.Title, entry.ID), width)),
+	}
+	meta := []string{fmt.Sprintf("%02d sections", maxInt(entry.SectionCount, len(entry.Structure))), fmt.Sprintf("%02d moments", entry.EventCount)}
+	if entry.Substyle != "" {
+		meta = append([]string{entry.Substyle}, meta...)
+	}
+	if entry.Complexity != "" {
+		meta = append(meta, entry.Complexity)
+	}
+	lines = append(lines, lipgloss.NewStyle().Faint(true).Render(trimToWidth(strings.Join(meta, " · "), width)))
+	current, hasCurrent := currentTrackStructureSection(entry, m.debug.Section)
+	if hasCurrent {
+		nowParts := []string{firstNonEmpty(current.Label, current.ID)}
+		if strings.TrimSpace(m.debug.Chord) != "" {
+			nowParts = append(nowParts, m.debug.Chord)
+		} else if strings.TrimSpace(current.Harmony) != "" {
+			nowParts = append(nowParts, compactHarmony(current.Harmony))
+		}
+		if len(current.RoleNames) > 0 {
+			nowParts = append(nowParts, strings.Join(current.RoleNames, " · "))
+		} else if len(entry.Ensemble) > 0 {
+			nowParts = append(nowParts, strings.Join(entry.Ensemble, " · "))
+		}
+		lines = append(lines, lipgloss.NewStyle().Foreground(theme.BarHi).Render(trimToWidth("live  "+strings.Join(nowParts, " · "), width)))
+	} else if len(entry.Ensemble) > 0 {
+		lines = append(lines, lipgloss.NewStyle().Faint(true).Render(trimToWidth("ensemble  "+strings.Join(entry.Ensemble, " · "), width)))
+	}
+	if budget <= 0 {
+		return strings.Join(lines, "\n")
+	}
+	remaining := budget
+	for i, section := range entry.Structure {
+		if remaining <= 0 {
+			break
+		}
+		active := hasCurrent && sectionsMatch(section, current)
+		prefix := "  "
+		titleStyle := lipgloss.NewStyle().Faint(true)
+		if active {
+			prefix = "› "
+			titleStyle = lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true)
+		}
+		lines = append(lines, titleStyle.Render(trimToWidth(fmt.Sprintf("%s%02d %s", prefix, i+1, firstNonEmpty(section.Label, section.ID)), width)))
+		remaining--
+		if remaining <= 0 {
+			break
+		}
+		metaParts := make([]string, 0, 3)
+		if strings.TrimSpace(section.Harmony) != "" {
+			metaParts = append(metaParts, compactHarmony(section.Harmony))
+		}
+		if len(section.Events) > 0 {
+			metaParts = append(metaParts, strings.Join(section.Events, " · "))
+		}
+		if len(section.RoleNames) > 0 {
+			metaParts = append(metaParts, strings.Join(section.RoleNames, " · "))
+		}
+		if len(metaParts) > 0 {
+			lines = append(lines, lipgloss.NewStyle().Faint(true).Render(trimToWidth("    "+strings.Join(metaParts, "  "), width)))
+			remaining--
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func currentTrackStructureSection(entry TrackNavEntry, liveSection string) (TrackNavSection, bool) {
+	liveKey := normalizeStructureKey(liveSection)
+	if liveKey == "" {
+		return TrackNavSection{}, false
+	}
+	for _, section := range entry.Structure {
+		if normalizeStructureKey(section.ID) == liveKey || normalizeStructureKey(section.Label) == liveKey {
+			return section, true
+		}
+	}
+	for _, section := range entry.Structure {
+		if strings.Contains(normalizeStructureKey(section.ID), liveKey) || strings.Contains(normalizeStructureKey(section.Label), liveKey) || strings.Contains(liveKey, normalizeStructureKey(section.ID)) || strings.Contains(liveKey, normalizeStructureKey(section.Label)) {
+			return section, true
+		}
+	}
+	return TrackNavSection{}, false
+}
+
+func sectionsMatch(a, b TrackNavSection) bool {
+	return normalizeStructureKey(a.ID) == normalizeStructureKey(b.ID) && normalizeStructureKey(a.Label) == normalizeStructureKey(b.Label)
+}
+
+func normalizeStructureKey(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	replacer := strings.NewReplacer(" ", "-", "_", "-", "/", "-", "·", "-", ".", "-", ":", "-")
+	value = replacer.Replace(value)
+	for strings.Contains(value, "--") {
+		value = strings.ReplaceAll(value, "--", "-")
+	}
+	return strings.Trim(value, "-")
 }
 
 func (m Model) currentStatusLabel() string {
