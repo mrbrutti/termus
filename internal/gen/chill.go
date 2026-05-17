@@ -957,17 +957,32 @@ func (a *Chill) makeVibeMotifs() MotifMemory {
 	}
 	aCell := plans[a.rng.Intn(len(plans))]
 	answerCell := plans[a.rng.Intn(len(plans))]
-	aPhrase := stitchPhrase(aCell[0], aCell[1])
-	aPrime := sequencePhrase(aPhrase, map[int]int{
-		chillPlanSeventh:    chillPlanNinth,
-		chillPlanNinth:      chillPlanEleventh,
-		chillPlanEleventh:   chillPlanThirteenth,
-		chillPlanThirteenth: chillPlanNinth,
-	})
-	bPhrase := stitchPhrase(answerCell[0], answerCell[1])
-	cadence := stitchPhrase(aPhrase[:4], []int{chillPlanEleventh, chillPlanNinth, chillPlanResolveThird, chillPlanRoot})
-	outro := []int{chillPlanNinth, chillPlanRest, chillPlanEleventh, chillPlanRest, chillPlanResolveThird, chillPlanRoot, chillPlanRest, chillPlanRest}
-	return MotifMemory{A: aPhrase, Aprime: aPrime, B: bPhrase, Cadence: cadence, Outro: outro}
+	return buildPhraseMotifs(
+		PhraseShape{
+			Pickup:    aCell[0],
+			Statement: aCell[1],
+		},
+		PhraseShape{},
+		map[int]int{
+			chillPlanSeventh:    chillPlanNinth,
+			chillPlanNinth:      chillPlanEleventh,
+			chillPlanEleventh:   chillPlanThirteenth,
+			chillPlanThirteenth: chillPlanNinth,
+		},
+		PhraseShape{
+			Pickup:    answerCell[0],
+			Statement: answerCell[1],
+		},
+		PhraseShape{},
+		PhraseShape{
+			Pickup:    aCell[0],
+			Statement: []int{chillPlanEleventh, chillPlanNinth, chillPlanResolveThird, chillPlanRoot},
+		},
+		PhraseShape{
+			Pickup:    []int{chillPlanNinth, chillPlanRest, chillPlanEleventh, chillPlanRest},
+			Statement: []int{chillPlanResolveThird, chillPlanRoot, chillPlanRest, chillPlanRest},
+		},
+	)
 }
 
 func (a *Chill) makeGuitarPlan(numBars int) []int {
@@ -1003,17 +1018,32 @@ func (a *Chill) makeGuitarMotifs() MotifMemory {
 	}
 	aCell := plans[a.rng.Intn(len(plans))]
 	answerCell := plans[a.rng.Intn(len(plans))]
-	aPhrase := stitchPhrase(aCell[0], aCell[1])
-	aPrime := sequencePhrase(aPhrase, map[int]int{
-		chillPlanPickupAbove:   chillPlanPickupBelow,
-		chillPlanSuspendFourth: chillPlanResolveThird,
-		chillPlanNinth:         chillPlanEleventh,
-		chillPlanEleventh:      chillPlanThirteenth,
-	})
-	bPhrase := stitchPhrase(answerCell[0], answerCell[1])
-	cadence := stitchPhrase(aPhrase[:4], []int{chillPlanResolveThird, chillPlanNinth, chillPlanResolveThird, chillPlanRoot})
-	outro := []int{chillPlanSuspendFourth, chillPlanRest, chillPlanResolveThird, chillPlanRest, chillPlanNinth, chillPlanRoot, chillPlanRest, chillPlanRest}
-	return MotifMemory{A: aPhrase, Aprime: aPrime, B: bPhrase, Cadence: cadence, Outro: outro}
+	return buildPhraseMotifs(
+		PhraseShape{
+			Pickup:    aCell[0],
+			Statement: aCell[1],
+		},
+		PhraseShape{},
+		map[int]int{
+			chillPlanPickupAbove:   chillPlanPickupBelow,
+			chillPlanSuspendFourth: chillPlanResolveThird,
+			chillPlanNinth:         chillPlanEleventh,
+			chillPlanEleventh:      chillPlanThirteenth,
+		},
+		PhraseShape{
+			Pickup:    answerCell[0],
+			Statement: answerCell[1],
+		},
+		PhraseShape{},
+		PhraseShape{
+			Pickup:    aCell[0],
+			Statement: []int{chillPlanResolveThird, chillPlanNinth, chillPlanResolveThird, chillPlanRoot},
+		},
+		PhraseShape{
+			Pickup:    []int{chillPlanSuspendFourth, chillPlanRest, chillPlanResolveThird, chillPlanRest},
+			Statement: []int{chillPlanNinth, chillPlanRoot, chillPlanRest, chillPlanRest},
+		},
+	)
 }
 
 func (a *Chill) makeSaxPlan(numBars int) []int {
@@ -1098,21 +1128,38 @@ func (a *Chill) makeSaxMotifs() MotifMemory {
 	}
 	call := callTemplates[a.rng.Intn(len(callTemplates))]
 	answer := answerTemplates[a.rng.Intn(len(answerTemplates))]
-	aPhrase := stitchPhrase(call[0], call[1], answer[0], answer[1])
-	aPrime := sequencePhrase(aPhrase, map[int]int{
-		chillPlanPickupBelow: chillPlanPickupAbove,
-		chillPlanEleventh:    chillPlanThirteenth,
-		chillPlanSeventh:     chillPlanNinth,
-	})
-	bPhrase := stitchPhrase(
-		[]int{chillPlanRest, chillPlanThirteenth, chillPlanPickupAbove, chillPlanResolveThird},
-		[]int{chillPlanRest, chillPlanNinth, chillPlanRest, chillPlanEleventh},
-		[]int{chillPlanThird, chillPlanRest, chillPlanPickupBelow, chillPlanSeventh},
-		[]int{chillPlanRest, chillPlanThirteenth, chillPlanPickupAbove, chillPlanRoot},
+	return buildPhraseMotifs(
+		PhraseShape{
+			Pickup:    call[0],
+			Statement: call[1],
+		},
+		PhraseShape{
+			Peak:    answer[0],
+			Release: answer[1],
+		},
+		map[int]int{
+			chillPlanPickupBelow: chillPlanPickupAbove,
+			chillPlanEleventh:    chillPlanThirteenth,
+			chillPlanSeventh:     chillPlanNinth,
+		},
+		PhraseShape{
+			Pickup:    []int{chillPlanRest, chillPlanThirteenth, chillPlanPickupAbove, chillPlanResolveThird},
+			Statement: []int{chillPlanRest, chillPlanNinth, chillPlanRest, chillPlanEleventh},
+		},
+		PhraseShape{
+			Peak:    []int{chillPlanThird, chillPlanRest, chillPlanPickupBelow, chillPlanSeventh},
+			Release: []int{chillPlanRest, chillPlanThirteenth, chillPlanPickupAbove, chillPlanRoot},
+		},
+		PhraseShape{
+			Pickup:    call[0],
+			Statement: []int{chillPlanRest, chillPlanEleventh, chillPlanPickupBelow, chillPlanResolveThird},
+			Peak:      []int{chillPlanRest, chillPlanNinth, chillPlanRest, chillPlanRoot},
+		},
+		PhraseShape{
+			Pickup:    []int{chillPlanRest, chillPlanResolveThird, chillPlanRest, chillPlanRoot},
+			Statement: []int{chillPlanRest, chillPlanRest, chillPlanRest, chillPlanRest},
+		},
 	)
-	cadence := stitchPhrase(aPhrase[:4], []int{chillPlanRest, chillPlanEleventh, chillPlanPickupBelow, chillPlanResolveThird}, []int{chillPlanRest, chillPlanNinth, chillPlanRest, chillPlanRoot})
-	outro := []int{chillPlanRest, chillPlanResolveThird, chillPlanRest, chillPlanRoot, chillPlanRest, chillPlanRest, chillPlanRest, chillPlanRest}
-	return MotifMemory{A: aPhrase, Aprime: aPrime, B: bPhrase, Cadence: cadence, Outro: outro}
 }
 
 func (a *Chill) reharmonizeProgression(base []chillChord) []chillChord {

@@ -1095,42 +1095,41 @@ func (a *Jazz) makeSaxMotifs() MotifMemory {
 	}
 	question := questionBars[a.rng.Intn(len(questionBars))]
 	answer := answerBars[a.rng.Intn(len(answerBars))]
-	aPhrase := stitchPhrase(
-		jazzPhraseBar(question[0]...),
-		jazzPhraseBar(question[1]...),
-		jazzPhraseBar(answer[0]...),
-		jazzPhraseBar(answer[1]...),
+	return buildPhraseMotifs(
+		PhraseShape{
+			Pickup:    jazzPhraseBar(question[0]...),
+			Statement: jazzPhraseBar(question[1]...),
+		},
+		PhraseShape{
+			Peak:    jazzPhraseBar(answer[0]...),
+			Release: jazzPhraseBar(answer[1]...),
+		},
+		map[int]int{
+			jazzPlanNinth:              jazzPlanSeventh,
+			jazzPlanSeventh:            jazzPlanNinth,
+			jazzPlanApproachBelow:      jazzPlanApproachAbove,
+			jazzPlanAnticipateNextRoot: jazzPlanApproachBelow,
+			jazzPlanRoot:               jazzPlanThird,
+		},
+		PhraseShape{
+			Pickup:    jazzPhraseBar(jazzPlanRest, jazzPlanSeventh, jazzPlanRest, jazzPlanNinth, jazzPlanRest, jazzPlanApproachAbove, jazzPlanResolveThird, jazzPlanRest),
+			Statement: jazzPhraseBar(jazzPlanRest, jazzPlanThird, jazzPlanRest, jazzPlanFifth, jazzPlanRest, jazzPlanSeventh, jazzPlanApproachBelow, jazzPlanAnticipateNextRoot),
+		},
+		PhraseShape{
+			Peak:    jazzPhraseBar(jazzPlanRoot, jazzPlanRest, jazzPlanThird, jazzPlanRest, jazzPlanSuspendFourth, jazzPlanResolveThird, jazzPlanRest, jazzPlanNinth),
+			Release: jazzPhraseBar(jazzPlanSeventh, jazzPlanRest, jazzPlanFifth, jazzPlanRest, jazzPlanThird, jazzPlanApproachAbove, jazzPlanAnticipateNextRoot, jazzPlanRoot),
+		},
+		PhraseShape{
+			Pickup:    jazzPhraseBar(question[0]...),
+			Statement: jazzPhraseBar(question[1]...),
+			Peak:      jazzPhraseBar(jazzPlanRoot, jazzPlanRest, jazzPlanThird, jazzPlanRest, jazzPlanSeventh, jazzPlanRest, jazzPlanApproachBelow, jazzPlanResolveThird),
+			Release:   jazzPhraseBar(jazzPlanNinth, jazzPlanRest, jazzPlanSeventh, jazzPlanRest, jazzPlanApproachBelow, jazzPlanAnticipateNextRoot, jazzPlanRoot, jazzPlanRest),
+		},
+		PhraseShape{
+			Pickup:  jazzPhraseBar(jazzPlanRest, jazzPlanThird, jazzPlanRest, jazzPlanResolveThird, jazzPlanRest, jazzPlanRoot, jazzPlanRest, jazzPlanRest),
+			Release: jazzPhraseBar(jazzPlanRest, jazzPlanSeventh, jazzPlanRest, jazzPlanThird, jazzPlanRest, jazzPlanRoot, jazzPlanRest, jazzPlanRest),
+		},
 	)
-	aPrime := sequencePhrase(aPhrase, map[int]int{
-		jazzPlanNinth:              jazzPlanSeventh,
-		jazzPlanSeventh:            jazzPlanNinth,
-		jazzPlanApproachBelow:      jazzPlanApproachAbove,
-		jazzPlanAnticipateNextRoot: jazzPlanApproachBelow,
-		jazzPlanRoot:               jazzPlanThird,
-	})
-	bPhrase := stitchPhrase(
-		jazzPhraseBar(jazzPlanRest, jazzPlanSeventh, jazzPlanRest, jazzPlanNinth, jazzPlanRest, jazzPlanApproachAbove, jazzPlanResolveThird, jazzPlanRest),
-		jazzPhraseBar(jazzPlanRest, jazzPlanThird, jazzPlanRest, jazzPlanFifth, jazzPlanRest, jazzPlanSeventh, jazzPlanApproachBelow, jazzPlanAnticipateNextRoot),
-		jazzPhraseBar(jazzPlanRoot, jazzPlanRest, jazzPlanThird, jazzPlanRest, jazzPlanSuspendFourth, jazzPlanResolveThird, jazzPlanRest, jazzPlanNinth),
-		jazzPhraseBar(jazzPlanSeventh, jazzPlanRest, jazzPlanFifth, jazzPlanRest, jazzPlanThird, jazzPlanApproachAbove, jazzPlanAnticipateNextRoot, jazzPlanRoot),
-	)
-	cadence := stitchPhrase(
-		jazzPhraseBar(question[0]...),
-		jazzPhraseBar(question[1]...),
-		jazzPhraseBar(jazzPlanRoot, jazzPlanRest, jazzPlanThird, jazzPlanRest, jazzPlanSeventh, jazzPlanRest, jazzPlanApproachBelow, jazzPlanResolveThird),
-		jazzPhraseBar(jazzPlanNinth, jazzPlanRest, jazzPlanSeventh, jazzPlanRest, jazzPlanApproachBelow, jazzPlanAnticipateNextRoot, jazzPlanRoot, jazzPlanRest),
-	)
-	outro := stitchPhrase(
-		jazzPhraseBar(jazzPlanRest, jazzPlanThird, jazzPlanRest, jazzPlanResolveThird, jazzPlanRest, jazzPlanRoot, jazzPlanRest, jazzPlanRest),
-		jazzPhraseBar(jazzPlanRest, jazzPlanSeventh, jazzPlanRest, jazzPlanThird, jazzPlanRest, jazzPlanRoot, jazzPlanRest, jazzPlanRest),
-	)
-	return MotifMemory{
-		A:       aPhrase,
-		Aprime:  aPrime,
-		B:       bPhrase,
-		Cadence: cadence,
-		Outro:   outro,
-	}
 }
 
 // scheduleNextDrift picks when the next macro key-drift will fire.
