@@ -54,7 +54,7 @@ roles:
 sections:
   - id: intro
     title: count-in lamps
-    duration: 35s
+    duration: 16s
     harmony: "Dm7 G7 | Cmaj7 A7 | Dm7 G7 | Cmaj7 Cmaj7"
     scene: "intro trio"
     variation: "establish"
@@ -66,6 +66,8 @@ sections:
         active: false
       snare:
         pattern: "........ | ..x....."
+      ride:
+        pattern: "x..x.x.. | x..x.x.."
   - id: head
     title: booth melody
     duration: 55s
@@ -107,6 +109,8 @@ sections:
         motif: "9 . 11 9 7 . 5 3 | 5 . 6 7 9 . 7 5"
       kick:
         pattern: "x...x..x | x...x..."
+      piano:
+        pattern: "x.x..x.x | .x.x.x.."
   - id: outro
     title: last call
     duration: 35s

@@ -12,38 +12,37 @@ globals:
   swing: groove
   phrase: long
 roles:
-  piano:
-    family: acoustic_piano
-    tone: [clear, present]
-    articulation: comp
-    register: mid
-    prominence: support
-    pattern: "x..x...x | .x..x..."
   bass:
     family: bass
     tone: [woody, round]
     articulation: walk
     register: low
     prominence: anchor
-    pattern: "x.x.x.x. | x.x.x.x."
+    pattern: "x...x..x | x.x...x."
   ride:
     family: drums
     tone: [live, soft]
     articulation: swing
     prominence: support
-    pattern: "x.x.x.x. | x.x.xx.x"
+    pattern: "x..x.x.. | x..x.xx."
   kick:
     family: drums
     tone: [live, soft]
     articulation: swing
     prominence: anchor
-    pattern: "x....... | x...x..."
+    pattern: "x...x... | ....x..."
   snare:
     family: drums
     tone: [live, soft]
     articulation: swing
     prominence: anchor
-    pattern: "....x... | ..x.x..."
+    pattern: "........ | ....x..."
+  rim:
+    family: drums
+    tone: [dry, tight]
+    articulation: swing
+    prominence: support
+    pattern: "...x.... | ....x.x."
   trumpet:
     family: brass
     tone: [present, bright]
@@ -52,16 +51,16 @@ roles:
     prominence: lead
     motif: "5 . 7 . 9 . 7 5 | 3 . 2 . 1 . . ."
   organ:
-    family: acoustic_piano
+    family: organ
     tone: [soft, warm]
     articulation: sustain
     register: mid
     prominence: support
-    pattern: "x....... | ....x..."
+    pattern: "x..x.... | ....x..x"
 sections:
   - id: intro
     title: terminal lights
-    duration: 30s
+    duration: 12s
     harmony: "Gm7 C7 | Fmaj7 D7 | Gm7 C7 | Fmaj7 Fmaj7"
     scene: "intro lean"
     variation: "establish"
@@ -70,9 +69,10 @@ sections:
       brightness: warm
     roles:
       trumpet:
-        active: false
-      organ:
-        active: false
+        active: true
+        motif: "5 . . 7 . . 5 . | . . 3 . 2 . 1 ."
+      ride:
+        pattern: "x...x... | x..x...."
   - id: head
     title: aisle melody
     duration: 50s
@@ -83,6 +83,8 @@ sections:
       trumpet:
         active: true
         motif: "9 . 7 5 6 . 5 3 | 5 . 2 . 1 . . ."
+      organ:
+        active: true
   - id: bridge
     title: gate change
     duration: 55s
@@ -98,7 +100,7 @@ sections:
         motif: "11 . 9 7 5 . 3 1 | 9 . b9 7 5 . 2 1"
       organ:
         active: true
-        pattern: "x....... | ....x..."
+        pattern: "x..x.x.. | .x..x..."
       snare:
         pattern: "....x... | ..x.xx.."
   - id: release
