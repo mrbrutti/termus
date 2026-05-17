@@ -175,7 +175,7 @@
 - [x] Replace generic slot repetition with phrase-aware performer logic for drummer, bassist, comp, and lead roles so timing, accent, and articulation respond to phrase purpose.
 - [x] Add richer section-local dynamics: crescendos, decrescendos, breath points, held endings, phrase peaks, and drop-to-silence moments that feel performed rather than enumerated.
 - [x] Build deeper drum vocabularies per style with bar-start pickups, turnaround bars, fills, ghost-note patterns, ride/hat switching, stop choruses, and ending cadences.
-- [ ] Build deeper bass vocabularies per style with pedal notes, walks, anticipations, chromatic approaches, descents, and sparse anchor modes instead of one generalized line behavior.
+- [x] Build deeper bass vocabularies per style with pedal notes, walks, anticipations, chromatic approaches, descents, and sparse anchor modes instead of one generalized line behavior.
 - [ ] Build deeper comp vocabularies per style with real voicing families, rhythmic cells, sectional stabs, held pads, and answer figures instead of one generalized support stream.
 
 ### Phase 5: Style Packs And Genre Identity

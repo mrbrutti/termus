@@ -1015,6 +1015,70 @@ sections:
 	}
 }
 
+func TestCompileUsesDeeperBassVocabulary(t *testing.T) {
+	const src = `
+title: Bass Vocabulary
+style: jazz
+roles:
+  bass:
+    family: bass
+sections:
+  - id: walk
+    duration: 30s
+    harmony: "Dm7 G7 | Cmaj7 A7 | Fmaj7 E7 | Dm7 G7 | Em7 A7 | Dm7 G7 | Cmaj7 A7 | Dm7 G7 | Fmaj7 E7 | Dm7 G7 | Em7 A7 | A7 Dm7 | Gm7 C7 | Fmaj7 Bb7 | Em7 A7 | Dm7 G7"
+`
+	file, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	compiled, err := Compile(file, 205, gen.ListeningModeEndless)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	var plan gen.AuthoredTrackPlan
+	for _, got := range compiled.Plans {
+		plan = got
+	}
+	var bass *gen.AuthoredRenderTrack
+	for i := range plan.Tracks {
+		if plan.Tracks[i].Name == "bass" {
+			bass = &plan.Tracks[i]
+			break
+		}
+	}
+	if bass == nil {
+		t.Fatal("expected bass track")
+	}
+	if len(plan.PhraseSpans) < 4 {
+		t.Fatalf("expected multiple phrase spans, got %d", len(plan.PhraseSpans))
+	}
+	sequence := plan.PhraseSpans[2]
+	seqStart := (sequence.StartBar - 1) * authoredSlotsPerBar
+	seqEnd := sequence.EndBar * authoredSlotsPerBar
+	active := 0
+	for i := seqStart; i < seqEnd; i++ {
+		if bass.Notes[i] >= 0 {
+			active++
+		}
+	}
+	if active < 12 {
+		t.Fatalf("expected walking sequence phrase to speak often, got %d active bass notes", active)
+	}
+	lastBarStart := (plan.BarCount - 1) * authoredSlotsPerBar
+	lateHits := 0
+	for i := lastBarStart + 6; i < lastBarStart+authoredSlotsPerBar; i++ {
+		if bass.Notes[i] >= 0 {
+			lateHits++
+		}
+	}
+	if lateHits < 2 {
+		t.Fatalf("expected cadence bar anticipations late in the bar, got %d hits", lateHits)
+	}
+	if bass.Notes[lastBarStart+6] == bass.Notes[lastBarStart+4] {
+		t.Fatalf("expected cadence approach note to move away from beat 3 target, got same note %d", bass.Notes[lastBarStart+6])
+	}
+}
+
 func TestCompileVariationBudgetWarnings(t *testing.T) {
 	const src = `
 title: Budget Warnings

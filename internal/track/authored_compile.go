@@ -1637,13 +1637,17 @@ func compileBassLine(ctx authoredSectionContext, name string, role Role, bars []
 			out[slot] = -1
 			continue
 		}
+		bar := slot / authoredSlotsPerBar
 		pos := slot % authoredSlotsPerBar
 		chord := chordForSlot(bars, slot)
+		nextChord := chordForSlot(bars, minInt(totalBars*authoredSlotsPerBar-1, slot+authoredSlotsPerBar))
 		rootPC := chord.RootPC
 		if chord.HasBass && pos <= 1 {
 			rootPC = chord.BassPC
 		}
 		base := rootMidiForRegister(rootPC, role.Register, ctx.style, name)
+		nextBase := rootMidiForRegister(nextChord.RootPC, role.Register, ctx.style, name)
+		lastBarInPhrase := bar == maxInt(0, span.EndBar-1)
 		note := base
 		switch {
 		case strings.Contains(strings.ToLower(localRole.Family), "synth_bass"):
@@ -1652,29 +1656,53 @@ func compileBassLine(ctx authoredSectionContext, name string, role Role, bars []
 				note = base
 			case pos == 4:
 				note = base + 12
+			case lastBarInPhrase && pos >= 6:
+				note = placePitchNear(approachMidi(nextBase, base), base+2)
 			case pos >= 6 && ctx.motionBias() > 0:
 				note = placePitchNear(base+7, base+7)
 			default:
 				note = base
 			}
 		case mode == "pedal":
-			note = base
+			if pos == 0 {
+				note = base
+			} else if pos >= 6 {
+				note = placePitchNear(base-12, base-8)
+			} else {
+				note = placePitchNear(base+chordDegreeInterval(chord, 5), base+7)
+			}
 		case mode == "cadence":
 			switch {
 			case pos == 0:
 				note = base
 			case pos == 4:
 				note = placePitchNear(base+chordDegreeInterval(chord, 5), base+7)
+			case pos >= 6:
+				note = placePitchNear(approachMidi(nextBase, base), base-1)
 			default:
-				note = placePitchNear(base, base-3)
+				note = placePitchNear(base+chordDegreeInterval(chord, 3), base+4)
+			}
+		case mode == "walk":
+			switch pos {
+			case 0:
+				note = base
+			case 2:
+				note = placePitchNear(base+chordDegreeInterval(chord, 3), base+4)
+			case 4:
+				note = placePitchNear(base+chordDegreeInterval(chord, 5), base+7)
+			case 6:
+				note = placePitchNear(approachMidi(nextBase, base), base+2)
+			default:
+				note = base
 			}
 		case pos == 0:
 			note = base
 		case pos >= 6:
-			next := chordForSlot(bars, minInt(totalBars*authoredSlotsPerBar-1, slot+2))
-			note = approachTo(next.RootPC, base)
+			note = placePitchNear(approachMidi(nextBase, base), base+2)
 		case mode == "answer" && pos%4 == 2:
 			note = placePitchNear(base+chordDegreeInterval(chord, 7), base+10)
+		case mode == "answer" && pos == 6:
+			note = placePitchNear(approachMidi(nextBase, base), base+1)
 		case mode == "walk" && pos == 4:
 			note = placePitchNear(base+chordDegreeInterval(chord, 9), base+12)
 		case pos%4 == 2:
@@ -1695,6 +1723,13 @@ func compileBassLine(ctx authoredSectionContext, name string, role Role, bars []
 		last = note
 	}
 	return out
+}
+
+func approachMidi(target, around int) int {
+	if target >= around {
+		return target - 1
+	}
+	return target + 1
 }
 
 func compilePadVoices(ctx authoredSectionContext, name string, role Role, bars []authoredHarmonyBar, totalBars int, phraseSpans []gen.AuthoredPhraseSpan) [][]int {
@@ -2158,6 +2193,22 @@ func phraseRhythmActive(ctx authoredSectionContext, kind, name string, role Role
 		switch mode {
 		case "fill":
 			return pos >= 6
+		case "walk":
+			if kind == "bass" {
+				return pos%2 == 0
+			}
+		case "answer":
+			if kind == "bass" {
+				return pos == 6
+			}
+		case "pedal":
+			if kind == "bass" {
+				return pos == 4 || pos == 6 || pos == 7
+			}
+		case "cadence":
+			if kind == "bass" {
+				return pos == 6 || pos == 7
+			}
 		case "lift":
 			return (lower == "ride" || lower == "hat" || lower == "hihat") && pos%2 == 1
 		case "stab":
@@ -2175,8 +2226,16 @@ func phraseRhythmActive(ctx authoredSectionContext, kind, name string, role Role
 			return false
 		}
 	case "walk":
-		if kind == "bass" && pos == 2 {
-			return false
+		if kind == "bass" {
+			return pos%2 == 0
+		}
+	case "answer":
+		if kind == "bass" {
+			return pos == 0 || pos == 4 || pos == 6
+		}
+	case "pedal":
+		if kind == "bass" {
+			return pos == 0 || pos == 4 || pos == 6 || pos == 7
 		}
 	case "hold":
 		if (kind == "comp" || kind == "pad") && pos != 0 && pos != 4 {
@@ -2191,6 +2250,9 @@ func phraseRhythmActive(ctx authoredSectionContext, kind, name string, role Role
 			return false
 		}
 	case "cadence":
+		if kind == "bass" {
+			return pos == 0 || pos == 4 || pos == 6 || pos == 7
+		}
 		if kind == "drum" && (lower == "snare" || lower == "kick") && pos >= 6 {
 			return true
 		}
