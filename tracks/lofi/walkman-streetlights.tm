@@ -95,6 +95,14 @@ sections:
       guitar-lead:
         active: true
         motif: "9 . 7 . 5 . 6 5 | 3 . 2 . 1 . . ."
+    events:
+      - kind: pickup
+        bar: 8
+        roles: [guitar-lead]
+        motif: "5 6 7 9"
+      - kind: fill
+        bar: 8
+        roles: [hat, snare, kick]
   - id: chorus
     title: freeway lift
     duration: 55s
@@ -112,6 +120,14 @@ sections:
         active: true
       hat:
         pattern: "xxxxxxxx | x.xxx.xx"
+    events:
+      - kind: stop
+        bar: 9
+        bars: 1
+        roles: [guitar-lead, sub, kick]
+      - kind: fill
+        bar: 12
+        roles: [hat, snare]
   - id: break
     title: overpass air
     duration: 40s
@@ -130,6 +146,11 @@ sections:
         active: false
       hat:
         pattern: "x...x... | ....x..."
+    events:
+      - kind: drop
+        bar: 4
+        bars: 1
+        roles: [sub]
   - id: outro
     title: headphones off
     duration: 40s

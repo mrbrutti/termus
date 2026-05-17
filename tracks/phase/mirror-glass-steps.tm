@@ -78,6 +78,15 @@ sections:
         motif: "9 . 7 . 5 . 6 5 | 3 . 2 . 1 . 2 3"
       mallet-b:
         motif: ". 9 . 7 . 5 . 6 | . 3 . 2 . 1 . 2"
+    events:
+      - kind: pickup
+        bar: 8
+        roles: [mallet-b]
+        motif: "3 5 6 9"
+      - kind: stop
+        bar: 10
+        bars: 1
+        roles: [mallet-b, bass]
   - id: shadow
     title: lower glass
     duration: 45s
@@ -95,6 +104,11 @@ sections:
         active: false
       mallet-b:
         motif: ". 5 . . . 3 . . | . 1 . . . . . ."
+    events:
+      - kind: drop
+        bar: 6
+        bars: 1
+        roles: [mallet-a]
   - id: return
     title: bright landing
     duration: 45s
@@ -110,6 +124,11 @@ sections:
         pattern: "x...x... | ..x...x."
       choir:
         active: true
+    events:
+      - kind: pickup
+        bar: 9
+        roles: [mallet-a]
+        motif: "5 6 7 9"
   - id: outro
     title: empty steps
     duration: 35s

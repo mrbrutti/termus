@@ -92,6 +92,15 @@ sections:
         motif: "9 . . 7 . . 5 3 | 5 . . 6 . . 7 5"
       choir:
         active: true
+    events:
+      - kind: pickup
+        bar: 8
+        roles: [bells]
+        motif: "5 6 7 9"
+      - kind: stop
+        bar: 10
+        bars: 1
+        roles: [bells, pad, bass]
   - id: aisle
     title: stone aisle
     duration: 45s
@@ -127,6 +136,15 @@ sections:
         pattern: "x....... | ....x..."
       bells:
         motif: "11 . . 9 . . 7 5 | 9 . . 7 . . 5 3"
+    events:
+      - kind: drop
+        bar: 9
+        bars: 1
+        roles: [box]
+      - kind: stab
+        bar: 12
+        roles: [pad]
+        pattern: "x... ...."
   - id: close
     title: vesper close
     duration: 45s

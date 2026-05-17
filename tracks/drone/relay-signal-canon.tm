@@ -75,6 +75,15 @@ sections:
       lead:
         active: true
         motif: "9 . . 7 . . 5 3 | 5 . . 6 . . 7 5"
+    events:
+      - kind: pickup
+        bar: 8
+        roles: [lead]
+        motif: "5 6 7 9"
+      - kind: stop
+        bar: 12
+        bars: 1
+        roles: [bed, bass, lead]
   - id: midpoint
     title: bright interference
     duration: 85s
@@ -89,6 +98,11 @@ sections:
         pattern: "x....... | ....x..."
       choir:
         active: true
+    events:
+      - kind: drop
+        bar: 10
+        bars: 1
+        roles: [strings]
   - id: close
     title: cold-air fade
     duration: 70s

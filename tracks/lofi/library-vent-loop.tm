@@ -88,6 +88,14 @@ sections:
         motif: "9 . 7 . 5 . 6 5 | 3 . 2 . 1 . . ."
       hat:
         pattern: "x.x...x. | x...x.x."
+    events:
+      - kind: pickup
+        bar: 8
+        roles: [vibes]
+        motif: "5 6 7 9"
+      - kind: fill
+        bar: 8
+        roles: [hat, snare]
   - id: middle
     title: fluorescent blur
     duration: 45s
@@ -107,6 +115,11 @@ sections:
         pattern: "x....... | ....x..."
       hat:
         pattern: "x...x... | ....x..."
+    events:
+      - kind: drop
+        bar: 5
+        bars: 1
+        roles: [bass, kick]
   - id: verse-b
     title: page turn
     duration: 55s
@@ -124,6 +137,14 @@ sections:
         pattern: "x...x..x | x...x..."
       hat:
         pattern: "x.x.x.x. | x.xxx.x."
+    events:
+      - kind: stab
+        bar: 9
+        roles: [guitar]
+        pattern: "x... ...."
+      - kind: fill
+        bar: 12
+        roles: [hat, snare, kick]
   - id: outro
     title: air vent fade
     duration: 40s

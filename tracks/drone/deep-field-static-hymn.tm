@@ -84,6 +84,11 @@ sections:
         active: false
       lead:
         motif: "5 . . . 3 . . . | 1 . . . . . . ."
+    events:
+      - kind: drop
+        bar: 8
+        bars: 2
+        roles: [strings, bass]
   - id: horizon
     title: tower horizon
     duration: 90s
@@ -103,6 +108,15 @@ sections:
       lead:
         active: true
         motif: "9 . . 7 . . 5 3 | 5 . . 6 . . 7 5"
+    events:
+      - kind: pickup
+        bar: 10
+        roles: [lead]
+        motif: "5 6 7 9"
+      - kind: stop
+        bar: 14
+        bars: 1
+        roles: [bed, bass, lead]
   - id: fade
     title: long receiver
     duration: 75s

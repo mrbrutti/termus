@@ -106,6 +106,14 @@ sections:
         motif: "9 . b9 . 7 . 5 . | 6 . 5 . 3 . 2 1"
       vibes:
         pattern: "..x...x. | ....x..."
+    events:
+      - kind: pickup
+        bar: 8
+        roles: [lead]
+        motif: "5 6 7 9"
+      - kind: fill
+        bar: 8
+        roles: [hat, snare, kick]
   - id: verse-b
     title: tunnel orange
     duration: 60s
@@ -124,6 +132,14 @@ sections:
         pattern: ".x..x..x | ..x.x..."
       kick:
         pattern: "x..xx..x | x...x..x"
+    events:
+      - kind: stab
+        bar: 9
+        roles: [rhodes]
+        pattern: "x... ...."
+      - kind: fill
+        bar: 12
+        roles: [hat, snare]
   - id: bridge
     title: transfer glow
     duration: 50s
@@ -143,6 +159,11 @@ sections:
         pattern: "xxxxxxxx | x.xxx.xx"
       pad:
         active: true
+    events:
+      - kind: stop
+        bar: 10
+        bars: 1
+        roles: [lead, bass, kick]
   - id: breakdown
     title: red light idle
     duration: 40s
@@ -165,6 +186,11 @@ sections:
         pattern: "x...x... | ....x..."
       vibes:
         pattern: "....x... | ........"
+    events:
+      - kind: drop
+        bar: 4
+        bars: 1
+        roles: [bass]
   - id: outro
     title: curbside return
     duration: 45s

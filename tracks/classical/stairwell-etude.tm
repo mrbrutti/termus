@@ -66,6 +66,15 @@ sections:
     roles:
       piano:
         motif: "9 . 7 5 6 . 5 3 | 5 . 2 . 1 . 2 3"
+    events:
+      - kind: pickup
+        bar: 8
+        roles: [piano]
+        motif: "3 5 6 9"
+      - kind: stop
+        bar: 10
+        bars: 1
+        roles: [piano, strings, harp]
   - id: middle
     title: suspended landing
     duration: 45s
@@ -82,6 +91,11 @@ sections:
         pattern: "x....... | x......."
       harp:
         pattern: "x....... | ....x..."
+    events:
+      - kind: drop
+        bar: 6
+        bars: 1
+        roles: [strings]
   - id: coda
     title: brass coda
     duration: 40s
@@ -93,3 +107,8 @@ sections:
         active: true
       piano:
         motif: "3 . 2 . 1 . . . | . . . . . . . ."
+    events:
+      - kind: pickup
+        bar: 8
+        roles: [piano]
+        motif: "5 6 7 9"

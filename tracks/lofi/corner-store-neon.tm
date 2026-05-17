@@ -95,6 +95,14 @@ sections:
       flute:
         active: true
         motif: "9 . 7 . 5 . 6 5 | 3 . 2 . 1 . . ."
+    events:
+      - kind: pickup
+        bar: 8
+        roles: [flute]
+        motif: "5 6 7 9"
+      - kind: fill
+        bar: 8
+        roles: [hat, snare, kick]
   - id: chorus
     title: street reflection
     duration: 55s
@@ -112,6 +120,14 @@ sections:
         active: true
       hat:
         pattern: "xxxxxxxx | x.xxx.xx"
+    events:
+      - kind: stab
+        bar: 9
+        roles: [ep]
+        pattern: "x... ...."
+      - kind: fill
+        bar: 12
+        roles: [hat, snare]
   - id: break
     title: cash drawer
     duration: 40s
@@ -129,6 +145,11 @@ sections:
         active: false
       hat:
         pattern: "x...x... | ....x..."
+    events:
+      - kind: drop
+        bar: 4
+        bars: 1
+        roles: [bass]
   - id: outro
     title: shutters down
     duration: 40s

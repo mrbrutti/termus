@@ -76,6 +76,15 @@ sections:
         motif: "9 . 7 . 5 . 6 5 | 3 . 2 . 1 . 2 3"
       mallet-b:
         motif: ". 9 . 7 . 5 . 6 | . 3 . 2 . 1 . 2"
+    events:
+      - kind: pickup
+        bar: 8
+        roles: [mallet-a]
+        motif: "3 5 6 9"
+      - kind: stop
+        bar: 10
+        bars: 1
+        roles: [mallet-a, bass]
   - id: curtain
     title: choir curtain
     duration: 45s
@@ -93,6 +102,11 @@ sections:
         motif: ". 5 . . . 3 . . | . 1 . . . . . ."
       shimmer:
         active: false
+    events:
+      - kind: drop
+        bar: 6
+        bars: 1
+        roles: [mallet-a]
   - id: lift
     title: signal rise
     duration: 45s
@@ -109,6 +123,11 @@ sections:
         pattern: "x....... | ....x..."
       mallet-a:
         motif: "11 . 9 . 7 . 9 7 | 5 . 3 . 2 . 1 ."
+    events:
+      - kind: pickup
+        bar: 9
+        roles: [mallet-b]
+        motif: "5 6 7 9"
   - id: fade
     title: harbor empty
     duration: 35s

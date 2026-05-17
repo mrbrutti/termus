@@ -77,6 +77,15 @@ sections:
         motif: "5 . 6 7 9 . 7 5 | 3 . 2 . 1 . 2 3"
       winds:
         pattern: ".x..x... | ..x....."
+    events:
+      - kind: pickup
+        bar: 8
+        roles: [piano]
+        motif: "3 5 6 9"
+      - kind: stop
+        bar: 10
+        bars: 1
+        roles: [piano, strings, harp]
   - id: interior
     title: interior room
     duration: 45s
@@ -95,6 +104,11 @@ sections:
         active: false
       winds:
         pattern: "........ | ..x....."
+    events:
+      - kind: drop
+        bar: 6
+        bars: 1
+        roles: [strings]
   - id: gallery
     title: upper gallery
     duration: 50s
@@ -111,6 +125,11 @@ sections:
         active: true
       piano:
         motif: "11 . 9 7 5 . 6 7 | 9 . 7 5 3 . 2 1"
+    events:
+      - kind: pickup
+        bar: 9
+        roles: [piano]
+        motif: "5 6 7 11"
   - id: close
     title: lamp out
     duration: 40s

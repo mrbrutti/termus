@@ -97,6 +97,14 @@ sections:
       clarinet:
         active: true
         motif: "9 . . 7 . . 5 3 | 5 . . 6 . . 7 5"
+    events:
+      - kind: pickup
+        bar: 8
+        roles: [clarinet]
+        motif: "3 5 6 9"
+      - kind: fill
+        bar: 8
+        roles: [hat, snare]
   - id: verse-b
     title: underlined answer
     duration: 55s
@@ -114,6 +122,14 @@ sections:
         pattern: ".x..x..x | ..x...x."
       kick:
         pattern: "x..xx..x | x...x..x"
+    events:
+      - kind: stab
+        bar: 9
+        roles: [piano]
+        pattern: "x... ...."
+      - kind: fill
+        bar: 12
+        roles: [hat, snare, kick]
   - id: bridge
     title: radiator glow
     duration: 50s
@@ -134,6 +150,11 @@ sections:
         pattern: "x...x... | ....x..."
       pad:
         active: true
+    events:
+      - kind: drop
+        bar: 4
+        bars: 1
+        roles: [bass]
   - id: outro
     title: last paragraph
     duration: 40s

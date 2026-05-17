@@ -86,6 +86,15 @@ sections:
         motif: "9 . . 7 . . 5 3 | 5 . . 6 . . 7 5"
       texture:
         pattern: "..x..... | ....x..."
+    events:
+      - kind: pickup
+        bar: 8
+        roles: [lead]
+        motif: "5 6 7 9"
+      - kind: stop
+        bar: 12
+        bars: 1
+        roles: [pad, bass, lead]
   - id: shadow
     title: tannoy distance
     duration: 75s
@@ -103,6 +112,11 @@ sections:
         active: false
       lead:
         motif: "5 . . . 3 . . . | 1 . . . . . . ."
+    events:
+      - kind: drop
+        bar: 6
+        bars: 2
+        roles: [strings, bass]
   - id: return
     title: last train glow
     duration: 80s
@@ -119,6 +133,15 @@ sections:
       shimmer:
         active: true
         pattern: "x....... | ....x..."
+    events:
+      - kind: pickup
+        bar: 10
+        roles: [lead]
+        motif: "7 9 11 9"
+      - kind: stab
+        bar: 14
+        roles: [pad]
+        pattern: "x... ...."
   - id: exit
     title: tunnel air
     duration: 65s

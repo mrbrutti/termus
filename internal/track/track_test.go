@@ -228,6 +228,13 @@ func TestBundledTracksParseAndCompile(t *testing.T) {
 		if _, err := Compile(file, 7, gen.ListeningModeEndless); err != nil {
 			t.Fatalf("Compile %s: %v", path, err)
 		}
+		eventCount := 0
+		for _, section := range file.Sections {
+			eventCount += len(section.Events)
+		}
+		if eventCount == 0 {
+			t.Fatalf("expected curated arrangement events in %s", path)
+		}
 	}
 }
 

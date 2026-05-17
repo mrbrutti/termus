@@ -75,6 +75,15 @@ sections:
       flute:
         active: true
         motif: "9 . . 7 . . 5 3 | 5 . . 6 . . 7 5"
+    events:
+      - kind: pickup
+        bar: 8
+        roles: [flute]
+        motif: "5 6 7 9"
+      - kind: stop
+        bar: 12
+        bars: 1
+        roles: [pad, bass, flute]
   - id: underpass
     title: tunnel bloom
     duration: 75s
@@ -92,6 +101,11 @@ sections:
         pattern: "........ | ....x..."
       flute:
         motif: "5 . . . 3 . . . | 1 . . . . . . ."
+    events:
+      - kind: drop
+        bar: 6
+        bars: 2
+        roles: [strings, bass]
   - id: waking
     title: station waking
     duration: 75s
@@ -109,6 +123,15 @@ sections:
         active: true
       flute:
         motif: "11 . . 9 . . 7 5 | 9 . . 7 . . 5 3"
+    events:
+      - kind: pickup
+        bar: 10
+        roles: [flute]
+        motif: "7 9 11 9"
+      - kind: stab
+        bar: 14
+        roles: [pad]
+        pattern: "x... ...."
   - id: fade
     title: stairwell light
     duration: 60s

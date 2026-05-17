@@ -85,6 +85,15 @@ sections:
         motif: "9 . . 7 . . 5 3 | 5 . . 6 . . 7 5"
       box:
         pattern: "x....... | ....x..."
+    events:
+      - kind: pickup
+        bar: 8
+        roles: [bells]
+        motif: "5 6 7 9"
+      - kind: stop
+        bar: 10
+        bars: 1
+        roles: [bells, pad, bass]
   - id: gallery
     title: gallery blue
     duration: 45s
@@ -102,6 +111,15 @@ sections:
         active: true
       bells:
         motif: "11 . . 9 . . 7 5 | 9 . . 7 . . 5 3"
+    events:
+      - kind: stab
+        bar: 8
+        roles: [pad]
+        pattern: "x... ...."
+      - kind: drop
+        bar: 10
+        bars: 1
+        roles: [box]
   - id: fade
     title: rain-lit coda
     duration: 40s

@@ -69,6 +69,15 @@ sections:
     roles:
       lead:
         motif: "9 . 7 . 5 . 6 5 | 3 . 2 . 1 . . ."
+    events:
+      - kind: pickup
+        bar: 8
+        roles: [lead]
+        motif: "3 5 6 9"
+      - kind: stop
+        bar: 10
+        bars: 1
+        roles: [lead, harp, box]
   - id: middle
     title: hallway moon
     duration: 45s
@@ -86,6 +95,11 @@ sections:
         pattern: "x....... | ....x..."
       choir:
         active: false
+    events:
+      - kind: drop
+        bar: 6
+        bars: 1
+        roles: [harp]
   - id: return
     title: room-light answer
     duration: 45s
@@ -99,6 +113,11 @@ sections:
         active: true
       lead:
         motif: "11 . 9 . 7 . 6 5 | 3 . 2 . 1 . . ."
+    events:
+      - kind: stab
+        bar: 8
+        roles: [pad]
+        pattern: "x... ...."
   - id: outro
     title: stairlight dim
     duration: 35s
