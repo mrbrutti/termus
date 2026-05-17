@@ -120,7 +120,7 @@
 - [x] Encode jazz style-guide rules into `jazz`: stronger guide-tone motion, 2-bar / 4-bar phrase sentences, better turnaround targeting, and more conversational comping/solo interaction.
 
 ### Lo-fi Guide Rules
-- [ ] Encode lo-fi style-guide rules into `lofi`: groove pocket over jitter, richer extension vocabulary, more soulful loop mutation, and calmer/supportive texture use.
+- [x] Encode lo-fi style-guide rules into `lofi`: groove pocket over jitter, richer extension vocabulary, more soulful loop mutation, and calmer/supportive texture use.
 
 ### Shared Phrase Grammar
 - [ ] Add a shared melodic phrase-grammar layer with question/answer, pickup/peak/release, and cadence-aware endings so melodic genres sound more composed and less slot-generated.

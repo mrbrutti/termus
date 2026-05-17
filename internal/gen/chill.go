@@ -276,6 +276,11 @@ const (
 	chillPlanResolveThird
 )
 
+const (
+	chillMotifBars     = 8
+	chillLeadMotifBars = 16
+)
+
 // NewChill constructs the algorithm. Caller must call Seed before Next.
 func NewChill(sf *meltysynth.SoundFont) *Chill { return &Chill{sf: sf} }
 
@@ -662,14 +667,14 @@ func (a *Chill) Seed(seedVal int64) {
 		PeriodSec: cycleSec, Phase01: 0,
 		ResolveNote:            func(slot int, _ int) int { return a.vibeNoteAt(slot) },
 		Gate:                   0.68,
-		ResolveTimingOffsetSec: a.wrapSwing(cyclicTimingOffset(16, 11, 14, 9)),
+		ResolveTimingOffsetSec: a.wrapSwing(cyclicTimingOffset(18, 12, 20, 14, 17, 11, 21, 15)),
 		ResolveVelocity: func(slot int, key int, base int32) int32 {
 			if a.section.TextureLevel > 1 {
 				return base + 6
 			}
 			return base - 2
 		},
-		VelocityJitter: 12, TimingJitterSec: 0.020, // vibe — laid back
+		VelocityJitter: 8, TimingJitterSec: 0.012, // vibe — laid back, but stable enough to loop well
 		Enabled: a.vibeOn,
 	})
 
@@ -685,14 +690,14 @@ func (a *Chill) Seed(seedVal int64) {
 		Phase01:                1.5 / float64(4*numBars), // 1.5 beats into the first bar
 		ResolveNote:            func(slot int, _ int) int { return a.guitarNoteAt(slot) },
 		Gate:                   0.44,
-		ResolveTimingOffsetSec: a.wrapSwing(cyclicTimingOffset(18)),
+		ResolveTimingOffsetSec: a.wrapSwing(cyclicTimingOffset(22, 18, 24, 20, 21, 17, 25, 19)),
 		ResolveVelocity: func(slot int, key int, base int32) int32 {
 			if a.section.Kind == FormCadence {
 				return base + 8
 			}
 			return base - 3
 		},
-		VelocityJitter: 10, TimingJitterSec: 0.025, // nylon comping — humans don't quantize
+		VelocityJitter: 8, TimingJitterSec: 0.014, // guitar should sit in the pocket more than smear around it
 		Enabled: a.guitarOn,
 	})
 
@@ -741,7 +746,7 @@ func (a *Chill) Seed(seedVal int64) {
 			return brightnessBloomCurve(82, 102, 86)
 		},
 		ResolveDetuneCents: slotDetunePattern(-2, 2, -1, 3),
-		VelocityJitter:     14, TimingJitterSec: 0.035, // sax solo — most expressive, most loose
+		VelocityJitter:     12, TimingJitterSec: 0.024, // sax solo — loose, but still anchored to the loop pocket
 		Enabled: a.saxOn,
 	})
 
@@ -936,23 +941,33 @@ func (a *Chill) vibePlanCodeAt(slot int) int {
 }
 
 func (a *Chill) makeVibeMotifs() MotifMemory {
-	plans := [][]int{
-		{chillPlanThird, chillPlanNinth},
-		{chillPlanSeventh, chillPlanThirteenth},
-		{chillPlanNinth, chillPlanFifth},
+	plans := [][][]int{
+		{
+			{chillPlanNinth, chillPlanEleventh, chillPlanRest, chillPlanThirteenth},
+			{chillPlanSeventh, chillPlanNinth, chillPlanEleventh, chillPlanResolveThird},
+		},
+		{
+			{chillPlanSeventh, chillPlanThirteenth, chillPlanRest, chillPlanEleventh},
+			{chillPlanNinth, chillPlanRest, chillPlanThirteenth, chillPlanResolveThird},
+		},
+		{
+			{chillPlanNinth, chillPlanRest, chillPlanEleventh, chillPlanThirteenth},
+			{chillPlanSeventh, chillPlanNinth, chillPlanRest, chillPlanResolveThird},
+		},
 	}
 	aCell := plans[a.rng.Intn(len(plans))]
 	answerCell := plans[a.rng.Intn(len(plans))]
-	aPhrase := stitchPhrase(aCell, answerCell)
+	aPhrase := stitchPhrase(aCell[0], aCell[1])
 	aPrime := sequencePhrase(aPhrase, map[int]int{
-		chillPlanThird:      chillPlanSeventh,
+		chillPlanSeventh:    chillPlanNinth,
 		chillPlanNinth:      chillPlanEleventh,
-		chillPlanFifth:      chillPlanThirteenth,
+		chillPlanEleventh:   chillPlanThirteenth,
 		chillPlanThirteenth: chillPlanNinth,
 	})
-	bPhrase := stitchPhrase(plans[a.rng.Intn(len(plans))], plans[a.rng.Intn(len(plans))])
-	cadence := stitchPhrase(aPhrase[:2], []int{chillPlanEleventh, chillPlanResolveThird})
-	return MotifMemory{A: aPhrase, Aprime: aPrime, B: bPhrase, Cadence: cadence, Outro: []int{chillPlanNinth, chillPlanRoot}}
+	bPhrase := stitchPhrase(answerCell[0], answerCell[1])
+	cadence := stitchPhrase(aPhrase[:4], []int{chillPlanEleventh, chillPlanNinth, chillPlanResolveThird, chillPlanRoot})
+	outro := []int{chillPlanNinth, chillPlanRest, chillPlanEleventh, chillPlanRest, chillPlanResolveThird, chillPlanRoot, chillPlanRest, chillPlanRest}
+	return MotifMemory{A: aPhrase, Aprime: aPrime, B: bPhrase, Cadence: cadence, Outro: outro}
 }
 
 func (a *Chill) makeGuitarPlan(numBars int) []int {
@@ -972,22 +987,33 @@ func (a *Chill) guitarPlanCodeAt(slot int) int {
 }
 
 func (a *Chill) makeGuitarMotifs() MotifMemory {
-	plans := [][]int{
-		{chillPlanNinth, chillPlanSuspendFourth},
-		{chillPlanFifth, chillPlanPickupAbove},
-		{chillPlanRoot, chillPlanResolveThird},
+	plans := [][][]int{
+		{
+			{chillPlanNinth, chillPlanSuspendFourth, chillPlanRest, chillPlanThirteenth},
+			{chillPlanResolveThird, chillPlanNinth, chillPlanRest, chillPlanEleventh},
+		},
+		{
+			{chillPlanNinth, chillPlanRest, chillPlanPickupAbove, chillPlanResolveThird},
+			{chillPlanThirteenth, chillPlanNinth, chillPlanRest, chillPlanResolveThird},
+		},
+		{
+			{chillPlanEleventh, chillPlanNinth, chillPlanRest, chillPlanSuspendFourth},
+			{chillPlanResolveThird, chillPlanThirteenth, chillPlanRest, chillPlanNinth},
+		},
 	}
 	aCell := plans[a.rng.Intn(len(plans))]
 	answerCell := plans[a.rng.Intn(len(plans))]
-	aPhrase := stitchPhrase(aCell, answerCell)
+	aPhrase := stitchPhrase(aCell[0], aCell[1])
 	aPrime := sequencePhrase(aPhrase, map[int]int{
 		chillPlanPickupAbove:   chillPlanPickupBelow,
 		chillPlanSuspendFourth: chillPlanResolveThird,
-		chillPlanRoot:          chillPlanNinth,
+		chillPlanNinth:         chillPlanEleventh,
+		chillPlanEleventh:      chillPlanThirteenth,
 	})
-	bPhrase := stitchPhrase(plans[a.rng.Intn(len(plans))], []int{chillPlanNinth, chillPlanPickupAbove})
-	cadence := stitchPhrase(aPhrase[:2], []int{chillPlanResolveThird, chillPlanRoot})
-	return MotifMemory{A: aPhrase, Aprime: aPrime, B: bPhrase, Cadence: cadence, Outro: []int{chillPlanSuspendFourth, chillPlanRoot}}
+	bPhrase := stitchPhrase(answerCell[0], answerCell[1])
+	cadence := stitchPhrase(aPhrase[:4], []int{chillPlanResolveThird, chillPlanNinth, chillPlanResolveThird, chillPlanRoot})
+	outro := []int{chillPlanSuspendFourth, chillPlanRest, chillPlanResolveThird, chillPlanRest, chillPlanNinth, chillPlanRoot, chillPlanRest, chillPlanRest}
+	return MotifMemory{A: aPhrase, Aprime: aPrime, B: bPhrase, Cadence: cadence, Outro: outro}
 }
 
 func (a *Chill) makeSaxPlan(numBars int) []int {
@@ -1018,8 +1044,11 @@ func (a *Chill) vibeDialogueCodeAt(slot int) int {
 	if a.saxLeadActiveAt(slot) {
 		return chillPlanRest
 	}
-	if slot > 0 && a.saxLeadActiveAt(slot-1) && a.section.Kind == FormCadence {
-		return chillPlanEleventh
+	if slot > 0 && a.saxLeadActiveAt(slot-1) {
+		if a.section.Kind == FormCadence {
+			return chillPlanEleventh
+		}
+		return chillPlanRest
 	}
 	return base
 }
@@ -1039,14 +1068,37 @@ func (a *Chill) guitarDialogueCodeAt(slot int) int {
 }
 
 func (a *Chill) makeSaxMotifs() MotifMemory {
-	callTemplates := [][]int{
-		{chillPlanNinth, chillPlanRest, chillPlanPickupBelow, chillPlanResolveThird},
-		{chillPlanRest, chillPlanThirteenth, chillPlanSuspendFourth, chillPlanResolveThird},
-		{chillPlanThird, chillPlanPickupAbove, chillPlanRest, chillPlanSeventh},
+	callTemplates := [][][]int{
+		{
+			{chillPlanRest, chillPlanNinth, chillPlanPickupBelow, chillPlanResolveThird},
+			{chillPlanRest, chillPlanEleventh, chillPlanRest, chillPlanSeventh},
+		},
+		{
+			{chillPlanRest, chillPlanThirteenth, chillPlanSuspendFourth, chillPlanResolveThird},
+			{chillPlanRest, chillPlanNinth, chillPlanRest, chillPlanEleventh},
+		},
+		{
+			{chillPlanThird, chillPlanPickupAbove, chillPlanRest, chillPlanSeventh},
+			{chillPlanRest, chillPlanThirteenth, chillPlanRest, chillPlanResolveThird},
+		},
+	}
+	answerTemplates := [][][]int{
+		{
+			{chillPlanRest, chillPlanThirteenth, chillPlanPickupAbove, chillPlanResolveThird},
+			{chillPlanRest, chillPlanEleventh, chillPlanPickupBelow, chillPlanRoot},
+		},
+		{
+			{chillPlanRest, chillPlanNinth, chillPlanPickupBelow, chillPlanResolveThird},
+			{chillPlanRest, chillPlanThirteenth, chillPlanRest, chillPlanRoot},
+		},
+		{
+			{chillPlanRest, chillPlanEleventh, chillPlanPickupAbove, chillPlanResolveThird},
+			{chillPlanRest, chillPlanSeventh, chillPlanPickupBelow, chillPlanRoot},
+		},
 	}
 	call := callTemplates[a.rng.Intn(len(callTemplates))]
-	answer := []int{call[0], chillPlanEleventh, chillPlanPickupBelow, chillPlanResolveThird}
-	aPhrase := stitchPhrase(call, answer)
+	answer := answerTemplates[a.rng.Intn(len(answerTemplates))]
+	aPhrase := stitchPhrase(call[0], call[1], answer[0], answer[1])
 	aPrime := sequencePhrase(aPhrase, map[int]int{
 		chillPlanPickupBelow: chillPlanPickupAbove,
 		chillPlanEleventh:    chillPlanThirteenth,
@@ -1054,10 +1106,13 @@ func (a *Chill) makeSaxMotifs() MotifMemory {
 	})
 	bPhrase := stitchPhrase(
 		[]int{chillPlanRest, chillPlanThirteenth, chillPlanPickupAbove, chillPlanResolveThird},
+		[]int{chillPlanRest, chillPlanNinth, chillPlanRest, chillPlanEleventh},
 		[]int{chillPlanThird, chillPlanRest, chillPlanPickupBelow, chillPlanSeventh},
+		[]int{chillPlanRest, chillPlanThirteenth, chillPlanPickupAbove, chillPlanRoot},
 	)
-	cadence := stitchPhrase(aPhrase[:4], []int{chillPlanEleventh, chillPlanPickupBelow, chillPlanResolveThird, chillPlanRoot})
-	return MotifMemory{A: aPhrase, Aprime: aPrime, B: bPhrase, Cadence: cadence, Outro: []int{chillPlanRest, chillPlanResolveThird, chillPlanRoot}}
+	cadence := stitchPhrase(aPhrase[:4], []int{chillPlanRest, chillPlanEleventh, chillPlanPickupBelow, chillPlanResolveThird}, []int{chillPlanRest, chillPlanNinth, chillPlanRest, chillPlanRoot})
+	outro := []int{chillPlanRest, chillPlanResolveThird, chillPlanRest, chillPlanRoot, chillPlanRest, chillPlanRest, chillPlanRest, chillPlanRest}
+	return MotifMemory{A: aPhrase, Aprime: aPrime, B: bPhrase, Cadence: cadence, Outro: outro}
 }
 
 func (a *Chill) reharmonizeProgression(base []chillChord) []chillChord {

@@ -53,3 +53,18 @@ func TestChillDialogueSilencesAnswerLayersUnderLead(t *testing.T) {
 		t.Fatalf("guitar dialogue code = %d, want rest", got)
 	}
 }
+
+func TestChillVibeLeavesSpaceAfterLeadBar(t *testing.T) {
+	on := true
+	c := &Chill{
+		section:    FormSection{Kind: FormA, LeadLevel: 1},
+		saxOn:      &on,
+		saxMotifs:  MotifMemory{A: []int{chillPlanNinth, chillPlanRest}},
+		saxPlan:    []int{chillPlanNinth, chillPlanRest},
+		vibeMotifs: MotifMemory{A: []int{chillPlanEleventh, chillPlanEleventh}},
+		vibePlan:   []int{chillPlanEleventh, chillPlanEleventh},
+	}
+	if got := c.vibeDialogueCodeAt(1); got != chillPlanRest {
+		t.Fatalf("vibe post-lead dialogue code = %d, want rest", got)
+	}
+}
