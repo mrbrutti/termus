@@ -44,9 +44,10 @@ type SF2RoleIntent struct {
 }
 
 type SF2Selection struct {
-	Primary string
-	Routes  map[int32]string
-	Presets []string
+	Primary  string
+	Routes   map[int32]string
+	Programs map[int32]int32
+	Presets  []string
 }
 
 var sf2Inventory = loadSF2Inventory()
@@ -80,34 +81,16 @@ func ResolveSF2Selection(spec AlgoSpec, strategy, fallback string) SF2Selection 
 	}
 	if strategy == "single" {
 		return SF2Selection{
-			Primary: fallback,
-			Presets: dedupePresets([]string{fallback}),
+			Primary:  fallback,
+			Programs: defaultProgramsForIntents(roleIntentsForSpec(spec)),
+			Presets:  dedupePresets([]string{fallback}),
 		}
 	}
 	intents := roleIntentsForSpec(spec)
 	if len(intents) == 0 {
 		return SF2Selection{Primary: fallback, Presets: dedupePresets([]string{fallback})}
 	}
-	primary := resolvePrimaryPreset(spec, intents, fallback)
-	if strategy == "pro" {
-		return SF2Selection{
-			Primary: primary,
-			Presets: dedupePresets([]string{primary}),
-		}
-	}
-	routes := resolveRoutePresets(spec.Name, intents, primary, fallback)
-	presets := make([]string, 0, len(routes)+1)
-	if primary != "" {
-		presets = append(presets, primary)
-	}
-	for _, preset := range routes {
-		presets = append(presets, preset)
-	}
-	return SF2Selection{
-		Primary: primary,
-		Routes:  routes,
-		Presets: dedupePresets(presets),
-	}
+	return resolveSelection(spec, intents, strategy, fallback)
 }
 
 func ResolveSF2SelectionForPlan(spec AlgoSpec, plan *AuthoredTrackPlan, strategy, fallback string) SF2Selection {
@@ -119,22 +102,29 @@ func ResolveSF2SelectionForPlan(spec AlgoSpec, plan *AuthoredTrackPlan, strategy
 	}
 	if strategy == "single" {
 		return SF2Selection{
-			Primary: fallback,
-			Presets: dedupePresets([]string{fallback}),
+			Primary:  fallback,
+			Programs: defaultProgramsForPlan(plan),
+			Presets:  dedupePresets([]string{fallback}),
 		}
 	}
 	intents := intentsFromPlan(plan)
 	if len(intents) == 0 {
 		return ResolveSF2Selection(spec, strategy, fallback)
 	}
+	return resolveSelection(spec, intents, strategy, fallback)
+}
+
+func resolveSelection(spec AlgoSpec, intents []SF2RoleIntent, strategy, fallback string) SF2Selection {
 	primary := resolvePrimaryPreset(spec, intents, fallback)
 	if strategy == "pro" {
+		programs := resolveProgramsForPreset(spec.Name, intents, primary)
 		return SF2Selection{
-			Primary: primary,
-			Presets: dedupePresets([]string{primary}),
+			Primary:  primary,
+			Programs: programs,
+			Presets:  dedupePresets([]string{primary}),
 		}
 	}
-	routes := resolveRoutePresets(spec.Name, intents, primary, fallback)
+	routes, programs := resolveRouteAssignments(spec.Name, intents, primary, fallback)
 	presets := make([]string, 0, len(routes)+1)
 	if primary != "" {
 		presets = append(presets, primary)
@@ -143,22 +133,30 @@ func ResolveSF2SelectionForPlan(spec AlgoSpec, plan *AuthoredTrackPlan, strategy
 		presets = append(presets, preset)
 	}
 	return SF2Selection{
-		Primary: primary,
-		Routes:  routes,
-		Presets: dedupePresets(presets),
+		Primary:  primary,
+		Routes:   routes,
+		Programs: programs,
+		Presets:  dedupePresets(presets),
 	}
 }
 
 func resolvePrimaryPreset(spec AlgoSpec, intents []SF2RoleIntent, fallback string) string {
 	if preferred := strings.TrimSpace(spec.PreferredSF2); preferred != "" {
 		if _, ok := sf2Inventory[preferred]; ok {
-			return preferred
+			// Prefer it, but still let the scorer compare nearby options when a
+			// track asks for something very different.
 		}
 	}
 	best := fallback
 	bestScore := -1 << 30
 	for name, preset := range sf2Inventory {
-		score := presetScore(spec.Name, preset, intents, nil)
+		score := presetAggregateScore(spec.Name, preset, intents, nil)
+		if strings.EqualFold(name, spec.PreferredSF2) {
+			score += 10
+		}
+		if strings.EqualFold(name, fallback) {
+			score += 2
+		}
 		if score > bestScore {
 			best = name
 			bestScore = score
@@ -170,30 +168,74 @@ func resolvePrimaryPreset(spec AlgoSpec, intents []SF2RoleIntent, fallback strin
 	return best
 }
 
-func resolveRoutePresets(style string, intents []SF2RoleIntent, primary, fallback string) map[int32]string {
+func resolveProgramsForPreset(style string, intents []SF2RoleIntent, presetName string) map[int32]int32 {
+	programs := make(map[int32]int32, len(intents))
+	preset, ok := sf2Inventory[presetName]
+	if !ok {
+		return defaultProgramsForIntents(intents)
+	}
+	for _, intent := range intents {
+		program, _, ok := bestProgramChoice(style, preset, intent, false)
+		if ok && presetSupportsIntent(preset, intent) {
+			programs[intent.Channel] = program
+			continue
+		}
+		programs[intent.Channel] = defaultProgramForIntent(intent)
+	}
+	return programs
+}
+
+func resolveRouteAssignments(style string, intents []SF2RoleIntent, primary, fallback string) (map[int32]string, map[int32]int32) {
 	routes := make(map[int32]string, len(intents))
+	programs := make(map[int32]int32, len(intents))
 	for _, intent := range intents {
 		best := primary
+		bestProgram := defaultProgramForIntent(intent)
 		bestScore := -1 << 30
 		for name, preset := range sf2Inventory {
-			score := presetScore(style, preset, []SF2RoleIntent{intent}, stringSet(primary))
+			program, programScore, ok := bestProgramChoice(style, preset, intent, true)
+			score := presetAggregateScore(style, preset, []SF2RoleIntent{intent}, stringSet(primary))
+			if ok {
+				score += programScore
+			}
+			if strings.EqualFold(name, primary) {
+				score += 4
+			}
 			if score > bestScore {
 				best = name
 				bestScore = score
+				if ok {
+					bestProgram = program
+				}
 			}
 		}
 		if best == "" {
 			best = fallback
 		}
 		routes[intent.Channel] = best
+		programs[intent.Channel] = bestProgram
 	}
-	return routes
+	return routes, programs
 }
 
-func presetScore(style string, preset sf2PresetProfile, intents []SF2RoleIntent, cohesion map[string]bool) int {
+func presetAggregateScore(style string, preset sf2PresetProfile, intents []SF2RoleIntent, cohesion map[string]bool) int {
 	score := 0
 	if containsFold(preset.Styles, style) {
 		score += 8
+	}
+	switch strings.ToLower(strings.TrimSpace(preset.Realism)) {
+	case "utility":
+		score -= 14
+	case "organic":
+		score += 4
+	case "storybook":
+		if style == "bells" || style == "lullaby" || style == "ambient" {
+			score += 6
+		}
+	case "polished":
+		if style == "jazz" || style == "lofi" {
+			score += 4
+		}
 	}
 	if containsFold(preset.Tones, "generalist") {
 		score -= 6
@@ -205,29 +247,185 @@ func presetScore(style string, preset sf2PresetProfile, intents []SF2RoleIntent,
 		if !intent.Active {
 			continue
 		}
+		score += bestProgramMatchScore(style, preset, intent, false)
 		if containsFold(preset.Families, intent.Family) {
-			score += 12
-		}
-		for _, tone := range intent.Tone {
-			if containsFold(preset.Tones, tone) {
-				score += 4
-			}
-		}
-		switch strings.ToLower(intent.Prominence) {
-		case "front", "lead":
-			if containsFold(preset.Tones, "present") || containsFold(preset.Tones, "clear") {
-				score += 2
-			}
-		case "support", "air":
-			if containsFold(preset.Tones, "soft") || containsFold(preset.Tones, "wide") {
-				score += 2
-			}
+			score += 10
 		}
 	}
 	if cohesion != nil && cohesion[preset.Name] {
 		score += 3
 	}
 	return score
+}
+
+func bestProgramChoice(style string, preset sf2PresetProfile, intent SF2RoleIntent, strict bool) (int32, int, bool) {
+	bestProgram := int32(0)
+	bestScore := -1 << 30
+	found := false
+	for _, program := range preset.Programs {
+		score := programMatchScore(style, preset, program, intent, strict)
+		if score > bestScore {
+			bestProgram = program.Program
+			bestScore = score
+			found = true
+		}
+	}
+	return bestProgram, bestScore, found
+}
+
+func presetSupportsIntent(preset sf2PresetProfile, intent SF2RoleIntent) bool {
+	for _, program := range preset.Programs {
+		if strings.EqualFold(program.Family, intent.Family) {
+			return true
+		}
+		if containsFold(program.Roles, intent.Role) || containsFold(program.Roles, roleBaseName(intent.Role)) {
+			return true
+		}
+	}
+	return false
+}
+
+func bestProgramMatchScore(style string, preset sf2PresetProfile, intent SF2RoleIntent, strict bool) int {
+	_, score, ok := bestProgramChoice(style, preset, intent, strict)
+	if !ok {
+		return 0
+	}
+	return score
+}
+
+func programMatchScore(style string, preset sf2PresetProfile, program sf2ProgramProfile, intent SF2RoleIntent, strict bool) int {
+	score := 0
+	if strings.EqualFold(program.Family, intent.Family) {
+		score += 24
+	} else if strict {
+		score -= 18
+	}
+	if containsFold(program.Roles, intent.Role) {
+		score += 14
+	}
+	if containsFold(program.Roles, roleBaseName(intent.Role)) {
+		score += 8
+	}
+	for _, tone := range intent.Tone {
+		if containsFold(program.Tones, tone) {
+			score += 5
+		}
+		if containsFold(preset.Tones, tone) {
+			score += 2
+		}
+	}
+	if intent.Articulation != "" {
+		if containsFold(program.Articulations, intent.Articulation) {
+			score += 8
+		} else if containsFold(preset.Articulations, intent.Articulation) {
+			score += 3
+		}
+	}
+	if intent.Register != "" {
+		if containsFold(program.Registers, intent.Register) {
+			score += 6
+		} else if strict {
+			score -= 2
+		}
+	}
+	switch strings.ToLower(intent.Prominence) {
+	case "lead", "front":
+		if containsFold(program.Blend, "front") || containsFold(preset.Blend, "front") {
+			score += 6
+		}
+		if containsFold(program.Tones, "present") || containsFold(program.Tones, "clear") {
+			score += 4
+		}
+	case "support":
+		if containsFold(program.Blend, "core") || containsFold(program.Blend, "support") || containsFold(program.Blend, "glue") {
+			score += 6
+		}
+		if containsFold(program.Tones, "soft") || containsFold(program.Tones, "warm") {
+			score += 3
+		}
+	case "air":
+		if containsFold(program.Blend, "air") || containsFold(program.Blend, "halo") || containsFold(program.Blend, "sparkle") {
+			score += 6
+		}
+	case "anchor":
+		if containsFold(program.Blend, "glue") || containsFold(program.Blend, "core") {
+			score += 5
+		}
+		if containsFold(program.Registers, "low") || containsFold(program.Registers, "sub") {
+			score += 3
+		}
+	}
+	if containsFold(preset.Styles, style) {
+		score += 4
+	}
+	switch strings.ToLower(strings.TrimSpace(program.Realism)) {
+	case "utility":
+		score -= 6
+	case "organic":
+		score += 2
+	}
+	return score
+}
+
+func defaultProgramsForPlan(plan *AuthoredTrackPlan) map[int32]int32 {
+	if plan == nil {
+		return nil
+	}
+	out := make(map[int32]int32, len(plan.Tracks))
+	for _, track := range plan.Tracks {
+		out[track.Channel] = track.Program
+	}
+	return out
+}
+
+func defaultProgramsForIntents(intents []SF2RoleIntent) map[int32]int32 {
+	if len(intents) == 0 {
+		return nil
+	}
+	out := make(map[int32]int32, len(intents))
+	for _, intent := range intents {
+		out[intent.Channel] = defaultProgramForIntent(intent)
+	}
+	return out
+}
+
+func defaultProgramForIntent(intent SF2RoleIntent) int32 {
+	switch strings.ToLower(strings.TrimSpace(intent.Family)) {
+	case "acoustic_piano":
+		return 0
+	case "electric_piano":
+		return 5
+	case "bass":
+		return 32
+	case "synth_bass":
+		return 39
+	case "reed_lead":
+		return 66
+	case "woodwind":
+		return 73
+	case "brass":
+		return 56
+	case "guitar":
+		return 24
+	case "mallet":
+		return 11
+	case "bells":
+		return 14
+	case "music_box":
+		return 10
+	case "pad":
+		return 89
+	case "choir":
+		return 52
+	case "strings":
+		return 48
+	case "organ":
+		return 19
+	case "drums":
+		return 0
+	default:
+		return 0
+	}
 }
 
 func roleIntentsForSpec(spec AlgoSpec) []SF2RoleIntent {
@@ -496,6 +694,14 @@ func inferredProminence(name, family string) string {
 	default:
 		return "support"
 	}
+}
+
+func roleBaseName(name string) string {
+	name = strings.TrimSpace(strings.ToLower(name))
+	if idx := strings.Index(name, "-"); idx > 0 {
+		return name[:idx]
+	}
+	return name
 }
 
 func dedupeFold(values []string) []string {

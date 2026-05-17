@@ -167,7 +167,7 @@
 
 ### Phase 3: Soundfont And Instrument Intelligence
 - [x] Evolve `sf2_inventory.json` from a rough bank catalog into a role-aware program inventory with family, articulation, tone, realism, and blend tags for actual instrument selection.
-- [ ] Move `pro` and `max` selection onto an orchestration resolver that picks bank + program by role intent, style pack, register, and ensemble cohesion instead of mostly static mappings.
+- [x] Move `pro` and `max` selection onto an orchestration resolver that picks bank + program by role intent, style pack, register, and ensemble cohesion instead of mostly static mappings.
 - [ ] Support section-local instrument substitutions and doubles so one track can move from piano trio to organ combo, or from celesta lead to choir/pad answer, without changing styles entirely.
 - [ ] Add cohesion scoring to prevent `max` from sounding like unrelated banks piled together, especially for soft/wet genres like `bells`, `ambient`, and `lullaby`.
 

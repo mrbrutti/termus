@@ -305,8 +305,9 @@ func main() {
 	}
 	buildRenderedAlgo := func(s gen.AlgoSpec, algoSeed int64) gen.Algorithm {
 		chosen := sf
+		selection := gen.SF2Selection{}
 		if catalog != nil && s.RequiresSF2 {
-			selection := selectionFor(s, algoSeed)
+			selection = selectionFor(s, algoSeed)
 			if err := catalog.ensurePresets(io.Discard, selection.Presets); err != nil {
 				logCatalogEnsureError(s, err)
 			}
@@ -318,7 +319,16 @@ func main() {
 		}
 		var a gen.Algorithm
 		if plan := planFor(s, algoSeed); plan != nil {
-			a = gen.NewAuthoredTrack(s, chosen, *plan)
+			resolvedPlan := *plan
+			if len(selection.Programs) > 0 {
+				resolvedPlan.Tracks = append([]gen.AuthoredRenderTrack(nil), plan.Tracks...)
+				for i := range resolvedPlan.Tracks {
+					if program, ok := selection.Programs[resolvedPlan.Tracks[i].Channel]; ok {
+						resolvedPlan.Tracks[i].Program = program
+					}
+				}
+			}
+			a = gen.NewAuthoredTrack(s, chosen, resolvedPlan)
 		} else {
 			a = s.Build(chosen)
 		}

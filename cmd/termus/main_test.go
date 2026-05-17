@@ -31,17 +31,18 @@ func TestNormalizeSF2Strategy(t *testing.T) {
 func TestNeededPresetsProUsesPreferredSet(t *testing.T) {
 	spec, _ := gen.Resolve("ambient")
 	got := neededPresets("pro", "general", spec)
-	want := []string{"general", "arachno", "fm-dx", "fairy-tale", "timbres-of-heaven", "sgm", "tyros4"}
-	if len(got) != len(want) {
-		t.Fatalf("neededPresets(pro) len = %d, want %d: %v", len(got), len(want), got)
-	}
 	found := map[string]bool{}
 	for _, name := range got {
 		found[name] = true
 	}
-	for _, name := range want {
+	for _, name := range []string{"general", "arachno", "fairy-tale", "timbres-of-heaven", "sgm"} {
 		if !found[name] {
 			t.Fatalf("neededPresets(pro) missing %q: %v", name, got)
+		}
+	}
+	for _, name := range []string{"dsound4", "fatboy", "musescore-general"} {
+		if found[name] {
+			t.Fatalf("neededPresets(pro) should stay curated, but included %q: %v", name, got)
 		}
 	}
 }
