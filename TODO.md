@@ -185,7 +185,7 @@
 - [x] Curate at least 10 clearly differentiated authored tracks per genre once the unified engine is in place, and reject or rewrite tracks that still collapse into one house sound.
 
 ### Phase 6: Evaluation And Curation
-- [ ] Add renderer-side metrics for repetition fatigue, section contrast, cadence spacing, lead occupancy, register spread, harmonic color retention, and ensemble diversity.
+- [x] Add renderer-side metrics for repetition fatigue, section contrast, cadence spacing, lead occupancy, register spread, harmonic color retention, and ensemble diversity.
 - [ ] Add bundled listening corpora and A/B snapshots per genre so we can hear whether engine changes make tracks more song-like or more synthetic.
 - [ ] Add a track-review workflow that renders one canonical example per authored track and surfaces the arrangement map for faster curation.
 - [ ] Add a strict authored-track test gate so new `tracks/<genre>/*.tm` files must compile, include arrangement moments, show section contrast, and meet minimum diversity thresholds.
