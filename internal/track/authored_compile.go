@@ -1203,7 +1203,7 @@ func compileDrumPattern(ctx authoredSectionContext, pattern, roleName string, to
 	out := make([]int, len(grid))
 	for i, active := range grid {
 		span, phraseIdx := phraseSpanForSlot(phraseSpans, i)
-		active = phraseRhythmActive(ctx, authoredRoleKind(roleName, Role{Family: "drums"}), roleName, span, phraseIdx, i, active)
+		active = phraseRhythmActive(ctx, authoredRoleKind(roleName, Role{Family: "drums"}), roleName, Role{Family: "drums"}, span, phraseIdx, i, active)
 		if active {
 			out[i] = drumNoteFor(ctx, roleName, i)
 		} else {
@@ -1219,7 +1219,8 @@ func compileBassLine(ctx authoredSectionContext, name string, role Role, bars []
 	last := -1
 	for slot := range grid {
 		span, phraseIdx := phraseSpanForSlot(phraseSpans, slot)
-		if !phraseRhythmActive(ctx, "bass", name, span, phraseIdx, slot, grid[slot]) {
+		mode := rolePhraseMode(ctx, "bass", name, role, span, phraseIdx)
+		if !phraseRhythmActive(ctx, "bass", name, role, span, phraseIdx, slot, grid[slot]) {
 			out[slot] = -1
 			continue
 		}
@@ -1243,14 +1244,25 @@ func compileBassLine(ctx authoredSectionContext, name string, role Role, bars []
 			default:
 				note = base
 			}
+		case mode == "pedal":
+			note = base
+		case mode == "cadence":
+			switch {
+			case pos == 0:
+				note = base
+			case pos == 4:
+				note = placePitchNear(base+chordDegreeInterval(chord, 5), base+7)
+			default:
+				note = placePitchNear(base, base-3)
+			}
 		case pos == 0:
 			note = base
 		case pos >= 6:
 			next := chordForSlot(bars, minInt(totalBars*authoredSlotsPerBar-1, slot+2))
 			note = approachTo(next.RootPC, base)
-		case span.Label == "answer" && pos%4 == 2:
+		case mode == "answer" && pos%4 == 2:
 			note = placePitchNear(base+chordDegreeInterval(chord, 7), base+10)
-		case span.Label == "sequence" && pos == 4:
+		case mode == "walk" && pos == 4:
 			note = placePitchNear(base+chordDegreeInterval(chord, 9), base+12)
 		case pos%4 == 2:
 			note = placePitchNear(base+chordDegreeInterval(chord, 5), base+7)
@@ -1275,6 +1287,7 @@ func compileBassLine(ctx authoredSectionContext, name string, role Role, bars []
 func compilePadVoices(ctx authoredSectionContext, name string, role Role, bars []authoredHarmonyBar, totalBars int, phraseSpans []gen.AuthoredPhraseSpan) [][]int {
 	grid := expandRhythmPattern(role.Pattern, totalBars, defaultRhythmPattern(name))
 	maxVoices := 4
+	kind := authoredRoleKind(name, role)
 	voices := make([][]int, maxVoices)
 	for i := range voices {
 		voices[i] = make([]int, len(grid))
@@ -1284,12 +1297,13 @@ func compilePadVoices(ctx authoredSectionContext, name string, role Role, bars [
 	}
 	for slot, active := range grid {
 		span, phraseIdx := phraseSpanForSlot(phraseSpans, slot)
-		active = phraseRhythmActive(ctx, "pad", name, span, phraseIdx, slot, active)
+		mode := rolePhraseMode(ctx, kind, name, role, span, phraseIdx)
+		active = phraseRhythmActive(ctx, kind, name, role, span, phraseIdx, slot, active)
 		if !active {
 			continue
 		}
 		chord := chordForSlot(bars, slot)
-		voicing := chordVoicing(ctx, name, role, chord, span.Label, phraseIdx)
+		voicing := chordVoicing(ctx, name, role, chord, mode, phraseIdx)
 		center := roleRegisterCenter(role.Register, ctx.style, name) + ctx.registerShift()/2
 		for i := range voices {
 			if i >= len(voicing) {
@@ -1312,8 +1326,9 @@ func compileMelody(ctx authoredSectionContext, name string, role Role, bars []au
 	last := center
 	for slot, token := range tokens {
 		span, phraseIdx := phraseSpanForSlot(phraseSpans, slot)
+		mode := rolePhraseMode(ctx, "melody", name, role, span, phraseIdx)
 		token = strings.TrimSpace(token)
-		if ctx.shouldThin(slot) && token != "-" {
+		if (ctx.shouldThin(slot) || mode == "tail") && token != "-" && slot%authoredSlotsPerBar > 4 {
 			out[slot] = -1
 			continue
 		}
@@ -1326,9 +1341,9 @@ func compileMelody(ctx authoredSectionContext, name string, role Role, bars []au
 			continue
 		}
 		chord := chordForSlot(bars, slot)
-		token = transformMelodyToken(ctx, span.Label, phraseIdx, token, slot)
+		token = transformMelodyToken(ctx, mode, phraseIdx, token, slot)
 		note := melodyTokenToMidi(chord, token, center, last)
-		if (ctx.has("cadence", "outro") || span.Label == "cadence") && slot%authoredSlotsPerBar >= 6 {
+		if (ctx.has("cadence", "outro") || mode == "cadence") && slot%authoredSlotsPerBar >= 6 {
 			note = minInt(note, last)
 		}
 		out[slot] = note
@@ -1465,25 +1480,148 @@ func compileTimingOffsets(ctx authoredSectionContext, kind, name string, notes [
 	return out
 }
 
-func phraseRhythmActive(ctx authoredSectionContext, kind, name string, span gen.AuthoredPhraseSpan, phraseIdx, slot int, active bool) bool {
-	if !active {
-		return false
+func rolePhraseMode(ctx authoredSectionContext, kind, name string, role Role, span gen.AuthoredPhraseSpan, phraseIdx int) string {
+	lowerName := strings.ToLower(strings.TrimSpace(name))
+	prominence := strings.ToLower(strings.TrimSpace(role.Prominence))
+	switch kind {
+	case "melody":
+		switch span.Label {
+		case "cadence":
+			return "cadence"
+		case "release":
+			return "tail"
+		case "answer":
+			if strings.Contains(prominence, "air") || strings.Contains(prominence, "support") {
+				return "echo"
+			}
+			return "answer"
+		case "sequence":
+			return "climb"
+		default:
+			return "foreground"
+		}
+	case "bass":
+		switch span.Label {
+		case "cadence":
+			return "cadence"
+		case "release":
+			return "pedal"
+		case "answer":
+			return "answer"
+		case "sequence":
+			return "walk"
+		default:
+			return "anchor"
+		}
+	case "pad":
+		switch span.Label {
+		case "cadence":
+			return "close"
+		case "release":
+			return "hold"
+		case "answer":
+			if strings.Contains(prominence, "air") || lowerName == "texture" || lowerName == "shimmer" {
+				return "echo"
+			}
+			return "answer"
+		case "sequence":
+			return "lift"
+		default:
+			return "bed"
+		}
+	case "comp":
+		switch span.Label {
+		case "cadence":
+			return "stab"
+		case "release":
+			return "hold"
+		case "answer":
+			return "answer"
+		case "sequence":
+			return "push"
+		default:
+			return "support"
+		}
+	case "drum":
+		switch lowerName {
+		case "kick":
+			switch span.Label {
+			case "cadence":
+				return "cadence"
+			case "release":
+				return "sparse"
+			case "sequence":
+				return "push"
+			default:
+				return "anchor"
+			}
+		case "snare", "clap", "rim":
+			switch span.Label {
+			case "cadence":
+				return "fill"
+			case "release":
+				return "thin"
+			case "answer", "sequence":
+				return "answer"
+			default:
+				return "backbeat"
+			}
+		default:
+			switch span.Label {
+			case "cadence":
+				return "lift"
+			case "release":
+				return "thin"
+			case "answer":
+				return "air"
+			case "sequence":
+				return "push"
+			default:
+				return "grid"
+			}
+		}
+	default:
+		return span.Label
 	}
+}
+
+func phraseRhythmActive(ctx authoredSectionContext, kind, name string, role Role, span gen.AuthoredPhraseSpan, phraseIdx, slot int, active bool) bool {
 	pos := slot % authoredSlotsPerBar
 	lower := strings.ToLower(strings.TrimSpace(name))
-	switch span.Label {
-	case "answer":
+	mode := rolePhraseMode(ctx, kind, name, role, span, phraseIdx)
+	if !active {
+		switch mode {
+		case "fill":
+			return pos >= 6
+		case "lift":
+			return (lower == "ride" || lower == "hat" || lower == "hihat") && pos%2 == 1
+		case "stab":
+			return pos == 0 || pos == 4
+		default:
+			return false
+		}
+	}
+	switch mode {
+	case "air":
 		if kind == "drum" && (lower == "hat" || lower == "hihat" || lower == "ride") && pos%2 == 0 {
 			return false
 		}
 		if kind == "pad" && pos >= 6 {
 			return false
 		}
-	case "sequence":
+	case "walk":
 		if kind == "bass" && pos == 2 {
 			return false
 		}
-	case "release":
+	case "hold":
+		if (kind == "comp" || kind == "pad") && pos != 0 && pos != 4 {
+			return false
+		}
+	case "tail":
+		if kind == "melody" && pos >= 6 {
+			return false
+		}
+	case "close":
 		if kind == "pad" && pos == 0 && phraseIdx > 0 {
 			return false
 		}
@@ -1498,21 +1636,23 @@ func phraseRhythmActive(ctx authoredSectionContext, kind, name string, span gen.
 	return true
 }
 
-func transformMelodyToken(ctx authoredSectionContext, phraseLabel string, phraseIdx int, token string, slot int) string {
+func transformMelodyToken(ctx authoredSectionContext, phraseMode string, phraseIdx int, token string, slot int) string {
 	if token == "" || token == "." || token == "-" || token == "r" {
 		return token
 	}
 	bar := slot / authoredSlotsPerBar
 	pos := slot % authoredSlotsPerBar
 	switch {
-	case phraseLabel == "answer" && pos <= 2:
+	case phraseMode == "answer" && pos <= 2:
 		return shiftMelodyToken(token, 2, false)
-	case phraseLabel == "sequence" && pos == 4:
+	case phraseMode == "climb" && pos == 4:
 		return shiftMelodyToken(token, 1, false)
-	case phraseLabel == "cadence" && pos >= 6:
+	case phraseMode == "cadence" && pos >= 6:
 		return shiftMelodyToken(token, -2, false)
-	case phraseLabel == "release" && phraseIdx > 0 && pos >= 4:
+	case phraseMode == "tail" && phraseIdx > 0 && pos >= 4:
 		return shiftMelodyToken(token, -1, false)
+	case phraseMode == "echo" && pos >= 4:
+		return shiftMelodyToken(token, -3, false)
 	case ctx.has("sequence-up", "answer-lift") && bar%2 == 1 && pos <= 2:
 		return shiftMelodyToken(token, 2, false)
 	case ctx.has("open-register", "lift-register") && pos == 4:
@@ -1754,22 +1894,22 @@ func chordForSlot(bars []authoredHarmonyBar, slot int) authoredChord {
 	return bars[bar].chords[len(bars[bar].chords)-1]
 }
 
-func chordVoicing(ctx authoredSectionContext, name string, role Role, chord authoredChord, phraseLabel string, phraseIdx int) []int {
+func chordVoicing(ctx authoredSectionContext, name string, role Role, chord authoredChord, phraseMode string, phraseIdx int) []int {
 	lowerName := strings.ToLower(name)
 	family := strings.ToLower(role.Family)
 	switch authoredRoleKind(name, role) {
 	case "pad":
 		switch family {
 		case "pad", "choir":
-			if ctx.has("thin", "subtract", "breakdown") || phraseLabel == "release" {
+			if ctx.has("thin", "subtract", "breakdown") || phraseMode == "hold" {
 				return []int{0, chordDegreeInterval(chord, 5), chordDegreeInterval(chord, 9)}
 			}
-			if phraseLabel == "answer" {
+			if phraseMode == "answer" || phraseMode == "echo" {
 				return []int{0, chordDegreeInterval(chord, 7), chordDegreeInterval(chord, 11)}
 			}
 			return []int{0, chordDegreeInterval(chord, 5), chordDegreeInterval(chord, 9), chordDegreeInterval(chord, 11)}
 		case "strings":
-			if phraseLabel == "cadence" {
+			if phraseMode == "close" {
 				return []int{0, chordDegreeInterval(chord, 5), chordDegreeInterval(chord, 9)}
 			}
 			return []int{0, chordDegreeInterval(chord, 3), chordDegreeInterval(chord, 5), chordDegreeInterval(chord, 9)}
@@ -1784,21 +1924,21 @@ func chordVoicing(ctx authoredSectionContext, name string, role Role, chord auth
 			if family == "mallet" || strings.Contains(strings.ToLower(role.Prominence), "air") {
 				return []int{chordDegreeInterval(chord, 7), chordDegreeInterval(chord, 9)}
 			}
-			if ctx.has("thin", "hush", "breakdown") || phraseLabel == "release" {
+			if ctx.has("thin", "hush", "breakdown") || phraseMode == "hold" {
 				return []int{chordDegreeInterval(chord, 3), chordDegreeInterval(chord, 7)}
 			}
-			if phraseLabel == "answer" {
+			if phraseMode == "answer" {
 				return []int{chordDegreeInterval(chord, 7), chordDegreeInterval(chord, 9), chordDegreeInterval(chord, 13)}
 			}
-			if phraseLabel == "cadence" || phraseIdx%2 == 1 {
+			if phraseMode == "stab" || phraseIdx%2 == 1 {
 				return []int{chordDegreeInterval(chord, 3), chordDegreeInterval(chord, 7), chordDegreeInterval(chord, 13)}
 			}
 			return []int{chordDegreeInterval(chord, 3), chordDegreeInterval(chord, 7), chordDegreeInterval(chord, 9), chordDegreeInterval(chord, 13)}
 		case "vibes", "vibraphone", "mallet":
-			if ctx.has("thin", "air", "breakdown") || phraseLabel == "release" {
+			if ctx.has("thin", "air", "breakdown") || phraseMode == "hold" {
 				return []int{chordDegreeInterval(chord, 9)}
 			}
-			if phraseLabel == "answer" {
+			if phraseMode == "answer" || phraseMode == "echo" {
 				return []int{chordDegreeInterval(chord, 7), chordDegreeInterval(chord, 9)}
 			}
 			return []int{chordDegreeInterval(chord, 3), chordDegreeInterval(chord, 7), chordDegreeInterval(chord, 9)}

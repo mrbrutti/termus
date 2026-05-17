@@ -377,6 +377,103 @@ func TestCompileBassLineHonorsSlashBass(t *testing.T) {
 	}
 }
 
+func TestRolePhraseModeOwnership(t *testing.T) {
+	ctx := authoredSectionContext{
+		style:   "lofi",
+		profile: gen.DefaultControlProfile(),
+	}
+	statement := gen.AuthoredPhraseSpan{StartBar: 1, EndBar: 4, Label: "statement"}
+	answer := gen.AuthoredPhraseSpan{StartBar: 5, EndBar: 8, Label: "answer"}
+	release := gen.AuthoredPhraseSpan{StartBar: 9, EndBar: 12, Label: "release"}
+	cadence := gen.AuthoredPhraseSpan{StartBar: 13, EndBar: 16, Label: "cadence"}
+
+	if got := rolePhraseMode(ctx, "melody", "lead", Role{Family: "reed_lead", Prominence: "lead"}, statement, 0); got != "foreground" {
+		t.Fatalf("melody statement mode = %q", got)
+	}
+	if got := rolePhraseMode(ctx, "melody", "lead", Role{Family: "reed_lead", Prominence: "lead"}, release, 1); got != "tail" {
+		t.Fatalf("melody release mode = %q", got)
+	}
+	if got := rolePhraseMode(ctx, "bass", "bass", Role{Family: "bass", Prominence: "anchor"}, cadence, 2); got != "cadence" {
+		t.Fatalf("bass cadence mode = %q", got)
+	}
+	if got := rolePhraseMode(ctx, "comp", "keys", Role{Family: "electric_piano", Prominence: "support"}, answer, 1); got != "answer" {
+		t.Fatalf("comp answer mode = %q", got)
+	}
+	if got := rolePhraseMode(ctx, "pad", "texture", Role{Family: "bells", Prominence: "air"}, answer, 1); got != "echo" {
+		t.Fatalf("texture answer mode = %q", got)
+	}
+	if got := rolePhraseMode(ctx, "drum", "snare", Role{Family: "drums", Prominence: "support"}, cadence, 2); got != "fill" {
+		t.Fatalf("snare cadence mode = %q", got)
+	}
+}
+
+func TestCompileAppliesPhraseOwnership(t *testing.T) {
+	const src = `
+title: Phrase Ownership
+style: lofi
+seed: 55
+roles:
+  keys:
+    family: electric_piano
+    pattern: "x..x .x.."
+  bass:
+    family: bass
+    pattern: "x.x.x.x. | x.x.x.x."
+  lead:
+    family: reed_lead
+    motif: "5 . 6 7 | 3 . 2 1"
+sections:
+  - id: loop
+    duration: 24s
+    harmony: "Dm9 G13 | Cmaj9 A7 | Bbmaj9 A7 | Dm9 G13"
+    scene: "room steady"
+    variation: "statement"
+`
+	file, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	compiled, err := Compile(file, 55, gen.ListeningModeEndless)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	var plan gen.AuthoredTrackPlan
+	for _, got := range compiled.Plans {
+		plan = got
+	}
+	if len(plan.PhraseSpans) != 2 {
+		t.Fatalf("expected 2 phrase spans, got %d", len(plan.PhraseSpans))
+	}
+	countNotes := func(trackName string, start, end int) int {
+		for _, track := range plan.Tracks {
+			if track.Name != trackName && !strings.HasPrefix(track.Name, trackName+"-") {
+				continue
+			}
+			count := 0
+			for i := start; i < end && i < len(track.Notes); i++ {
+				if track.Notes[i] >= 0 {
+					count++
+				}
+			}
+			return count
+		}
+		return 0
+	}
+	statementEnd := plan.PhraseSpans[0].EndBar * authoredSlotsPerBar
+	releaseStart := (plan.PhraseSpans[1].StartBar - 1) * authoredSlotsPerBar
+	releaseEnd := plan.PhraseSpans[1].EndBar * authoredSlotsPerBar
+	leadStatement := countNotes("lead", 0, statementEnd)
+	leadRelease := countNotes("lead", releaseStart, releaseEnd)
+	if leadRelease >= leadStatement {
+		t.Fatalf("expected lead release to thin out, got statement=%d release=%d", leadStatement, leadRelease)
+	}
+	keysStatement := countNotes("keys", 0, statementEnd)
+	keysRelease := countNotes("keys", releaseStart, releaseEnd)
+	if keysRelease >= keysStatement {
+		t.Fatalf("expected comp release to thin out, got statement=%d release=%d", keysStatement, keysRelease)
+	}
+}
+
 func TestBundledTracksParseAndCompile(t *testing.T) {
 	paths, err := filepath.Glob(filepath.Join("..", "..", "tracks", "*", "*.tm"))
 	if err != nil {
