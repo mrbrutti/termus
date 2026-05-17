@@ -277,7 +277,7 @@ func main() {
 		if plan := planFor(s, algoSeed); plan != nil {
 			return gen.ResolveSF2SelectionForPlan(s, plan, sfStrategy, *sf2Preset)
 		}
-		return gen.ResolveSF2Selection(s, nil, sfStrategy, *sf2Preset)
+		return gen.ResolveSF2Selection(s, sfStrategy, *sf2Preset)
 	}
 
 	var ir []float64

@@ -148,3 +148,49 @@
 ### Score-Driven Lo-fi
 - [x] Make `.tm` audit fields actually drive the `lofi` generator's harmony, lead contour, comp rhythm, groove density, and role activation instead of only acting as annotations on top of seed/profile changes.
 - [x] Expand the authored lo-fi score library with longer, more contrast-heavy studies so we can audition multiple believable tape-era moods instead of one thin example.
+
+## Mature Authored Engine
+
+### Phase 1: Make Tracks Authoritative
+- [x] Replace the remaining generator-first track path with one unified authored playback engine so `-track` always renders from the score IR instead of falling back to genre-specific composition habits.
+- [ ] Compile each section into explicit role timelines and phrase blocks rather than one continuous slot stream per role, so verse / bridge / breakdown / outro can contain genuinely different written material.
+- [ ] Preserve full chord quality, extensions, slash bass, suspensions, and borrowed colors in the IR instead of flattening harmony into coarse major/minor/dominant buckets.
+- [ ] Add section-local phrase ownership for bass, comp, lead, texture, and drums so a track can write different material per section instead of reusing one motif family all song.
+- [ ] Support section inheritance and transforms in `.tm` (`derive`, `sequence`, `invert`, `thin`, `lift-register`, `cadence rewrite`) so authors can write A / A' / B relationships without duplicating raw material.
+
+### Phase 2: Expand The `.tm` Language
+- [ ] Add a first-class arrangement block to `.tm` with explicit scene events such as fills, stop-time bars, pedal holds, swells, doubles, breaks, tags, pickups, and endings.
+- [ ] Add phrase-block syntax to `.tm` for section-local melody, comp, bass, and drum writing instead of only global role motifs and patterns.
+- [ ] Add orchestration directives to `.tm` so roles can change instrument family, register, articulation, or prominence by section without redefining the whole track.
+- [ ] Add track-level variation budgets and anti-repetition constraints to `.tm` so authors can say how much mutation is allowed per section, phrase, or return.
+- [ ] Add linter rules for `.tm` that flag weak contrast, over-dense writing, missing cadence shape, too many simultaneous bright attacks, and sections that are too similar.
+
+### Phase 3: Soundfont And Instrument Intelligence
+- [ ] Evolve `sf2_inventory.json` from a rough bank catalog into a role-aware program inventory with family, articulation, tone, realism, and blend tags for actual instrument selection.
+- [ ] Move `pro` and `max` selection onto an orchestration resolver that picks bank + program by role intent, style pack, register, and ensemble cohesion instead of mostly static mappings.
+- [ ] Support section-local instrument substitutions and doubles so one track can move from piano trio to organ combo, or from celesta lead to choir/pad answer, without changing styles entirely.
+- [ ] Add cohesion scoring to prevent `max` from sounding like unrelated banks piled together, especially for soft/wet genres like `bells`, `ambient`, and `lullaby`.
+
+### Phase 4: Performance Realism
+- [ ] Replace generic slot repetition with phrase-aware performer logic for drummer, bassist, comp, and lead roles so timing, accent, and articulation respond to phrase purpose.
+- [ ] Add richer section-local dynamics: crescendos, decrescendos, breath points, held endings, phrase peaks, and drop-to-silence moments that feel performed rather than enumerated.
+- [ ] Build deeper drum vocabularies per style with bar-start pickups, turnaround bars, fills, ghost-note patterns, ride/hat switching, stop choruses, and ending cadences.
+- [ ] Build deeper bass vocabularies per style with pedal notes, walks, anticipations, chromatic approaches, descents, and sparse anchor modes instead of one generalized line behavior.
+- [ ] Build deeper comp vocabularies per style with real voicing families, rhythmic cells, sectional stabs, held pads, and answer figures instead of one generalized support stream.
+
+### Phase 5: Style Packs And Genre Identity
+- [ ] Define explicit style packs that interpret the same `.tm` language differently for `lofi`, `jazz`, `ambient`, `bells`, `classical`, `drone`, `phase`, and `lullaby`.
+- [ ] Give each style pack multiple substyles so tracks within a genre can diverge meaningfully, for example multiple lofi bands, multiple jazz ensembles, and multiple bell/ambient schools.
+- [ ] Add genre-specific phrase and arrangement libraries drawn from real musical practice: heads, shout choruses, turnarounds, suspended bridges, tape-beat breakdowns, nocturne cadences, and devotional bell scenes.
+- [ ] Curate at least 10 clearly differentiated authored tracks per genre once the unified engine is in place, and reject or rewrite tracks that still collapse into one house sound.
+
+### Phase 6: Evaluation And Curation
+- [ ] Add renderer-side metrics for repetition fatigue, section contrast, cadence spacing, lead occupancy, register spread, harmonic color retention, and ensemble diversity.
+- [ ] Add bundled listening corpora and A/B snapshots per genre so we can hear whether engine changes make tracks more song-like or more synthetic.
+- [ ] Add a track-review workflow that renders one canonical example per authored track and surfaces the arrangement map for faster curation.
+- [ ] Add a strict authored-track test gate so new `tracks/<genre>/*.tm` files must compile, include arrangement moments, show section contrast, and meet minimum diversity thresholds.
+
+### Phase 7: Product Fit
+- [ ] Make the track browser show compact but useful authored metadata such as section count, ensemble, substyle glyphs, and arrangement complexity without wasting vertical space.
+- [ ] Add a track-structure inspector in the control center so we can see section order, events, harmony, and active ensemble while a score is playing.
+- [ ] Make default startup favor the authored track library once the unified engine is mature enough that curated tracks consistently outperform raw procedural playback.

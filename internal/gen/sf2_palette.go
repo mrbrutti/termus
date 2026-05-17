@@ -29,7 +29,7 @@ func MaxSF2PresetsForSpec(spec AlgoSpec) []string {
 	if !spec.RequiresSF2 {
 		return nil
 	}
-	selection := ResolveSF2Selection(spec, nil, "max", spec.PreferredSF2)
+	selection := ResolveSF2Selection(spec, "max", spec.PreferredSF2)
 	return append([]string(nil), selection.Presets...)
 }
 
@@ -37,15 +37,15 @@ func ProSF2PresetForSpec(spec AlgoSpec, fallback string) string {
 	if !spec.RequiresSF2 {
 		return ""
 	}
-	selection := ResolveSF2Selection(spec, nil, "pro", fallback)
+	selection := ResolveSF2Selection(spec, "pro", fallback)
 	if selection.Primary != "" {
 		return selection.Primary
 	}
 	return fallback
 }
 
-func MaxSF2RoutesForSpec(spec AlgoSpec, blueprint *TrackBlueprint, fallback string) map[int32]string {
-	selection := ResolveSF2Selection(spec, blueprint, "max", fallback)
+func MaxSF2RoutesForSpec(spec AlgoSpec, fallback string) map[int32]string {
+	selection := ResolveSF2Selection(spec, "max", fallback)
 	out := make(map[int32]string, len(selection.Routes))
 	for channel, preset := range selection.Routes {
 		out[channel] = preset

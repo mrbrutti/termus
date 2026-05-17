@@ -46,7 +46,7 @@ func loadSF2Inventory() map[string]sf2PresetProfile {
 	return out
 }
 
-func ResolveSF2Selection(spec AlgoSpec, blueprint *TrackBlueprint, strategy, fallback string) SF2Selection {
+func ResolveSF2Selection(spec AlgoSpec, strategy, fallback string) SF2Selection {
 	if !spec.RequiresSF2 {
 		return SF2Selection{}
 	}
@@ -56,7 +56,7 @@ func ResolveSF2Selection(spec AlgoSpec, blueprint *TrackBlueprint, strategy, fal
 			Presets: dedupePresets([]string{fallback}),
 		}
 	}
-	intents := roleIntentsForSpec(spec, blueprint)
+	intents := roleIntentsForSpec(spec)
 	if len(intents) == 0 {
 		return SF2Selection{Primary: fallback, Presets: dedupePresets([]string{fallback})}
 	}
@@ -87,7 +87,7 @@ func ResolveSF2SelectionForPlan(spec AlgoSpec, plan *AuthoredTrackPlan, strategy
 		return SF2Selection{}
 	}
 	if plan == nil {
-		return ResolveSF2Selection(spec, nil, strategy, fallback)
+		return ResolveSF2Selection(spec, strategy, fallback)
 	}
 	if strategy == "single" {
 		return SF2Selection{
@@ -97,7 +97,7 @@ func ResolveSF2SelectionForPlan(spec AlgoSpec, plan *AuthoredTrackPlan, strategy
 	}
 	intents := intentsFromPlan(plan)
 	if len(intents) == 0 {
-		return ResolveSF2Selection(spec, nil, strategy, fallback)
+		return ResolveSF2Selection(spec, strategy, fallback)
 	}
 	primary := resolvePrimaryPreset(spec, intents, fallback)
 	if strategy == "pro" {
@@ -202,18 +202,8 @@ func presetScore(style string, preset sf2PresetProfile, intents []SF2RoleIntent,
 	return score
 }
 
-func roleIntentsForSpec(spec AlgoSpec, blueprint *TrackBlueprint) []SF2RoleIntent {
-	if blueprint != nil && len(blueprint.Roles) > 0 {
-		if intents := intentsFromBlueprint(spec.Name, blueprint.Roles); len(intents) > 0 {
-			return intents
-		}
-	}
-	base := defaultRolePlan(spec.Name)
-	if blueprint == nil {
-		return base
-	}
-	overrideRolePlan(spec.Name, base, blueprint.Roles)
-	return base
+func roleIntentsForSpec(spec AlgoSpec) []SF2RoleIntent {
+	return defaultRolePlan(spec.Name)
 }
 
 func intentsFromPlan(plan *AuthoredTrackPlan) []SF2RoleIntent {
@@ -253,55 +243,6 @@ func intentsFromPlan(plan *AuthoredTrackPlan) []SF2RoleIntent {
 			}
 			if intents[idx].Register == "" {
 				intents[idx].Register = intent.Register
-			}
-			continue
-		}
-		seen[intent.Channel] = len(intents)
-		intents = append(intents, intent)
-	}
-	return intents
-}
-
-func intentsFromBlueprint(style string, roles map[string]RoleBlueprint) []SF2RoleIntent {
-	if len(roles) == 0 {
-		return nil
-	}
-	names := make([]string, 0, len(roles))
-	for name := range roles {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	seen := map[int32]int{}
-	intents := make([]SF2RoleIntent, 0, len(names))
-	for _, name := range names {
-		role := roles[name]
-		if !role.Active {
-			continue
-		}
-		family := strings.TrimSpace(role.Family)
-		if family == "" {
-			family = inferFamilyFromRole(name)
-		}
-		intent := SF2RoleIntent{
-			Channel:      roleIntentChannel(style, name, family),
-			Role:         name,
-			Family:       family,
-			Tone:         append([]string(nil), role.Tone...),
-			Articulation: role.Articulation,
-			Register:     role.Register,
-			Prominence:   role.Prominence,
-			Active:       true,
-		}
-		if strings.TrimSpace(intent.Prominence) == "" {
-			intent.Prominence = inferredProminence(name, family)
-		}
-		if idx, ok := seen[intent.Channel]; ok {
-			if intent.Family != "" && intents[idx].Family == "" {
-				intents[idx].Family = intent.Family
-			}
-			intents[idx].Tone = dedupeFold(append(intents[idx].Tone, intent.Tone...))
-			if intents[idx].Prominence == "" {
-				intents[idx].Prominence = intent.Prominence
 			}
 			continue
 		}
@@ -617,62 +558,6 @@ func defaultRolePlan(style string) []SF2RoleIntent {
 	default:
 		return nil
 	}
-}
-
-func overrideRolePlan(style string, intents []SF2RoleIntent, roles map[string]RoleBlueprint) {
-	for i := range intents {
-		if role, ok := findRoleBlueprint(roles, intents[i].Role); ok {
-			applyRoleOverride(&intents[i], role)
-			continue
-		}
-		switch style {
-		case "lofi":
-			switch intents[i].Role {
-			case "keys":
-				if role, ok := findRoleBlueprint(roles, "comp"); ok {
-					applyRoleOverride(&intents[i], role)
-				}
-			case "texture":
-				if role, ok := findRoleBlueprint(roles, "texture", "vibes"); ok {
-					applyRoleOverride(&intents[i], role)
-				}
-			case "guitar":
-				if role, ok := findRoleBlueprint(roles, "counter"); ok {
-					applyRoleOverride(&intents[i], role)
-				}
-			}
-		}
-	}
-}
-
-func applyRoleOverride(intent *SF2RoleIntent, role RoleBlueprint) {
-	if strings.TrimSpace(role.Family) != "" {
-		intent.Family = role.Family
-	}
-	if len(role.Tone) > 0 {
-		intent.Tone = append([]string(nil), role.Tone...)
-	}
-	if strings.TrimSpace(role.Articulation) != "" {
-		intent.Articulation = role.Articulation
-	}
-	if strings.TrimSpace(role.Register) != "" {
-		intent.Register = role.Register
-	}
-	if strings.TrimSpace(role.Prominence) != "" {
-		intent.Prominence = role.Prominence
-	}
-	intent.Active = role.Active
-}
-
-func findRoleBlueprint(roles map[string]RoleBlueprint, names ...string) (RoleBlueprint, bool) {
-	for _, name := range names {
-		for key, role := range roles {
-			if strings.EqualFold(key, name) {
-				return role, true
-			}
-		}
-	}
-	return RoleBlueprint{}, false
 }
 
 func dedupePresets(names []string) []string {

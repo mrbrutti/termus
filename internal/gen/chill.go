@@ -74,7 +74,6 @@ type Chill struct {
 	progressionHistory recentPatternMemory
 	motifHistory       recentPatternMemory
 	cadenceHistory     recentPatternMemory
-	authored           chillBlueprint
 }
 
 // chillChord is one chord in the loop, expressed as semitone offsets from
@@ -448,18 +447,11 @@ func (a *Chill) chooseMotifBundle() chillMotifBundle {
 func (a *Chill) rebuildEpisodeMaterials() {
 	targetBars := len(a.progression)
 	if targetBars <= 0 {
-		targetBars = maxInt(8, len(a.authored.progression))
+		targetBars = 8
 	}
-	if len(a.authored.progression) > 0 {
-		a.progression = repeatChillProgression(a.authored.progression, targetBars)
-	} else {
-		a.progression = a.makeEpisodeProgression(targetBars)
-	}
+	a.progression = a.makeEpisodeProgression(targetBars)
 	numBars := len(a.progression)
-	bundle, ok := a.authoredMotifBundle(numBars)
-	if !ok {
-		bundle = a.chooseMotifBundle()
-	}
+	bundle := a.chooseMotifBundle()
 	bundle = a.applyDensityToMotifBundle(bundle)
 	a.vibeMotifs = bundle.vibe
 	a.guitarMotifs = bundle.guitar
@@ -491,9 +483,6 @@ func (a *Chill) wrapSwing(base func(int) float64) func(int) float64 {
 func (a *Chill) Seed(seedVal int64) {
 	a.rng = rand.New(rand.NewSource(seedVal)) //nolint:gosec
 	a.rootMidi = 48 + a.rng.Intn(7)           // C3..F#3
-	if a.authored.hasTonic {
-		a.rootMidi = 48 + a.authored.tonicPC
-	}
 	a.keyOffset = 0
 	a.samplesElapsed = 0
 	// Section state. Start in "intro" — sax off, guitar on (just chords +
@@ -1383,17 +1372,6 @@ func (a *Chill) applyArrangement() {
 	if a.vibeOn != nil {
 		*a.vibeOn = a.section.TextureLevel > 0 && profile.Density > 0
 	}
-	if len(a.authored.roles) > 0 {
-		if a.saxOn != nil {
-			*a.saxOn = *a.saxOn && a.authored.roles["lead"]
-		}
-		if a.guitarOn != nil {
-			*a.guitarOn = *a.guitarOn && a.authored.roles["comp"]
-		}
-		if a.vibeOn != nil {
-			*a.vibeOn = *a.vibeOn && (a.authored.roles["texture"] || a.authored.roles["comp"])
-		}
-	}
 	if a.core == nil {
 		return
 	}
@@ -1454,9 +1432,6 @@ func (a *Chill) ghostSnareNoteAt(slot int) int {
 	if a.section.Kind == FormCadence {
 		return drumSnare
 	}
-	if a.authored.drums.ghosty && bar%2 == 0 {
-		return drumSnare
-	}
 	if bar%4 == 1 || (bar+1)%4 == 0 || bar == len(a.progression)-1 {
 		return drumSnare
 	}
@@ -1477,9 +1452,6 @@ func (a *Chill) crashNoteAt(slot int) int {
 func (a *Chill) openHatNoteAt(slot int) int {
 	bar := slot % maxInt(1, len(a.progression))
 	if a.section.Kind == FormCadence {
-		return drumHiHatOpen
-	}
-	if a.authored.drums.openHat && bar%2 == 1 {
 		return drumHiHatOpen
 	}
 	if (bar+1)%4 == 0 || bar%4 == 1 {
@@ -1503,9 +1475,6 @@ func (a *Chill) kickNoteAt(slot int) int {
 	if a.section.Kind == FormB && bar%2 == 0 {
 		return drumKick
 	}
-	if a.authored.drums.kickBusy && beat == 1 && (bar%2 == 0 || a.section.Kind == FormB) {
-		return drumKick
-	}
 	if bar%4 == 0 {
 		return drumKick
 	}
@@ -1518,11 +1487,6 @@ func (a *Chill) snareFillNoteAt(slot int) int {
 	}
 	bar := (slot / 4) % len(a.progression)
 	step := slot % 4
-	if a.authored.drums.fillHeavy && (bar+1)%2 == 0 {
-		if step >= 2 {
-			return drumSnare
-		}
-	}
 	if a.section.Kind != FormCadence && (bar+1)%4 != 0 {
 		return -1
 	}
@@ -1539,31 +1503,14 @@ func (a *Chill) snareFillNoteAt(slot int) int {
 }
 
 func (a *Chill) hihatFireProbability() float64 {
-	switch a.authored.drums.hatDensity {
-	case 2:
-		return 0.94
-	case 1:
-		return 0.86
-	default:
-		return 0.78
-	}
+	return 0.78
 }
 
 func (a *Chill) hihatSwingAmount() float64 {
-	switch a.authored.drums.hatDensity {
-	case 2:
-		return 0.07
-	case 1:
-		return 0.06
-	default:
-		return 0.05
-	}
+	return 0.05
 }
 
 func (a *Chill) kickFireProbability() float64 {
-	if a.authored.drums.kickBusy {
-		return 0.99
-	}
 	return 0.95
 }
 
