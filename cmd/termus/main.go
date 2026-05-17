@@ -470,16 +470,31 @@ func main() {
 	}
 	trackNav := make([]tui.TrackNavEntry, 0, len(trackEntries))
 	for _, entry := range trackEntries {
+		structure := make([]tui.TrackNavSection, 0, len(entry.Structure))
+		for _, section := range entry.Structure {
+			structure = append(structure, tui.TrackNavSection{
+				Label:     section.Label,
+				Harmony:   section.Harmony,
+				RoleNames: append([]string(nil), section.RoleNames...),
+				Events:    append([]string(nil), section.Events...),
+			})
+		}
 		trackNav = append(trackNav, tui.TrackNavEntry{
-			ID:          entry.ID,
-			Style:       entry.Style,
-			Title:       entry.Title,
-			Description: entry.Description,
-			Tags:        append([]string(nil), entry.Tags...),
-			Key:         entry.Key,
-			Tempo:       entry.Tempo,
-			ListenMode:  entry.ListenMode,
-			Sections:    append([]string(nil), entry.Sections...),
+			ID:           entry.ID,
+			Style:        entry.Style,
+			Substyle:     entry.Substyle,
+			Title:        entry.Title,
+			Description:  entry.Description,
+			Tags:         append([]string(nil), entry.Tags...),
+			Key:          entry.Key,
+			Tempo:        entry.Tempo,
+			ListenMode:   entry.ListenMode,
+			SectionCount: entry.SectionCount,
+			Sections:     append([]string(nil), entry.Sections...),
+			Ensemble:     append([]string(nil), entry.Ensemble...),
+			EventCount:   entry.EventCount,
+			Complexity:   entry.Complexity,
+			Structure:    structure,
 		})
 	}
 	openTrackBrowser := defaultTrackBrowse

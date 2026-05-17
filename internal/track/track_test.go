@@ -1434,4 +1434,16 @@ func TestDiscoverSurfacesResolvedSubstyle(t *testing.T) {
 	if got, want := found.Substyle, "vibes-cellar"; got != want {
 		t.Fatalf("substyle = %q, want %q", got, want)
 	}
+	if found.SectionCount == 0 || len(found.Structure) == 0 {
+		t.Fatalf("expected discovered structure metadata for %s", found.ID)
+	}
+	if found.EventCount == 0 {
+		t.Fatalf("expected discovered arrangement events for %s", found.ID)
+	}
+	if len(found.Ensemble) == 0 {
+		t.Fatalf("expected discovered ensemble summary for %s", found.ID)
+	}
+	if strings.TrimSpace(found.Complexity) == "" {
+		t.Fatalf("expected discovered complexity summary for %s", found.ID)
+	}
 }

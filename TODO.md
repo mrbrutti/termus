@@ -191,6 +191,6 @@
 - [x] Add a strict authored-track test gate so new `tracks/<genre>/*.tm` files must compile, include arrangement moments, show section contrast, and meet minimum diversity thresholds.
 
 ### Phase 7: Product Fit
-- [ ] Make the track browser show compact but useful authored metadata such as section count, ensemble, substyle glyphs, and arrangement complexity without wasting vertical space.
+- [x] Make the track browser show compact but useful authored metadata such as section count, ensemble, substyle glyphs, and arrangement complexity without wasting vertical space.
 - [ ] Add a track-structure inspector in the control center so we can see section order, events, harmony, and active ensemble while a score is playing.
 - [ ] Make default startup favor the authored track library once the unified engine is mature enough that curated tracks consistently outperform raw procedural playback.

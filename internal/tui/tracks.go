@@ -109,9 +109,10 @@ func renderTrackListPane(m Model, w, h int, theme ColorTheme) string {
 	}
 	lines := []string{
 		lipgloss.NewStyle().Foreground(theme.BarFg).Faint(true).Render("TRACKS"),
+		lipgloss.NewStyle().Foreground(theme.BarFg).Faint(true).Render(strings.ToUpper(m.currentTrackStyle()) + " filter"),
 		"",
 	}
-	maxRows := maxInt(2, (h-2)/3)
+	maxRows := maxInt(2, (h-3)/2)
 	currentPos := 0
 	for i, idx := range indices {
 		if idx == m.trackIdx {
@@ -137,8 +138,9 @@ func renderTrackListPane(m Model, w, h int, theme ColorTheme) string {
 		} else if entry.ID == m.activeTrackID {
 			prefix = "• "
 		}
+		titleGlyphs := trackStyleGlyph(entry.Style) + trackSubstyleGlyph(entry.Substyle)
 		block := lipgloss.JoinVertical(lipgloss.Left,
-			lipgloss.NewStyle().Bold(idx == m.trackIdx).Render(prefix+trackStyleGlyph(entry.Style)+" "+trimToWidth(title, maxInt(8, w-4))),
+			lipgloss.NewStyle().Bold(idx == m.trackIdx).Render(prefix+titleGlyphs+" "+trimToWidth(title, maxInt(8, w-5))),
 			lipgloss.NewStyle().Faint(true).Render(trimToWidth("  "+meta, maxInt(8, w-2))),
 		)
 		if idx == m.trackIdx {
@@ -146,7 +148,7 @@ func renderTrackListPane(m Model, w, h int, theme ColorTheme) string {
 		} else if entry.ID == m.activeTrackID {
 			block = lipgloss.NewStyle().Foreground(theme.BarFg).Render(block)
 		}
-		lines = append(lines, block, "")
+		lines = append(lines, block)
 	}
 	return style.Render(strings.TrimRight(strings.Join(lines, "\n"), "\n"))
 }
@@ -162,11 +164,14 @@ func renderTrackDetailPane(m Model, w, h int, theme ColorTheme) string {
 		title = entry.ID
 	}
 	lines := []string{
-		lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render(trackStyleGlyph(entry.Style) + " " + title),
+		lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render(trackStyleGlyph(entry.Style) + trackSubstyleGlyph(entry.Substyle) + " " + title),
 	}
 	meta := make([]string, 0, 4)
 	if entry.Style != "" {
 		meta = append(meta, entry.Style)
+	}
+	if entry.Substyle != "" {
+		meta = append(meta, entry.Substyle)
 	}
 	if entry.Key != "" {
 		meta = append(meta, entry.Key)
@@ -180,19 +185,41 @@ func renderTrackDetailPane(m Model, w, h int, theme ColorTheme) string {
 	if len(meta) > 0 {
 		lines = append(lines, lipgloss.NewStyle().Foreground(theme.BarFg).Faint(true).Render(strings.Join(meta, " · ")))
 	}
-	lines = append(lines, "", lipgloss.NewStyle().Faint(true).Render(trimToWidth(entry.ID, w)))
-	if len(entry.Tags) > 0 {
-		lines = append(lines, "", renderTrackTags(entry.Tags, theme, w))
+	stats := []string{
+		fmt.Sprintf("%02d sections", maxInt(entry.SectionCount, len(entry.Sections))),
+		fmt.Sprintf("%02d moments", entry.EventCount),
+		entry.Complexity,
 	}
-	if len(entry.Sections) > 0 {
-		lines = append(lines, "", lipgloss.NewStyle().Foreground(theme.BarFg).Faint(true).Render("SECTIONS"))
+	lines = append(lines,
+		lipgloss.NewStyle().Foreground(theme.BarFg).Faint(true).Render(strings.Join(stats, " · ")),
+		lipgloss.NewStyle().Faint(true).Render(trimToWidth(entry.ID, w)),
+	)
+	if len(entry.Ensemble) > 0 {
+		lines = append(lines, lipgloss.NewStyle().Foreground(theme.BarFg).Faint(true).Render(trimToWidth("ensemble  "+strings.Join(entry.Ensemble, " · "), w)))
+	}
+	if len(entry.Structure) > 0 {
+		lines = append(lines, "", lipgloss.NewStyle().Foreground(theme.BarFg).Faint(true).Render("FORM"))
 		maxSections := maxInt(3, h-len(lines)-2)
-		for i, section := range entry.Sections {
+		for i, section := range entry.Structure {
 			if i >= maxSections {
 				lines = append(lines, lipgloss.NewStyle().Faint(true).Render("…"))
 				break
 			}
-			lines = append(lines, fmt.Sprintf("%02d  %s", i+1, trimToWidth(section, maxInt(8, w-4))))
+			label := firstNonEmpty(section.Label, fmt.Sprintf("section %d", i+1))
+			harmony := compactHarmony(section.Harmony)
+			sectionMeta := ""
+			if len(section.Events) > 0 {
+				sectionMeta = strings.Join(section.Events, " · ")
+			} else if len(section.RoleNames) > 0 {
+				sectionMeta = strings.Join(section.RoleNames, " · ")
+			}
+			lines = append(lines, fmt.Sprintf("%02d  %s", i+1, trimToWidth(label, maxInt(8, w-4))))
+			if harmony != "" {
+				lines = append(lines, lipgloss.NewStyle().Faint(true).Render(trimToWidth("    "+harmony, maxInt(8, w))))
+			}
+			if sectionMeta != "" {
+				lines = append(lines, lipgloss.NewStyle().Faint(true).Render(trimToWidth("    "+sectionMeta, maxInt(8, w))))
+			}
 		}
 	}
 	if entry.ID == m.activeTrackID {
@@ -202,18 +229,24 @@ func renderTrackDetailPane(m Model, w, h int, theme ColorTheme) string {
 }
 
 func trackCompactMeta(entry TrackNavEntry) string {
-	parts := make([]string, 0, 4)
-	if entry.Style != "" {
-		parts = append(parts, entry.Style)
+	parts := make([]string, 0, 6)
+	if entry.Substyle != "" {
+		parts = append(parts, entry.Substyle)
 	}
-	if entry.Key != "" {
-		parts = append(parts, entry.Key)
+	if count := maxInt(entry.SectionCount, len(entry.Sections)); count > 0 {
+		parts = append(parts, fmt.Sprintf("%02d sec", count))
+	}
+	if entry.EventCount > 0 {
+		parts = append(parts, fmt.Sprintf("%02d evt", entry.EventCount))
+	}
+	if len(entry.Ensemble) > 0 {
+		parts = append(parts, strings.Join(entry.Ensemble[:minInt(3, len(entry.Ensemble))], "/"))
+	}
+	if entry.Complexity != "" {
+		parts = append(parts, entry.Complexity)
 	}
 	if entry.Tempo != "" {
 		parts = append(parts, entry.Tempo+" bpm")
-	}
-	if entry.ListenMode != "" {
-		parts = append(parts, entry.ListenMode)
 	}
 	if len(parts) == 0 {
 		return entry.ID
@@ -242,6 +275,51 @@ func trackStyleGlyph(style string) string {
 	default:
 		return "•"
 	}
+}
+
+func trackSubstyleGlyph(substyle string) string {
+	lower := strings.ToLower(strings.TrimSpace(substyle))
+	switch {
+	case strings.Contains(lower, "rhodes"):
+		return "◒"
+	case strings.Contains(lower, "vibes"):
+		return "✶"
+	case strings.Contains(lower, "guitar"):
+		return "⌁"
+	case strings.Contains(lower, "organ"):
+		return "▤"
+	case strings.Contains(lower, "trio"):
+		return "◇"
+	case strings.Contains(lower, "choir"):
+		return "☾"
+	case strings.Contains(lower, "glass"):
+		return "⋄"
+	case strings.Contains(lower, "station"):
+		return "◌"
+	case strings.Contains(lower, "paper"):
+		return "◠"
+	case strings.Contains(lower, "static"):
+		return "▥"
+	default:
+		return "·"
+	}
+}
+
+func compactHarmony(harmony string) string {
+	harmony = strings.TrimSpace(strings.ReplaceAll(harmony, "\n", " "))
+	if harmony == "" {
+		return ""
+	}
+	return trimToWidth(strings.ReplaceAll(harmony, " | ", " · "), 42)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func renderTrackTags(tags []string, theme ColorTheme, width int) string {

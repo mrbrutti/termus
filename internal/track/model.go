@@ -130,17 +130,29 @@ type Compiled struct {
 }
 
 type Entry struct {
-	ID          string
-	Path        string
-	Style       string
-	Substyle    string
-	Title       string
-	Description string
-	Tags        []string
-	Key         string
-	Tempo       string
-	ListenMode  string
-	Sections    []string
+	ID           string
+	Path         string
+	Style        string
+	Substyle     string
+	Title        string
+	Description  string
+	Tags         []string
+	Key          string
+	Tempo        string
+	ListenMode   string
+	SectionCount int
+	Sections     []string
+	Ensemble     []string
+	EventCount   int
+	Complexity   string
+	Structure    []EntrySection
+}
+
+type EntrySection struct {
+	Label     string
+	Harmony   string
+	RoleNames []string
+	Events    []string
 }
 
 func playlistKey(spec gen.AlgoSpec, seed int64) string {

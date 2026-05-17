@@ -19,15 +19,28 @@ import (
 type BuildAlgoFn func(spec gen.AlgoSpec, seed int64) gen.Algorithm
 
 type TrackNavEntry struct {
-	ID          string
-	Style       string
-	Title       string
-	Description string
-	Tags        []string
-	Key         string
-	Tempo       string
-	ListenMode  string
-	Sections    []string
+	ID           string
+	Style        string
+	Substyle     string
+	Title        string
+	Description  string
+	Tags         []string
+	Key          string
+	Tempo        string
+	ListenMode   string
+	SectionCount int
+	Sections     []string
+	Ensemble     []string
+	EventCount   int
+	Complexity   string
+	Structure    []TrackNavSection
+}
+
+type TrackNavSection struct {
+	Label     string
+	Harmony   string
+	RoleNames []string
+	Events    []string
 }
 
 type TrackLoader func(id string) (*gen.Playlist, string, error)

@@ -79,14 +79,25 @@ func Resolve(entries []Entry, input string) (Entry, bool) {
 			if style == "" {
 				style = filepath.Base(filepath.Dir(input))
 			}
+			pack := resolveStylePack(style, file.Substyle, file.Title, file.Tags)
+			sections, structure, ensemble, eventCount, complexity := buildEntrySummary(file, pack)
 			return Entry{
-				ID:          id,
-				Path:        input,
-				Style:       style,
-				Substyle:    resolveStylePack(style, file.Substyle, file.Title, file.Tags).Substyle,
-				Title:       file.Title,
-				Description: file.Description,
-				Tags:        append([]string(nil), file.Tags...),
+				ID:           id,
+				Path:         input,
+				Style:        style,
+				Substyle:     pack.Substyle,
+				Title:        file.Title,
+				Description:  file.Description,
+				Tags:         append([]string(nil), file.Tags...),
+				Key:          file.Key,
+				Tempo:        file.Tempo,
+				ListenMode:   file.ListenMode,
+				SectionCount: len(sections),
+				Sections:     sections,
+				Ensemble:     ensemble,
+				EventCount:   eventCount,
+				Complexity:   complexity,
+				Structure:    structure,
 			}, true
 		}
 	}
@@ -115,19 +126,62 @@ func loadEntry(root, path string) (Entry, error) {
 		style = filepath.Dir(rel)
 	}
 	pack := resolveStylePack(style, file.Substyle, file.Title, file.Tags)
+	sections, structure, ensemble, eventCount, complexity := buildEntrySummary(file, pack)
 	return Entry{
-		ID:          rel,
-		Path:        path,
-		Style:       style,
-		Substyle:    pack.Substyle,
-		Title:       file.Title,
-		Description: file.Description,
-		Tags:        append([]string(nil), file.Tags...),
-		Key:         file.Key,
-		Tempo:       file.Tempo,
-		ListenMode:  file.ListenMode,
-		Sections:    sectionTitles(file.Sections),
+		ID:           rel,
+		Path:         path,
+		Style:        style,
+		Substyle:     pack.Substyle,
+		Title:        file.Title,
+		Description:  file.Description,
+		Tags:         append([]string(nil), file.Tags...),
+		Key:          file.Key,
+		Tempo:        file.Tempo,
+		ListenMode:   file.ListenMode,
+		SectionCount: len(sections),
+		Sections:     sections,
+		Ensemble:     ensemble,
+		EventCount:   eventCount,
+		Complexity:   complexity,
+		Structure:    structure,
 	}, nil
+}
+
+func buildEntrySummary(file *File, pack stylePack) ([]string, []EntrySection, []string, int, string) {
+	sections, err := resolveSections(file)
+	if err != nil {
+		sections = append([]Section(nil), file.Sections...)
+	}
+	titles := make([]string, 0, len(sections))
+	structure := make([]EntrySection, 0, len(sections))
+	ensembleSeen := map[string]bool{}
+	ensemble := make([]string, 0, 8)
+	totalEvents := 0
+	for _, section := range sections {
+		roles := resolvedSectionRoles(file, section)
+		section, roles = applyStyleLibrary(pack, section, roles)
+		label := firstNonBlank(section.Title, section.ID)
+		if strings.TrimSpace(label) != "" {
+			titles = append(titles, label)
+		}
+		roleNames := entryRoleLabels(roles)
+		for _, roleName := range roleNames {
+			if ensembleSeen[roleName] {
+				continue
+			}
+			ensembleSeen[roleName] = true
+			ensemble = append(ensemble, roleName)
+		}
+		events := reviewEventLabels(sectionEvents(section))
+		totalEvents += len(events)
+		structure = append(structure, EntrySection{
+			Label:     label,
+			Harmony:   section.Harmony,
+			RoleNames: roleNames,
+			Events:    append([]string(nil), events...),
+		})
+	}
+	return titles, structure, ensemble, totalEvents, entryComplexity(len(structure), totalEvents, len(ensemble))
 }
 
 func sectionTitles(sections []Section) []string {
@@ -143,6 +197,82 @@ func sectionTitles(sections []Section) []string {
 		out = append(out, label)
 	}
 	return out
+}
+
+func entryRoleLabels(roles map[string]Role) []string {
+	names := sortedActiveRoleNames(roles)
+	seen := map[string]bool{}
+	out := make([]string, 0, len(names))
+	for _, name := range names {
+		label := compactRoleLabel(name, roles[name])
+		if label == "" || seen[label] {
+			continue
+		}
+		seen[label] = true
+		out = append(out, label)
+	}
+	return out
+}
+
+func compactRoleLabel(name string, role Role) string {
+	family := strings.ToLower(strings.TrimSpace(role.Family))
+	switch {
+	case family == "electric_piano":
+		return "ep"
+	case family == "acoustic_piano" || strings.Contains(family, "piano"):
+		return "pno"
+	case family == "guitar" || strings.Contains(family, "guitar"):
+		return "gtr"
+	case family == "organ":
+		return "org"
+	case family == "bass" || family == "synth_bass" || strings.Contains(family, "bass"):
+		return "bass"
+	case family == "drums":
+		return "drums"
+	case family == "choir":
+		return "choir"
+	case family == "strings" || family == "string_ensemble":
+		return "strings"
+	case family == "pad" || strings.Contains(family, "pad"):
+		return "pad"
+	case family == "bells" || family == "glock" || family == "celesta":
+		return "bells"
+	case family == "harp":
+		return "harp"
+	case family == "mallet" || family == "vibraphone":
+		return "mallet"
+	case family == "flute" || family == "clarinet" || family == "reed_lead" || family == "sax":
+		return "reed"
+	case family == "trumpet" || family == "brass":
+		return "brass"
+	}
+	switch authoredRoleKind(name, role) {
+	case "drum":
+		return "drums"
+	case "bass":
+		return "bass"
+	case "pad":
+		return "pad"
+	case "melody":
+		return "lead"
+	default:
+		if family != "" {
+			return family
+		}
+		return strings.ToLower(strings.TrimSpace(name))
+	}
+}
+
+func entryComplexity(sectionCount, eventCount, ensembleCount int) string {
+	score := sectionCount*2 + eventCount + ensembleCount
+	switch {
+	case score >= 18:
+		return "through"
+	case score >= 11:
+		return "arranged"
+	default:
+		return "lean"
+	}
 }
 
 func dedupePaths(paths []string) []string {
