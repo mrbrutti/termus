@@ -1304,8 +1304,8 @@ func TestBundledTracksParseAndCompile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Glob: %v", err)
 	}
-	if len(paths) < 10 {
-		t.Fatalf("expected at least 10 bundled tracks, got %d", len(paths))
+	if len(paths) < 80 {
+		t.Fatalf("expected at least 80 bundled tracks, got %d", len(paths))
 	}
 	for _, path := range paths {
 		data, err := os.ReadFile(path)
@@ -1316,15 +1316,36 @@ func TestBundledTracksParseAndCompile(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Parse %s: %v", path, err)
 		}
-		if _, err := Compile(file, 7, gen.ListeningModeEndless); err != nil {
+		compiled, err := Compile(file, 7, gen.ListeningModeEndless)
+		if err != nil {
 			t.Fatalf("Compile %s: %v", path, err)
 		}
-		eventCount := 0
-		for _, section := range file.Sections {
-			eventCount += len(section.Events)
+		if len(compiled.Plans) == 0 {
+			t.Fatalf("expected compiled plans in %s", path)
 		}
-		if eventCount == 0 {
-			t.Fatalf("expected curated arrangement events in %s", path)
+		for key, plan := range compiled.Plans {
+			if len(plan.PhraseSpans) == 0 {
+				t.Fatalf("expected phrase spans in %s plan %s", path, key)
+			}
+			if len(plan.Tracks) == 0 {
+				t.Fatalf("expected rendered tracks in %s plan %s", path, key)
+			}
+		}
+	}
+}
+
+func TestBundledTrackLibraryHasTenPerGenre(t *testing.T) {
+	entries, err := Discover(filepath.Join("..", "..", "tracks"))
+	if err != nil {
+		t.Fatalf("Discover: %v", err)
+	}
+	counts := map[string]int{}
+	for _, entry := range entries {
+		counts[entry.Style]++
+	}
+	for _, style := range []string{"ambient", "bells", "classical", "drone", "jazz", "lofi", "lullaby", "phase"} {
+		if got := counts[style]; got < 10 {
+			t.Fatalf("expected at least 10 %s tracks, got %d", style, got)
 		}
 	}
 }

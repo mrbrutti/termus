@@ -182,7 +182,7 @@
 - [x] Define explicit style packs that interpret the same `.tm` language differently for `lofi`, `jazz`, `ambient`, `bells`, `classical`, `drone`, `phase`, and `lullaby`.
 - [x] Give each style pack multiple substyles so tracks within a genre can diverge meaningfully, for example multiple lofi bands, multiple jazz ensembles, and multiple bell/ambient schools.
 - [x] Add genre-specific phrase and arrangement libraries drawn from real musical practice: heads, shout choruses, turnarounds, suspended bridges, tape-beat breakdowns, nocturne cadences, and devotional bell scenes.
-- [ ] Curate at least 10 clearly differentiated authored tracks per genre once the unified engine is in place, and reject or rewrite tracks that still collapse into one house sound.
+- [x] Curate at least 10 clearly differentiated authored tracks per genre once the unified engine is in place, and reject or rewrite tracks that still collapse into one house sound.
 
 ### Phase 6: Evaluation And Curation
 - [ ] Add renderer-side metrics for repetition fatigue, section contrast, cadence spacing, lead occupancy, register spread, harmonic color retention, and ensemble diversity.
