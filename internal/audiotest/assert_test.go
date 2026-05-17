@@ -19,3 +19,17 @@ func TestAssertRMSDBFails(t *testing.T) {
 		t.Fatal("expected AssertRMSDB to fail when actual RMS is far from target")
 	}
 }
+
+func TestAssertPeakDBPasses(t *testing.T) {
+	s := Sine(440, 0.5, 44100, 44100) // peak 0.5 → -6.02 dB
+	AssertPeakDB(t, s, -6.02, 0.1)
+}
+
+func TestAssertPeakDBFails(t *testing.T) {
+	s := Sine(440, 0.5, 44100, 44100)
+	stub := &testing.T{}
+	AssertPeakDB(stub, s, 0.0, 0.1)
+	if !stub.Failed() {
+		t.Fatal("expected AssertPeakDB to fail when peak is far from target")
+	}
+}

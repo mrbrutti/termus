@@ -18,3 +18,13 @@ func AssertRMSDB(t testing.TB, buf []float64, wantDB, tolDB float64) {
 		t.Errorf("RMS = %.2f dB, want %.2f ± %.2f dB", got, wantDB, tolDB)
 	}
 }
+
+// AssertPeakDB fails the test if the peak amplitude of buf (in dBFS) differs
+// from wantDB by more than tolDB.
+func AssertPeakDB(t testing.TB, buf []float64, wantDB, tolDB float64) {
+	t.Helper()
+	got := ToDB(Peak(buf))
+	if math.Abs(got-wantDB) > tolDB {
+		t.Errorf("Peak = %.2f dBFS, want %.2f ± %.2f dB", got, wantDB, tolDB)
+	}
+}
