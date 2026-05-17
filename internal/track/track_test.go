@@ -1350,6 +1350,50 @@ func TestBundledTrackLibraryHasTenPerGenre(t *testing.T) {
 	}
 }
 
+func TestBundledTracksMeetReviewGate(t *testing.T) {
+	paths, err := filepath.Glob(filepath.Join("..", "..", "tracks", "*", "*.tm"))
+	if err != nil {
+		t.Fatalf("Glob: %v", err)
+	}
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("ReadFile %s: %v", path, err)
+		}
+		file, err := Parse(data)
+		if err != nil {
+			t.Fatalf("Parse %s: %v", path, err)
+		}
+		compiled, err := Compile(file, 7, gen.ListeningModeEndless)
+		if err != nil {
+			t.Fatalf("Compile %s: %v", path, err)
+		}
+		report := Analyze(file, compiled)
+		if strings.TrimSpace(report.Substyle) == "" {
+			t.Fatalf("expected resolved substyle for %s", path)
+		}
+		eventCount := 0
+		for _, section := range report.Sections {
+			eventCount += len(section.Events)
+		}
+		if eventCount == 0 {
+			t.Fatalf("expected arrangement moments in review map for %s", path)
+		}
+		if report.Metrics.SectionContrast < 0.04 {
+			t.Fatalf("section contrast too low for %s: %.3f", path, report.Metrics.SectionContrast)
+		}
+		if report.Metrics.CadenceSpacing < 0.70 {
+			t.Fatalf("cadence spacing too low for %s: %.3f", path, report.Metrics.CadenceSpacing)
+		}
+		if report.Metrics.HarmonicColorRetention < 0.95 {
+			t.Fatalf("harmonic color retention too low for %s: %.3f", path, report.Metrics.HarmonicColorRetention)
+		}
+		if report.Metrics.EnsembleDiversity < 0.25 {
+			t.Fatalf("ensemble diversity too low for %s: %.3f", path, report.Metrics.EnsembleDiversity)
+		}
+	}
+}
+
 func TestResolveAcceptsDirectPath(t *testing.T) {
 	entries, err := Discover(filepath.Join("..", "..", "tracks"))
 	if err != nil {

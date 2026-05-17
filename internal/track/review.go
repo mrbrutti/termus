@@ -47,7 +47,8 @@ func Analyze(file *File, compiled *Compiled) ReviewReport {
 	}
 	report.Title = file.Title
 	report.Style = file.Style
-	report.Substyle = resolveStylePack(file.Style, file.Substyle, file.Title, file.Tags).Substyle
+	pack := resolveStylePack(file.Style, file.Substyle, file.Title, file.Tags)
+	report.Substyle = pack.Substyle
 	report.ListenMode = file.ListenMode
 	if compiled != nil {
 		report.Warnings = append(report.Warnings, compiled.Warnings...)
@@ -67,6 +68,8 @@ func Analyze(file *File, compiled *Compiled) ReviewReport {
 		}
 	}
 	for idx, section := range sections {
+		roles := resolvedSectionRoles(file, section)
+		section, roles = applyStyleLibrary(pack, section, roles)
 		sectionReport := ReviewSection{
 			ID:        section.ID,
 			Title:     firstNonBlank(section.Title, section.ID),
@@ -74,7 +77,7 @@ func Analyze(file *File, compiled *Compiled) ReviewReport {
 			Harmony:   section.Harmony,
 			Scene:     section.Scene,
 			Variation: section.Variation,
-			RoleNames: sortedActiveRoleNames(resolvedSectionRoles(file, section)),
+			RoleNames: sortedActiveRoleNames(roles),
 			Events:    reviewEventLabels(sectionEvents(section)),
 		}
 		if idx < len(planList) {
@@ -110,9 +113,7 @@ func combineReviewMetrics(sections []Section, plans []gen.AuthoredTrackPlan, fil
 		diversitySum  float64
 		contrastSum   float64
 		contrastCount int
-		cadenceEndBar int
 	)
-	cadenceBars := cadenceSectionBars(sections)
 	for idx, plan := range plans {
 		weight := maxInt(1, plan.BarCount)
 		totalBars += weight
@@ -140,24 +141,21 @@ func combineReviewMetrics(sections []Section, plans []gen.AuthoredTrackPlan, fil
 	if contrastCount > 0 {
 		out.SectionContrast = roundMetric(contrastSum / float64(contrastCount))
 	}
-	if len(cadenceBars) > 0 && totalBars > 0 {
-		cadenceEndBar = cadenceBars[len(cadenceBars)-1]
-		out.CadenceSpacing = roundMetric(float64(cadenceEndBar) / float64(totalBars))
-	}
+	out.CadenceSpacing = roundMetric(cadenceSectionPosition(sections))
 	return out
 }
 
-func cadenceSectionBars(sections []Section) []int {
-	var out []int
-	barCursor := 0
-	for _, section := range sections {
-		bars := maxInt(1, len(strings.Split(strings.TrimSpace(section.Harmony), "|")))
-		barCursor += bars
+func cadenceSectionPosition(sections []Section) float64 {
+	last := -1
+	for i, section := range sections {
 		if sectionLooksCadential(section) {
-			out = append(out, barCursor)
+			last = i
 		}
 	}
-	return out
+	if last < 0 || len(sections) == 0 {
+		return 0
+	}
+	return clampMetric(float64(last+1) / float64(len(sections)))
 }
 
 func sectionLooksCadential(section Section) bool {

@@ -19,6 +19,7 @@ type styleVariant struct {
 type stylePack struct {
 	Name            string
 	Substyle        string
+	DefaultSubstyle string
 	DefaultBPM      float64
 	ShortPhraseBars int
 	LongPhraseBars  int
@@ -32,6 +33,7 @@ type stylePack struct {
 
 var stylePacks = map[string]stylePack{
 	"ambient": stylePackSpec(
+		"station-haze",
 		58, 2, 4, "none", true, false,
 		map[string]string{"pad": "x... ....", "bass": "x... ....", "bells": "x... ...."},
 		map[string]string{"lead": "5 . 3 . | 1 . . ."},
@@ -41,6 +43,7 @@ var stylePacks = map[string]stylePack{
 		},
 	),
 	"bells": stylePackSpec(
+		"vespers-glass",
 		54, 2, 2, "none", true, false,
 		map[string]string{"bells": "x... ....", "celesta": "x... ....", "pad": "x... ...."},
 		map[string]string{"bells": "5 . . 7 | 9 . 7 5", "lead": "5 . . 7 | 9 . 7 5"},
@@ -50,6 +53,7 @@ var stylePacks = map[string]stylePack{
 		},
 	),
 	"classical": stylePackSpec(
+		"nocturne-room",
 		92, 2, 4, "none", false, true,
 		map[string]string{"piano": "x..x .x..", "strings": "x... ...."},
 		map[string]string{"lead": "5 . 3 . | 1 . . ."},
@@ -59,6 +63,7 @@ var stylePacks = map[string]stylePack{
 		},
 	),
 	"drone": stylePackSpec(
+		"soft-static",
 		46, 2, 4, "none", true, false,
 		map[string]string{"bed": "x... ....", "bass": "x... ...."},
 		map[string]string{"lead": "5 . 3 . | 1 . . ."},
@@ -68,6 +73,7 @@ var stylePacks = map[string]stylePack{
 		},
 	),
 	"jazz": stylePackSpec(
+		"trio-after-hours",
 		126, 2, 4, "ride", false, true,
 		map[string]string{"kick": "x... x...", "snare": ".... x...", "hat": "x.x.x.x.", "ride": "x.x. x.x.", "bass": "x... x...", "comp": "x..x .x..", "piano": "x..x .x.."},
 		map[string]string{"lead": "5 . 6 7 | 9 . 7 3"},
@@ -78,6 +84,7 @@ var stylePacks = map[string]stylePack{
 		},
 	),
 	"lofi": stylePackSpec(
+		"dusty-rhodes",
 		78, 2, 4, "hat", false, true,
 		map[string]string{"kick": "x... x...", "snare": ".... x...", "hat": "x.x.x.x.", "bass": "x... x...", "keys": "x..x .x..", "guitar": "x..x .x.."},
 		map[string]string{"lead": "5 . . 7 | 9 . 7 5"},
@@ -88,6 +95,7 @@ var stylePacks = map[string]stylePack{
 		},
 	),
 	"lullaby": stylePackSpec(
+		"paper-box",
 		68, 2, 2, "none", true, false,
 		map[string]string{"lead": "x... ....", "harp": "x..x ....", "pad": "x... ...."},
 		map[string]string{"lead": "5 . 3 . | 1 . . ."},
@@ -97,6 +105,7 @@ var stylePacks = map[string]stylePack{
 		},
 	),
 	"phase": stylePackSpec(
+		"glass-steps",
 		74, 2, 2, "none", true, false,
 		map[string]string{"mallet-a": "x... x...", "mallet-b": ".... x...", "pad": "x... ...."},
 		map[string]string{"lead": "5 . 3 . | 1 . . ."},
@@ -107,8 +116,9 @@ var stylePacks = map[string]stylePack{
 	),
 }
 
-func stylePackSpec(bpm float64, shortBars, longBars int, drumLeadSurface string, softLowEnd, extendedComp bool, rhythms, melody map[string]string, substyles map[string]styleVariant) stylePack {
+func stylePackSpec(defaultSubstyle string, bpm float64, shortBars, longBars int, drumLeadSurface string, softLowEnd, extendedComp bool, rhythms, melody map[string]string, substyles map[string]styleVariant) stylePack {
 	return stylePack{
+		DefaultSubstyle: defaultSubstyle,
 		DefaultBPM:      bpm,
 		ShortPhraseBars: shortBars,
 		LongPhraseBars:  longBars,
@@ -129,6 +139,7 @@ func stylePackFor(style string) stylePack {
 	}
 	return stylePack{
 		Name:            style,
+		DefaultSubstyle: "",
 		DefaultBPM:      80,
 		ShortPhraseBars: 2,
 		LongPhraseBars:  4,
@@ -191,6 +202,9 @@ func inferSubstyle(pack stylePack, title string, tags []string) string {
 	}
 	if bestScore > 0 {
 		return bestKey
+	}
+	if strings.TrimSpace(pack.DefaultSubstyle) != "" {
+		return strings.TrimSpace(pack.DefaultSubstyle)
 	}
 	return ""
 }
