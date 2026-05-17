@@ -215,8 +215,12 @@ func (m *Model) advancePlaylist() {
 	m.touchCurrentSeed()
 	m.trackStartedAt = time.Now()
 	m.nextTrackAt = time.Now().Add(track.Duration)
+	label := track.Spec.Label()
+	if strings.TrimSpace(track.Title) != "" {
+		label = track.Title + " · " + label
+	}
 	m.flashStatus(fmt.Sprintf("▶ %d/%d %s",
-		m.playlistIdx+1, len(m.playlist.Tracks), track.Spec.Label()), 3*time.Second)
+		m.playlistIdx+1, len(m.playlist.Tracks), label), 3*time.Second)
 
 	// Keep the genre cycle index in sync if this track matches a genre.
 	for i, g := range m.genres {

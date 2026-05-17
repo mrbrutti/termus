@@ -28,6 +28,7 @@ type playlistManifestTrack struct {
 	Index     int                   `json:"index"`
 	Algo      string                `json:"algo"`
 	Display   string                `json:"display"`
+	Title     string                `json:"title,omitempty"`
 	Seed      int64                 `json:"seed"`
 	Path      string                `json:"path"`
 	MIDIPath  string                `json:"midi_path,omitempty"`
@@ -82,6 +83,7 @@ func renderPlaylistOutWith(outDir string, pl *gen.Playlist, volume int, build pl
 			Index:     i + 1,
 			Algo:      track.Spec.Name,
 			Display:   track.Spec.Label(),
+			Title:     track.Title,
 			Seed:      track.Seed,
 			Path:      base,
 			Frames:    frames,
@@ -137,6 +139,8 @@ func playlistModeLabel(mode gen.PlaylistMode) string {
 		return "same"
 	case gen.PlaylistMixed:
 		return "mixed"
+	case gen.PlaylistScore:
+		return "score"
 	default:
 		return "unknown"
 	}

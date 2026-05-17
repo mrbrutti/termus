@@ -19,6 +19,7 @@ import (
 	"github.com/mrbrutti/termus/internal/scope"
 	"github.com/mrbrutti/termus/internal/sf2"
 	"github.com/mrbrutti/termus/internal/synth"
+	"github.com/mrbrutti/termus/internal/tm"
 	"github.com/mrbrutti/termus/internal/tui"
 )
 
@@ -68,6 +69,7 @@ func main() {
 		"how long each playlist track plays before the crossfade")
 	listenModeName := flag.String("listen-mode", string(gen.ListeningModeEndless),
 		"listening mode: endless | album-side | hour-stream | radio")
+	tmPath := flag.String("tm", "", "path to a .tm scored composition file")
 	outPath := flag.String("out", "", "render directly to a WAV file instead of launching live playback")
 	playlistOut := flag.String("playlist-out", "", "render a playlist to a directory of WAVs plus manifest.json")
 	exportStems := flag.Bool("stems", false, "with --out/--playlist-out, also export per-stem WAVs when supported")
@@ -124,7 +126,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "--listen-mode radio requires live playback or --playlist-out")
 		os.Exit(2)
 	}
-	if *playlistOut != "" && effectivePlaylistMode == "" {
+	if *playlistOut != "" && effectivePlaylistMode == "" && *tmPath == "" {
 		fmt.Fprintln(os.Stderr, "--playlist-out requires --playlist same|mixed")
 		os.Exit(2)
 	}
@@ -136,24 +138,63 @@ func main() {
 		fmt.Fprintf(os.Stderr, "--playlist-duration must be > 0, got %s\n", effectivePlaylistDuration)
 		os.Exit(2)
 	}
-
-	spec, ok := gen.Resolve(*algoName)
-	if !ok {
-		fmt.Fprintf(os.Stderr, "unknown algorithm %q (available: %v)\n",
-			*algoName, gen.AllAlgoNames())
+	if *tmPath != "" && effectivePlaylistMode != "" {
+		fmt.Fprintln(os.Stderr, "--tm already defines its own scored sections; do not combine it with --playlist")
 		os.Exit(2)
 	}
-	liveStartupMax := *outPath == "" && *playlistOut == "" && sfStrategy == "max" && *sf2Path == "" && spec.RequiresSF2
+	if *tmPath != "" && *outPath != "" {
+		fmt.Fprintln(os.Stderr, "--tm currently supports live playback or --playlist-out; use --playlist-out for batch rendering")
+		os.Exit(2)
+	}
+
+	var (
+		spec       gen.AlgoSpec
+		compiledTM *tm.Compiled
+		err        error
+	)
+	if *tmPath != "" {
+		compiledTM, err = loadTMComposition(*tmPath, *seed, listenMode.Name)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "tm load failed:", err)
+			os.Exit(2)
+		}
+		logTMWarnings(compiledTM)
+		if len(compiledTM.Playlist.Tracks) == 0 {
+			fmt.Fprintln(os.Stderr, "tm score has no sections")
+			os.Exit(2)
+		}
+		spec = compiledTM.Playlist.Tracks[0].Spec
+		if resolved, ok := gen.ResolveListeningMode(string(compiledTM.Playlist.ListenMode)); ok {
+			listenMode = resolved
+		}
+	} else {
+		var ok bool
+		spec, ok = gen.Resolve(*algoName)
+		if !ok {
+			fmt.Fprintf(os.Stderr, "unknown algorithm %q (available: %v)\n",
+				*algoName, gen.AllAlgoNames())
+			os.Exit(2)
+		}
+	}
+	loadSpec := spec
+	if compiledTM != nil {
+		for _, track := range compiledTM.Playlist.Tracks {
+			if track.Spec.RequiresSF2 {
+				loadSpec = track.Spec
+				break
+			}
+		}
+	}
+	liveStartupMax := *outPath == "" && *playlistOut == "" && sfStrategy == "max" && *sf2Path == "" && loadSpec.RequiresSF2
 	var (
 		catalog *soundFontCatalog
 		sf      *meltysynth.SoundFont
-		err     error
 	)
 	if liveStartupMax {
 		catalog = newSoundFontCatalog("max", *sf2Preset)
 		gen.SetSF2Runtime("max", catalog.snapshot())
 	} else {
-		catalog, sf, err = loadInitialSoundFontCatalog(spec, sfStrategy, *sf2Preset, *sf2Path, os.Stderr)
+		catalog, sf, err = loadInitialSoundFontCatalog(loadSpec, sfStrategy, *sf2Preset, *sf2Path, os.Stderr)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "sf2 setup failed:", err)
 			os.Exit(1)
@@ -167,6 +208,15 @@ func main() {
 		algo.Seed(*seed)
 	}
 	controlProfile := gen.DefaultControlProfile()
+	profileFor := func(s gen.AlgoSpec, algoSeed int64) gen.ControlProfile {
+		if compiledTM == nil {
+			return controlProfile
+		}
+		if base, ok := compiledTM.Overrides[fmt.Sprintf("%s:%d", s.Name, algoSeed)]; ok {
+			return mergeProfiles(base, controlProfile)
+		}
+		return controlProfile
+	}
 
 	var ir []float64
 	var irLabel string
@@ -201,7 +251,7 @@ func main() {
 			}
 			chosen = loaded
 		}
-		a := gen.ConfigureControlProfile(s.Build(chosen), controlProfile)
+		a := gen.ConfigureControlProfile(s.Build(chosen), profileFor(s, algoSeed))
 		a.Seed(algoSeed)
 		if len(ir) > 0 {
 			if rev, ok := a.(gen.SF2Reverberator); ok {
@@ -211,7 +261,7 @@ func main() {
 		return a
 	}
 	buildLiveAlgo := func(s gen.AlgoSpec, algoSeed int64) gen.Algorithm {
-		return gen.ApplyControlProfile(buildRenderedAlgo(s, algoSeed), controlProfile)
+		return gen.ApplyControlProfile(buildRenderedAlgo(s, algoSeed), profileFor(s, algoSeed))
 	}
 	if *outPath != "" {
 		renderAlgo := buildRenderedAlgo(spec, *seed)
@@ -282,10 +332,15 @@ func main() {
 		return catalog.PickName(s)
 	}
 	if *playlistOut != "" {
-		pl, err := buildPlaylist(effectivePlaylistMode, spec, genres, effectivePlaylistTracks, *seed, effectivePlaylistDuration, listenMode.Name)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "playlist:", err)
-			os.Exit(2)
+		var pl *gen.Playlist
+		if compiledTM != nil {
+			pl = &compiledTM.Playlist
+		} else {
+			pl, err = buildPlaylist(effectivePlaylistMode, spec, genres, effectivePlaylistTracks, *seed, effectivePlaylistDuration, listenMode.Name)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "playlist:", err)
+				os.Exit(2)
+			}
 		}
 		manifest, err := renderPlaylistOut(*playlistOut, pl, *initialVol, buildAlgo, *exportMIDI, *exportStems)
 		if err != nil {
@@ -328,7 +383,12 @@ func main() {
 	// Optional playlist. When set, the TUI auto-advances tracks with a
 	// crossfade. The first track is whichever genre is currently playing —
 	// we leave the speaker alone and just arm the timer for the next swap.
-	if effectivePlaylistMode != "" {
+	if compiledTM != nil {
+		pl := &compiledTM.Playlist
+		model = model.WithPlaylist(pl, 0, 88200)
+		fmt.Fprintf(os.Stderr, "tm score %q · %d sections · mode %s\n",
+			pl.Name, len(pl.Tracks), pl.ListenMode)
+	} else if effectivePlaylistMode != "" {
 		pl, err := buildPlaylist(effectivePlaylistMode, spec, genres, effectivePlaylistTracks, *seed, effectivePlaylistDuration, listenMode.Name)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "playlist:", err)
