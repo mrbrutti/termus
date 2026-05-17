@@ -11,6 +11,7 @@ import (
 	"github.com/sinshu/go-meltysynth/meltysynth"
 
 	"github.com/mrbrutti/termus/internal/audio"
+	"github.com/mrbrutti/termus/internal/audiotest"
 	"github.com/mrbrutti/termus/internal/gen"
 	"github.com/mrbrutti/termus/internal/sf2"
 	"github.com/mrbrutti/termus/internal/synth"
@@ -39,6 +40,8 @@ func main() {
 	sf2Path := flag.String("sf2", "", "optional SoundFont path for SF2-backed corpus cases")
 	sf2Preset := flag.String("sf2-preset", "general", "SoundFont preset to auto-fetch for SF2 corpus cases")
 	includeSF2 := flag.Bool("include-sf2", false, "include SF2-backed lofi and jazz renders in the corpus")
+	baselineCapture := flag.String("baseline-capture", "", "if set, after rendering write a baseline JSON to this path and exit 0")
+	baselineCheck := flag.String("baseline-check", "", "if set, compare rendered results against this baseline JSON; exit nonzero on drift")
 	flag.Parse()
 
 	if err := os.MkdirAll(*outDir, 0o755); err != nil {
@@ -112,6 +115,62 @@ func main() {
 		fmt.Fprintf(os.Stderr, "rendered %s -> %s\n", item.Name, outPath)
 	}
 
+	if strings.TrimSpace(*baselineCapture) != "" {
+		entries := make([]baselineEntry, 0, len(corpus))
+		for _, item := range corpus {
+			m, err := measureCorpusItem(item)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "skip baseline for %s: %v\n", item.Name, err)
+				continue
+			}
+			entries = append(entries, baselineEntry{
+				Name:        item.Name,
+				Algo:        item.Algo,
+				Seed:        item.Seed,
+				Seconds:     item.Seconds,
+				Measurement: measurementFromAudiotest(m),
+			})
+		}
+		if err := writeBaseline(*baselineCapture, entries); err != nil {
+			fmt.Fprintln(os.Stderr, "baseline write:", err)
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stderr, "wrote baseline %s (%d entries)\n", *baselineCapture, len(entries))
+		return
+	}
+
+	if strings.TrimSpace(*baselineCheck) != "" {
+		base, err := readBaseline(*baselineCheck)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "baseline read:", err)
+			os.Exit(2)
+		}
+		current := make([]baselineEntry, 0, len(corpus))
+		for _, item := range corpus {
+			m, err := measureCorpusItem(item)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "skip check for %s: %v\n", item.Name, err)
+				continue
+			}
+			current = append(current, baselineEntry{
+				Name:        item.Name,
+				Algo:        item.Algo,
+				Seed:        item.Seed,
+				Seconds:     item.Seconds,
+				Measurement: measurementFromAudiotest(m),
+			})
+		}
+		drifts := compareBaselines(base, current)
+		if len(drifts) > 0 {
+			for _, d := range drifts {
+				fmt.Fprintln(os.Stderr, "DRIFT", d)
+			}
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stderr, "baseline OK (%d entries)\n", len(current))
+		return
+	}
+
 	manifestPath := filepath.Join(*outDir, "manifest.json")
 	data, err := json.MarshalIndent(results, "", "  ")
 	if err != nil {
@@ -165,6 +224,17 @@ func renderToWAV(path string, algo gen.Algorithm, seconds float64) (int, error) 
 		written += n
 	}
 	return written, nil
+}
+
+// measureCorpusItem renders a non-SF2 corpus item to a buffer and returns its
+// Measurement. SF2-required items return an error.
+func measureCorpusItem(item corpusCase) (audiotest.Measurement, error) {
+	buf, err := audiotest.RenderAlgorithm(item.Algo, item.Seed, item.Seconds)
+	if err != nil {
+		return audiotest.Measurement{}, err
+	}
+	mono := audiotest.ToMono(buf)
+	return audiotest.MeasureMono(mono, float64(synth.SampleRate)), nil
 }
 
 func trimMarkers(markers []gen.ListeningMarker, totalFrames int) []gen.ListeningMarker {
