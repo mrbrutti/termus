@@ -931,6 +931,90 @@ sections:
 	}
 }
 
+func TestCompileUsesDeeperJazzDrumVocabulary(t *testing.T) {
+	const src = `
+title: Jazz Drum Vocabulary
+style: jazz
+roles:
+  kick:
+    family: drums
+    pattern: "x... x..."
+  snare:
+    family: drums
+    pattern: ".... x..."
+  hat:
+    family: drums
+    pattern: "x.x.x.x."
+  ride:
+    family: drums
+    pattern: "x.x. x.x."
+sections:
+  - id: groove
+    duration: 12s
+    harmony: "Dm7 G7 | Cmaj7 A7 | Fmaj7 E7 | Dm7 G7 | Em7 A7 | Dm7 G7"
+`
+	file, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	compiled, err := Compile(file, 177, gen.ListeningModeEndless)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	var plan gen.AuthoredTrackPlan
+	for _, got := range compiled.Plans {
+		plan = got
+	}
+	var kick, snare, hat, ride *gen.AuthoredRenderTrack
+	for i := range plan.Tracks {
+		switch plan.Tracks[i].Name {
+		case "kick":
+			kick = &plan.Tracks[i]
+		case "snare":
+			snare = &plan.Tracks[i]
+		case "hat":
+			hat = &plan.Tracks[i]
+		case "ride":
+			ride = &plan.Tracks[i]
+		}
+	}
+	if kick == nil || snare == nil || hat == nil || ride == nil {
+		t.Fatalf("expected full drum set, got kick=%v snare=%v hat=%v ride=%v", kick != nil, snare != nil, hat != nil, ride != nil)
+	}
+	firstBarRide := 0
+	answerBarHat := 0
+	turnaroundKick := 0
+	ghostSnare := false
+	for slot := 0; slot < len(ride.Notes); slot++ {
+		bar := slot / authoredSlotsPerBar
+		pos := slot % authoredSlotsPerBar
+		if bar == 0 && ride.Notes[slot] >= 0 {
+			firstBarRide++
+		}
+		if bar == 2 && hat.Notes[slot] >= 0 {
+			answerBarHat++
+		}
+		if bar == 5 && pos >= 6 && kick.Notes[slot] >= 0 {
+			turnaroundKick++
+		}
+		if (bar == 2 || bar == 3) && pos == 3 && snare.Notes[slot] == 37 {
+			ghostSnare = true
+		}
+	}
+	if firstBarRide < 4 {
+		t.Fatalf("expected ride-led opening bar, got only %d active ride hits", firstBarRide)
+	}
+	if answerBarHat < 3 {
+		t.Fatalf("expected hat activity in answer/release bars, got %d hits", answerBarHat)
+	}
+	if turnaroundKick < 2 {
+		t.Fatalf("expected turnaround kick pickups late in the last bar, got %d", turnaroundKick)
+	}
+	if !ghostSnare {
+		t.Fatal("expected ghost/backbeat snare note in middle phrase bars")
+	}
+}
+
 func TestCompileVariationBudgetWarnings(t *testing.T) {
 	const src = `
 title: Budget Warnings

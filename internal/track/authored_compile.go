@@ -1543,14 +1543,86 @@ func compileDrumPattern(ctx authoredSectionContext, roleName string, role Role, 
 	for i, active := range grid {
 		span, phraseIdx := phraseSpanForSlot(phraseSpans, i)
 		localRole := roleForPhrase(role, span.Label)
+		mode := rolePhraseMode(ctx, "drum", roleName, localRole, span, phraseIdx)
 		active = phraseRhythmActive(ctx, authoredRoleKind(roleName, localRole), roleName, localRole, span, phraseIdx, i, active)
+		active, note := drumSlotEvent(ctx, roleName, span, phraseIdx, totalBars, i, mode, active)
 		if active {
-			out[i] = drumNoteFor(ctx, roleName, i)
+			out[i] = note
 		} else {
 			out[i] = -1
 		}
 	}
 	return out
+}
+
+func drumSlotEvent(ctx authoredSectionContext, roleName string, span gen.AuthoredPhraseSpan, phraseIdx, totalBars, slot int, mode string, active bool) (bool, int) {
+	note := drumNoteFor(ctx, roleName, slot)
+	lower := strings.ToLower(strings.TrimSpace(roleName))
+	bar := slot / authoredSlotsPerBar
+	pos := slot % authoredSlotsPerBar
+	barInPhrase := bar - maxInt(0, span.StartBar-1)
+	isTurnaroundBar := bar == maxInt(0, span.EndBar-1)
+	isLastBar := bar == maxInt(0, totalBars-1)
+	switch lower {
+	case "kick":
+		if isTurnaroundBar && (pos == 6 || pos == 7) {
+			active = true
+			note = 35
+		}
+		if mode == "sparse" && pos == 4 {
+			active = false
+		}
+		if isLastBar && pos == 0 {
+			active = true
+			note = 36
+		}
+	case "snare", "clap", "rim":
+		if ctx.style == "jazz" && (mode == "answer" || mode == "backbeat") && (pos == 3 || pos == 7) && barInPhrase%2 == 0 {
+			active = true
+			note = 37
+		}
+		if isTurnaroundBar && pos >= 6 {
+			active = true
+			note = 38
+		}
+		if isLastBar && pos == 7 {
+			active = true
+			note = 38
+		}
+	case "hat", "hihat":
+		if ctx.style == "jazz" && (mode == "grid" || mode == "lift") {
+			active = false
+		}
+		if mode == "answer" || mode == "air" || mode == "thin" {
+			active = pos%2 == 1
+		}
+		if isTurnaroundBar && pos >= 6 {
+			active = true
+			note = 46
+		}
+	case "ride":
+		if mode == "air" || mode == "thin" {
+			active = false
+		}
+		if ctx.style == "jazz" && (mode == "grid" || mode == "lift" || isTurnaroundBar || isLastBar) {
+			active = pos%2 == 0 || pos == 7
+		}
+		if isTurnaroundBar && pos == 7 {
+			note = 53
+		}
+	case "crash":
+		active = (isTurnaroundBar || isLastBar) && pos == 0
+		note = 49
+	default:
+		if isTurnaroundBar && pos >= 6 {
+			active = true
+		}
+	}
+	if ctx.style == "lofi" && lower == "snare" && mode == "answer" && pos == 3 {
+		active = true
+		note = 37
+	}
+	return active, note
 }
 
 func compileBassLine(ctx authoredSectionContext, name string, role Role, bars []authoredHarmonyBar, totalBars int, phraseSpans []gen.AuthoredPhraseSpan) []int {
