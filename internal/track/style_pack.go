@@ -72,6 +72,17 @@ var stylePacks = map[string]stylePack{
 			"cathedral-bed": {Name: "cathedral-bed", Keywords: []string{"cathedral", "hymn", "field"}, DefaultMelody: map[string]string{"lead": "5 . . . | 1 . . ."}},
 		},
 	),
+	"chill": stylePackSpec(
+		"afternoon-drift",
+		82, 2, 4, "hat", false, true,
+		map[string]string{"kick": "x... x...", "snare": ".... x...", "hat": "x.x.x.x.", "bass": "x... x...", "keys": "x..x .x..", "pad": "x... ...."},
+		map[string]string{"lead": "5 . 7 9 | 3 . 2 1"},
+		map[string]styleVariant{
+			"afternoon-drift": {Name: "afternoon-drift", Keywords: []string{"afternoon", "drive", "sunday", "open"}, DefaultBPM: 88, DefaultRhythms: map[string]string{"hat": "x.x. x.x."}},
+			"brushwork-half":  {Name: "brushwork-half", Keywords: []string{"half", "brushwork", "brushes", "slow"}, DefaultBPM: 72, DrumLeadSurface: "hat", DefaultRhythms: map[string]string{"snare": "........ | ....x..."}},
+			"pad-chords":      {Name: "pad-chords", Keywords: []string{"pad", "chord", "ambient-pop"}, DefaultBPM: 80, DefaultRhythms: map[string]string{"pad": "x....... | ........"}},
+		},
+	),
 	"jazz": stylePackSpec(
 		"trio-after-hours",
 		126, 2, 4, "ride", false, true,

@@ -194,6 +194,19 @@ func applyStyleArrangementLibrary(pack stylePack, section Section, buckets roleB
 		if hasText(desc, "cadence", "outro") {
 			section.Events = appendLibraryEvent(section.Events, Event{Kind: "hold", Bar: 0, Roles: appendNames(buckets.comp, buckets.pad)})
 		}
+	case "chill":
+		if hasText(desc, "intro", "establish", "open") {
+			section.Events = appendLibraryEvent(section.Events, Event{Kind: "breath", Bar: 1, Roles: appendNames(buckets.melody, buckets.comp)})
+			section.Events = appendLibraryEvent(section.Events, Event{Kind: "swell", Bar: 1, Roles: appendNames(buckets.pad, buckets.comp)})
+		}
+		if hasText(desc, "bridge", "lift", "open-register") {
+			section.Events = appendLibraryEvent(section.Events, Event{Kind: "pickup", Bar: 0, Roles: buckets.melody, Motif: "5 7 9 7"})
+			section.Events = appendLibraryEvent(section.Events, Event{Kind: "swell", Bar: 1, Roles: appendNames(buckets.comp, buckets.pad)})
+		}
+		if hasText(desc, "cadence", "outro", "home", "return") {
+			section.Events = appendLibraryEvent(section.Events, Event{Kind: "pedal", Bar: 0, Roles: appendNames(buckets.bass, buckets.pad)})
+			section.Events = appendLibraryEvent(section.Events, Event{Kind: "ending", Bar: 0, Roles: appendNames(buckets.melody, buckets.comp, buckets.bass)})
+		}
 	case "lullaby":
 		if hasText(desc, "intro", "paper", "staircase", "verse") {
 			section.Events = appendLibraryEvent(section.Events, Event{Kind: "pickup", Bar: 0, Roles: buckets.melody, Motif: "3 5 6 5"})

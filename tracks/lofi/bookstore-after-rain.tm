@@ -1,21 +1,94 @@
 title: Bookstore After Rain
-description: Dusty-rhodes shelf-side study with thinner drums and a warm cadence.
+description: Late-night neon piano with felt hammers and tape drift.
 style: lofi
-substyle: dusty-rhodes
+mix_bus: lofi
 listen_mode: album-side
-seed: 55103
-tags: [lofi, bookstore, rain, warm]
-key: Ebmaj
-tempo: 74
-globals: {density: light, brightness: warm, motion: gentle, reverb: room}
+seed: 28011
+tags: [lofi, piano, rain, neon]
+key: Dmin
+tempo: 81
+globals: {density: steady, brightness: balanced, motion: gentle, reverb: warm}
 roles:
-  rhodes: {family: electric_piano, tone: [warm, dusty], register: mid, prominence: support, pattern: "x..x .x.."}
-  bass: {family: bass, tone: [round], register: low, prominence: anchor, pattern: "x... x..x"}
-  kick: {family: drums, tone: [dusty], prominence: anchor, pattern: "x... x..."}
-  snare: {family: drums, tone: [dusty], prominence: support, pattern: ".... x..."}
-  lead: {family: woodwind, tone: [soft], register: mid-high, prominence: lead, motif: "5 . . 7 | 9 . 7 5"}
+  keys:
+    family: electric_piano
+    tone: [warm, soft]
+    register: mid
+    prominence: support
+    personality: piano_felt
+    room: bedroom_small
+    reverb_send_db: -14
+    pattern: "x..x ..x. x..x ..x."
+  bass:
+    family: synth_bass
+    tone: [round]
+    register: low
+    prominence: anchor
+    pattern: "x... x... x... x..."
+  kick:
+    family: drums
+    tone: [dusty]
+    prominence: anchor
+    pattern: "x... ...x x... ...."
+  snare:
+    family: drums
+    tone: [dusty]
+    prominence: support
+    pattern: ".... x... .... x..."
+  hat:
+    family: drums
+    tone: [dry]
+    prominence: support
+    pattern: "x.x.x.x.x.x.x.x."
+  lead:
+    family: reed_lead
+    tone: [breathy, intimate]
+    register: mid-high
+    prominence: lead
+    motif: "5 . 6 . 7 . 9 7 | 5 . 3 . 2 . 1 ."
 sections:
-  - {id: intro, title: damp jacket, duration: 14s, harmony: "Ebmaj9 Cm7 | Abmaj9 Bbadd9", scene: "intro hush", variation: "establish"}
-  - {id: verse, title: aisle dust, duration: 54s, harmony: "Ebmaj9 Gm7 | Abmaj9 Bbadd9", scene: "head glide", variation: "statement"}
-  - {id: breakdown, title: receipt fold, duration: 30s, harmony: "Cm9 Abmaj9 | Ebmaj9 Bbadd9", scene: "breakdown thin", variation: "subtract"}
-  - {id: outro, title: window steam, duration: 26s, harmony: "Ebmaj9 Cm7 | Abmaj9 Ebmaj9", scene: "outro home", variation: "cadence"}
+  - id: intro
+    title: rain-on-glass
+    duration: 12s
+    harmony: "Dm9 Gm7"
+    scene: "intro hush"
+    variation: "establish"
+    groove: dilla_late
+    automation:
+      - param: cutoff
+        breakpoints:
+          - {at: 0, value: 0.2}
+          - {at: 100, value: 0.5}
+  - id: verse
+    title: paperback turn
+    duration: 40s
+    harmony: "Dm9 Gm7 | Cmaj9 Bb7"
+    scene: "head glide"
+    variation: "statement"
+    groove: dilla_late
+    automation:
+      - param: cutoff
+        breakpoints:
+          - {at: 0, value: 0.5}
+          - {at: 60, value: 0.85}
+          - {at: 100, value: 0.6}
+  - id: bridge
+    title: stack-shadows
+    duration: 24s
+    harmony: "Bb6 Am7 | Dm9 Gm7"
+    scene: "bridge tilt"
+    variation: "open-register"
+    groove: dilla_late
+  - id: outro
+    title: shelf-closing
+    duration: 20s
+    harmony: "Dm9 A7 | Dm6"
+    scene: "outro hush"
+    variation: "cadence"
+    groove: dilla_late
+    substitutions:
+      - {rule: deceptive, apply_to: V, probability: 1.0}
+    automation:
+      - param: expression
+        breakpoints:
+          - {at: 0, value: 0.7}
+          - {at: 100, value: 0.3}

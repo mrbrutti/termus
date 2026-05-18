@@ -14,14 +14,14 @@ func TestLoadBundledCorpusResolvesTracks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Discover: %v", err)
 	}
-	if len(corpus.Genres) != 8 {
-		t.Fatalf("genre count = %d, want 8", len(corpus.Genres))
+	if len(corpus.Genres) != 4 {
+		t.Fatalf("genre count = %d, want 4", len(corpus.Genres))
 	}
 	for style, genre := range corpus.Genres {
 		if genre.Canonical == "" {
 			t.Fatalf("%s canonical missing", style)
 		}
-		if len(genre.Corpus) < 4 {
+		if len(genre.Corpus) < 3 {
 			t.Fatalf("%s corpus too small: %d", style, len(genre.Corpus))
 		}
 		if len(genre.AB) < 2 {

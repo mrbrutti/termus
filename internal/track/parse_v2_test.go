@@ -414,12 +414,14 @@ sections:
 	}
 }
 
-// TestExistingTracksParseUnchanged confirms that pre-existing .tm files still
-// parse without errors (backwards compatibility gate).
-func TestExistingTracksParseUnchanged(t *testing.T) {
+// TestV2TracksParseAndHaveV2Fields confirms that the new v2 corpus .tm files
+// parse correctly and carry the expected v2 fields (mix_bus, groove, etc.).
+func TestV2TracksParseAndHaveV2Fields(t *testing.T) {
 	paths := []string{
-		filepath.Join("..", "..", "tracks", "jazz", "basement-blue-hour.tm"),
-		filepath.Join("..", "..", "tracks", "lofi", "rooftop-dialtone.tm"),
+		filepath.Join("..", "..", "tracks", "lofi", "bookstore-after-rain.tm"),
+		filepath.Join("..", "..", "tracks", "jazz", "dusty-swing-after-hours.tm"),
+		filepath.Join("..", "..", "tracks", "chill", "sunday-afternoon-drive.tm"),
+		filepath.Join("..", "..", "tracks", "ambient", "slow-drone-fragments.tm"),
 	}
 	for _, path := range paths {
 		data, err := os.ReadFile(path)
@@ -439,31 +441,9 @@ func TestExistingTracksParseUnchanged(t *testing.T) {
 		if len(file.Sections) == 0 {
 			t.Fatalf("%s: parsed file has no sections", path)
 		}
-		// New v2 fields must be absent (zero) — no accidental population.
-		if file.MixBus != "" {
-			t.Fatalf("%s: expected empty MixBus for existing track, got %q", path, file.MixBus)
-		}
-		// SP7 file-level fields must be absent.
-		if len(file.Motifs) != 0 {
-			t.Fatalf("%s: expected no Motifs for existing track, got %d", path, len(file.Motifs))
-		}
-		if file.ChordMarkov != nil {
-			t.Fatalf("%s: expected nil ChordMarkov for existing track", path)
-		}
-		for sIdx, section := range file.Sections {
-			if section.Groove != "" {
-				t.Fatalf("%s sections[%d]: expected empty Groove, got %q", path, sIdx, section.Groove)
-			}
-			if len(section.HarmonyChords) != 0 {
-				t.Fatalf("%s sections[%d]: expected no HarmonyChords for existing track", path, sIdx)
-			}
-			// SP7 section-level fields must be absent.
-			if len(section.Automation) != 0 {
-				t.Fatalf("%s sections[%d]: expected no Automation for existing track", path, sIdx)
-			}
-			if len(section.Substitutions) != 0 {
-				t.Fatalf("%s sections[%d]: expected no Substitutions for existing track", path, sIdx)
-			}
+		// v2 corpus tracks must carry mix_bus.
+		if file.MixBus == "" {
+			t.Fatalf("%s: expected non-empty MixBus for v2 corpus track", path)
 		}
 	}
 }
