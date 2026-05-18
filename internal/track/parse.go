@@ -9,6 +9,35 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// UnmarshalYAML allows ChordSpec to be authored as either a plain string
+// (symbol only) or as a full mapping with optional voice-leading directives.
+//
+//	# string form:
+//	harmony_chords: [Cmaj9, Am7]
+//
+//	# map form:
+//	harmony_chords:
+//	  - {chord: Cmaj9, voicing: drop2, top: "9"}
+//	  - {chord: Am7, smooth: true}
+func (c *ChordSpec) UnmarshalYAML(node *yaml.Node) error {
+	switch node.Kind {
+	case yaml.ScalarNode:
+		c.Symbol = strings.TrimSpace(node.Value)
+		return nil
+	case yaml.MappingNode:
+		// Use a local alias to avoid recursion.
+		type chordSpecAlias ChordSpec
+		var alias chordSpecAlias
+		if err := node.Decode(&alias); err != nil {
+			return err
+		}
+		*c = ChordSpec(alias)
+		return nil
+	default:
+		return fmt.Errorf("chord spec must be a string or mapping")
+	}
+}
+
 func ParseFile(path string) (*File, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
