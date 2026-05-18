@@ -122,7 +122,7 @@ func lofiProfile() MixBusProfile {
 			KneeDB:      6,
 			MakeupDB:    0,
 		},
-		MasterLowPassHz: 13000,
+		MasterLowPassHz: 0,
 		ReverbBusIRName: "cassette_chamber",
 		ReverbBusWetDB:  -16,
 		ReverbBusPreMs:  20,
