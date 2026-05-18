@@ -1,16 +1,13 @@
 title: Dusty Swing / After Hours
-description: Piano-trio head that opens into an alto-led bridge, then settles back into a brushed last call.
+description: Bop AABA head with walking bass and tenor lead, ii-V chains on every cadence.
 style: jazz
+mix_bus: jazz
 listen_mode: album-side
-seed: 7319
-tags: [jazz, swing, trio, late-set, after-hours]
-key: Cmaj
-tempo: 126
-globals:
-  density: steady
-  brightness: balanced
-  swing: groove
-  phrase: long
+seed: 31440
+tags: [jazz, swing, bop, tenor, trio]
+key: Bbmaj
+tempo: 122
+globals: {density: steady, brightness: warm, swing: groove, phrase: long}
 roles:
   piano:
     family: acoustic_piano
@@ -18,131 +15,81 @@ roles:
     articulation: comp
     register: mid
     prominence: support
-    pattern: "x..x.x.. | .x..x..x"
+    pattern: ".x...... | ..x...x."
   bass:
     family: bass
     tone: [woody, round]
     articulation: walk
     register: low
     prominence: anchor
-    pattern: "x.x.x.x. | x.x.x.x."
+    pattern: "x...x.x. | x...x..x"
   ride:
     family: drums
     tone: [live, soft]
     articulation: swing
     prominence: support
-    pattern: "x.x.x.x. | x.x.xx.x"
+    pattern: "x..x.x.. | x..x.xx."
   kick:
     family: drums
     tone: [live, soft]
     articulation: swing
     prominence: anchor
-    pattern: "x....... | x...x..."
+    pattern: "x....... | ....x..."
   snare:
     family: drums
     tone: [live, soft]
     articulation: swing
     prominence: anchor
-    pattern: "....x... | ..x.x..."
-  alto:
+    pattern: "........ | ..x.x..."
+  tenor:
     family: reed_lead
-    tone: [present, live]
+    tone: [present, round]
     articulation: lyrical
-    register: high
+    register: mid-high
     prominence: lead
     motif: "5 . 6 7 9 . 7 5 | 3 . 2 . 1 . . ."
 sections:
-  - id: intro
-    title: count-in lamps
+  - id: head-a1
+    title: first chorus
+    duration: 18s
+    harmony: "Cm7 F7 | Bbmaj7 G7 | Cm7 F7 | Bbmaj7 Bbmaj7"
+    scene: "head relaxed"
+    variation: "statement"
+    groove: swing_56
+    substitutions:
+      - {rule: ii_V_chain, apply_to: I, probability: 0.8}
+    automation:
+      - param: expression
+        breakpoints:
+          - {at: 0, value: 0.6}
+          - {at: 100, value: 0.8}
+  - id: head-a2
+    title: second a
+    duration: 18s
+    harmony: "Cm7 F7 | Bbmaj7 G7 | Dm7 G7 | Cm7 F7"
+    scene: "head glide"
+    variation: "sequence-up"
+    groove: swing_56
+    substitutions:
+      - {rule: ii_V_chain, apply_to: I, probability: 1.0}
+  - id: head-b
+    title: bridge climb
     duration: 16s
-    harmony: "Dm7 G7 | Cmaj7 A7 | Dm7 G7 | Cmaj7 Cmaj7"
-    scene: "intro trio"
-    variation: "establish"
-    profile:
-      density: light
-      brightness: warm
-    roles:
-      alto:
-        active: false
-      snare:
-        pattern: "........ | ..x....."
-      ride:
-        pattern: "x..x.x.. | x..x.x.."
-  - id: head
-    title: booth melody
-    duration: 55s
-    harmony: "Dm7 G7 | Cmaj7 A7 | Dm7 G7 | Cmaj7 Cmaj7 | Em7 A7 | Dm7 G7 | Em7 A7 | Dm7 G7"
-    scene: "head statement"
-    variation: "head"
-    roles:
-      alto:
-        active: true
-        motif: "9 . 7 5 6 . 5 3 | 5 . 2 . 1 . . ."
-    events:
-      - kind: pickup
-        bar: 8
-        roles: [alto]
-        motif: "3 5 6 9"
-      - kind: fill
-        bar: 8
-        roles: [snare, kick, ride]
-  - id: solo
-    title: back booth lift
-    duration: 60s
-    harmony: "Dm7 Db7 | Cmaj7 A7 | Fmaj7 E7 | Dm7 G7 | Em7 A7 | Dm7 G7 | Cmaj7 A7 | Dm7 G7"
-    scene: "solo brighter"
-    variation: "turnaround-lift"
-    profile:
-      density: busy
-      brightness: bright
-      swing: heavy
-    roles:
-      alto:
-        motif: "11 . 9 7 5 . 3 1 | 9 . b9 7 5 . 2 1"
-      piano:
-        pattern: "x.x..x.. | .x.x.x.."
-      snare:
-        pattern: "....x... | ..x.xx.."
-    events:
-      - kind: drop
-        bar: 3
-        bars: 1
-        roles: [ride]
-      - kind: fill
-        bar: 8
-        roles: [snare, ride]
-  - id: shout
-    title: room answer
-    duration: 45s
-    harmony: "Fmaj7 E7 | Dm7 G7 | Em7 A7 | Dm7 G7"
-    scene: "shout compact"
-    variation: "answer"
-    profile:
-      density: busy
-      brightness: balanced
-    roles:
-      alto:
-        motif: "9 . 11 9 7 . 5 3 | 5 . 6 7 9 . 7 5"
-      kick:
-        pattern: "x...x..x | x...x..."
-      piano:
-        pattern: "x.x..x.x | .x.x.x.."
-    events:
-      - kind: stop
-        bar: 3
-        bars: 1
-        roles: [alto, bass, kick]
+    harmony: "Ebmaj7 D7 | Dm7 G7 | Cm7 F7 | Bbmaj7 G7"
+    scene: "bridge lift"
+    variation: "open-register"
+    groove: swing_56
+    substitutions:
+      - {rule: tritone_sub, apply_to: V, probability: 0.5}
   - id: outro
-    title: last call
-    duration: 35s
-    harmony: "Dm7 G7 | Cmaj7 A7 | Dm7 G7 | Cmaj7 Cmaj7"
-    scene: "outro soft"
+    title: bar stools empty
+    duration: 16s
+    harmony: "Cm7 F7 | Bbmaj7 G7 | Cm7 F7 | Bbmaj7 Bbmaj7"
+    scene: "outro cadence"
     variation: "cadence"
-    profile:
-      density: light
-      brightness: warm
-    roles:
-      alto:
-        motif: "3 . 2 . 1 . . . | . . . . . . . ."
-      snare:
-        pattern: "........ | ..x....."
+    groove: swing_56
+    automation:
+      - param: expression
+        breakpoints:
+          - {at: 0, value: 0.8}
+          - {at: 100, value: 0.3}

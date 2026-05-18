@@ -1,81 +1,37 @@
 genres:
   ambient:
-    canonical: ambient/dawn-fog-subway
+    canonical: ambient/slow-drone-fragments
     corpus:
-      - ambient/dawn-fog-subway
-      - ambient/night-platform-drift
-      - ambient/choir-fog-overpass
-      - ambient/signal-snow-foyer
+      - ambient/slow-drone-fragments
+      - ambient/bell-struck-skylight
+      - ambient/deep-pad-breath
     ab:
-      - {label: "station haze vs choir fog", a: ambient/night-platform-drift, b: ambient/choir-fog-overpass, seconds: 48}
-      - {label: "wide dawn vs thin snow", a: ambient/dawn-fog-subway, b: ambient/signal-snow-foyer, seconds: 48}
-  bells:
-    canonical: bells/glass-chapel-vespers
+      - {label: "drone vs bell", a: ambient/slow-drone-fragments, b: ambient/bell-struck-skylight, seconds: 48}
+      - {label: "bell vs breath pad", a: ambient/bell-struck-skylight, b: ambient/deep-pad-breath, seconds: 48}
+  chill:
+    canonical: chill/sunday-afternoon-drive
     corpus:
-      - bells/glass-chapel-vespers
-      - bells/cloister-rain-answer
-      - bells/candle-arch-echo
-      - bells/winter-cloister-round
+      - chill/sunday-afternoon-drive
+      - chill/half-time-brushwork
+      - chill/chord-pad-b-section
     ab:
-      - {label: "vespers glass vs cloister rain", a: bells/glass-chapel-vespers, b: bells/cloister-rain-answer, seconds: 44}
-      - {label: "bright toll vs winter round", a: bells/candle-arch-echo, b: bells/winter-cloister-round, seconds: 44}
-  classical:
-    canonical: classical/chamber-loop-lantern-room
-    corpus:
-      - classical/chamber-loop-lantern-room
-      - classical/stairwell-etude
-      - classical/midnight-study-nocturne
-      - classical/balcony-lesson-piece
-    ab:
-      - {label: "chamber lantern vs nocturne room", a: classical/chamber-loop-lantern-room, b: classical/midnight-study-nocturne, seconds: 52}
-      - {label: "etude vs lesson piece", a: classical/stairwell-etude, b: classical/balcony-lesson-piece, seconds: 52}
-  drone:
-    canonical: drone/deep-field-static-hymn
-    corpus:
-      - drone/deep-field-static-hymn
-      - drone/relay-signal-canon
-      - drone/chapel-air-pressure
-      - drone/static-lantern-field
-    ab:
-      - {label: "deep hymn vs signal canon", a: drone/deep-field-static-hymn, b: drone/relay-signal-canon, seconds: 56}
-      - {label: "cathedral bed vs soft static", a: drone/chapel-air-pressure, b: drone/static-lantern-field, seconds: 56}
+      - {label: "afternoon drive vs brushwork", a: chill/sunday-afternoon-drive, b: chill/half-time-brushwork, seconds: 44}
+      - {label: "brushwork vs chord pad", a: chill/half-time-brushwork, b: chill/chord-pad-b-section, seconds: 44}
   jazz:
     canonical: jazz/dusty-swing-after-hours
     corpus:
       - jazz/dusty-swing-after-hours
-      - jazz/basement-blue-hour
-      - jazz/red-eye-turnaround
-      - jazz/monorail-shout-figure
+      - jazz/bossa-nova-rooftop
+      - jazz/midnight-ballad-slow
     ab:
-      - {label: "trio vs vibes cellar", a: jazz/dusty-swing-after-hours, b: jazz/basement-blue-hour, seconds: 40}
-      - {label: "organ combo vs shout figure", a: jazz/red-eye-turnaround, b: jazz/monorail-shout-figure, seconds: 40}
+      - {label: "swing bop vs bossa", a: jazz/dusty-swing-after-hours, b: jazz/bossa-nova-rooftop, seconds: 40}
+      - {label: "bossa vs ballad", a: jazz/bossa-nova-rooftop, b: jazz/midnight-ballad-slow, seconds: 40}
   lofi:
-    canonical: lofi/soft-tape-rain-bus
+    canonical: lofi/bookstore-after-rain
     corpus:
-      - lofi/soft-tape-rain-bus
-      - lofi/window-seat-letters
+      - lofi/bookstore-after-rain
       - lofi/corner-store-neon
       - lofi/harbor-cassette-fade
     ab:
-      - {label: "dusty rhodes vs guitar neon", a: lofi/soft-tape-rain-bus, b: lofi/harbor-cassette-fade, seconds: 44}
-      - {label: "letters vs corner store", a: lofi/window-seat-letters, b: lofi/corner-store-neon, seconds: 44}
-  lullaby:
-    canonical: lullaby/paper-moon-box
-    corpus:
-      - lullaby/paper-moon-box
-      - lullaby/staircase-lullaby
-      - lullaby/hallway-cloud-mobile
-      - lullaby/moonlit-cardigan-round
-    ab:
-      - {label: "paper box vs staircase song", a: lullaby/paper-moon-box, b: lullaby/staircase-lullaby, seconds: 36}
-      - {label: "hallway cloud vs cardigan round", a: lullaby/hallway-cloud-mobile, b: lullaby/moonlit-cardigan-round, seconds: 36}
-  phase:
-    canonical: phase/mirror-glass-steps
-    corpus:
-      - phase/mirror-glass-steps
-      - phase/harbor-phase-studies
-      - phase/escalator-counterlight
-      - phase/warm-hall-interlock
-    ab:
-      - {label: "glass steps vs warm interlock", a: phase/mirror-glass-steps, b: phase/warm-hall-interlock, seconds: 42}
-      - {label: "harbor study vs escalator", a: phase/harbor-phase-studies, b: phase/escalator-counterlight, seconds: 42}
+      - {label: "bookstore vs corner store", a: lofi/bookstore-after-rain, b: lofi/corner-store-neon, seconds: 44}
+      - {label: "corner store vs harbor", a: lofi/corner-store-neon, b: lofi/harbor-cassette-fade, seconds: 44}
