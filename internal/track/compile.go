@@ -160,9 +160,7 @@ func mergeRoles(base map[string]Role, override map[string]Role) map[string]Role 
 		if strings.TrimSpace(role.Motif) != "" {
 			current.Motif = role.Motif
 		}
-		if strings.TrimSpace(role.Harmony) != "" {
-			current.Harmony = role.Harmony
-		}
+		// Role.Harmony removed in SP8 (v1 dead field).
 		if len(role.Phrases) > 0 {
 			if current.Phrases == nil {
 				current.Phrases = map[string]PhraseBlock{}
