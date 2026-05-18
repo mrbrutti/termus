@@ -1411,9 +1411,14 @@ func (e *sf2Core) renderInto(left, right []float64) {
 		}
 	}
 
-	// Master bus: [wow/flutter] → gain → EQ → optional conv wet → optional LP
-	//              → optional hiss → sidechain duck → tape sat → vinyl crackle
+	// Master bus: [wow/flutter] → gain → EQ → optional conv wet → sidechain duck
+	//              → tape sat → vinyl crackle → optional hiss → optional LP
 	//              → compressor → soft-clip.
+	//
+	// IMPORTANT: vinyl crackle and tape hiss are injected BEFORE the master LP
+	// so the lofi 7 kHz low-pass filters the noise along with the music signal.
+	// Placing noise after the LP would let wideband high-frequency content bypass
+	// the filter and raise the spectral centroid above genre expectation.
 	//
 	// WowFlutter (lofi only) sits before gain so it modulates the full mix
 	// at a consistent level; its fractional-delay line output is stable in
@@ -1437,15 +1442,6 @@ func (e *sf2Core) renderInto(left, right []float64) {
 			wetR := e.convR.Tick(r)
 			l += wetL * e.convWet
 			r += wetR * e.convWet
-		}
-		if e.lpL != nil {
-			l = e.lpL.Tick(l)
-			r = e.lpR.Tick(r)
-		}
-		if e.hissLevel > 0 {
-			// Stereo-decorrelated white noise — independent samples per channel.
-			l += (e.rng.Float64()*2 - 1) * e.hissLevel
-			r += (e.rng.Float64()*2 - 1) * e.hissLevel
 		}
 		// Sidechain duck — multiply both channels by the duck envelope's
 		// current attenuation. Idle = 1.0 (no effect).
@@ -1474,6 +1470,17 @@ func (e *sf2Core) renderInto(left, right []float64) {
 			c := e.stepCrackle()
 			l += c
 			r += c
+		}
+		if e.hissLevel > 0 {
+			// Stereo-decorrelated white noise — independent samples per channel.
+			l += (e.rng.Float64()*2 - 1) * e.hissLevel
+			r += (e.rng.Float64()*2 - 1) * e.hissLevel
+		}
+		// Master low-pass — applied AFTER noise injection so vinyl crackle and
+		// tape hiss are attenuated by the same filter as the music signal.
+		if e.lpL != nil {
+			l = e.lpL.Tick(l)
+			r = e.lpR.Tick(r)
 		}
 		l, r = e.comp.Tick(l, r)
 		left[i] = synth.SoftClip(l)

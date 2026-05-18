@@ -1,6 +1,7 @@
 /termus
 /termus.exe
 *.wav
+wavs/
 .DS_Store
 
 # Reference video clips used to tune the landing-page wave — kept
