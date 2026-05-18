@@ -815,6 +815,114 @@ func (e *sf2Core) setNamedConvolutionIR(name string, sampleRate float64, seed in
 	return nil
 }
 
+// applyMixBusProfile configures all master-chain components from the given
+// profile. Profile is style-level data; called once per Seed.
+//
+// SP5 wires the following stages that already have setters:
+//   - EQ low/high shelves via setMasterEQ
+//   - Pre-compressor low-pass via setMasterLowpass
+//   - Tape saturation via setSharedTape
+//   - Wow/flutter via setWowFlutter
+//   - Vinyl noise/crackle via setSharedVinyl
+//   - Sidechain duck envelope via configureSidechain
+//   - Named convolution reverb via setNamedConvolutionIR
+//   - Bus compressor via a new StereoCompressor
+//   - Post-compressor (master) low-pass via setMasterLowpass (swapped in after BusComp)
+//
+// applyMixBusProfile is intentionally opt-in — existing algorithms continue
+// to configure the chain directly via their own setup code. SP6 will plumb
+// this through .tm files.
+func (c *sf2Core) applyMixBusProfile(p *MixBusProfile, sampleRate float64, seed int64) error {
+	if p == nil {
+		return nil
+	}
+
+	// EQ shelves. The master bus defaults use fixed Hz values; profiles
+	// specify only the dB gain. Use the default corner frequencies (180 Hz
+	// low-shelf, 7500 Hz high-shelf) so the profile dials in character
+	// without needing to re-specify the shelf frequency.
+	const lowShelfHz = 180.0
+	const highShelfHz = 7500.0
+	c.setMasterEQ(lowShelfHz, p.EQLowShelfDB, highShelfHz, p.EQHighShelfDB)
+
+	// Pre-compressor low-pass.
+	if p.LowPassCutoffHz > 0 {
+		c.setMasterLowpass(p.LowPassCutoffHz, 0.707)
+	} else {
+		c.setMasterLowpass(0, 0)
+	}
+
+	// Tape saturation.
+	if p.Tape != nil {
+		c.setSharedTape(*p.Tape)
+	} else {
+		c.setSharedTape(synth.TapeConfig{DriveDB: 0})
+	}
+
+	// Wow/flutter pitch modulator.
+	if p.WowFlutter != nil {
+		c.setWowFlutter(*p.WowFlutter)
+	} else {
+		c.wowFlutter = nil
+	}
+
+	// Vinyl noise/crackle.
+	if p.Vinyl != nil {
+		cfg := *p.Vinyl
+		cfg.Seed = seed
+		c.setSharedVinyl(sampleRate, cfg)
+	} else {
+		c.sharedVinyl = nil
+	}
+
+	// Sidechain duck envelope.
+	if p.SidechainDuck != nil {
+		c.configureSidechain(p.SidechainDuck.DepthDB, p.SidechainDuck.AttackMs, p.SidechainDuck.ReleaseMs)
+	} else {
+		// Disable any previously configured duck.
+		c.duckAttackCoef = 0
+		c.duckReleaseCoef = 0
+		c.duckFloor = 1.0
+		c.duckValue = 1.0
+		c.duckState = 0
+	}
+
+	// Bus compressor. Replace the existing stereo compressor.
+	if p.BusComp != nil {
+		c.comp = synth.NewStereoCompressor(
+			p.BusComp.ThresholdDB,
+			p.BusComp.Ratio,
+			p.BusComp.AttackMs,
+			p.BusComp.ReleaseMs,
+			p.BusComp.KneeDB,
+			p.BusComp.MakeupDB,
+		)
+	}
+
+	// Post-compressor (master) low-pass — replaces the pre-comp LP if both
+	// are set. The chain has a single lpL/lpR pair; MasterLowPassHz takes
+	// precedence when non-zero, otherwise we keep the pre-comp LP already set.
+	//
+	// TODO(SP6): if both LowPassCutoffHz and MasterLowPassHz are non-zero a
+	// second filter pair is needed to honour both positions in the chain.
+	// For now, MasterLowPassHz silently overrides LowPassCutoffHz.
+	if p.MasterLowPassHz > 0 {
+		c.setMasterLowpass(p.MasterLowPassHz, 0.707)
+	}
+
+	// Named convolution reverb bus.
+	if p.ReverbBusIRName != "" {
+		wet := math.Pow(10, p.ReverbBusWetDB/20)
+		if err := c.setNamedConvolutionIR(p.ReverbBusIRName, sampleRate, seed, wet); err != nil {
+			return err
+		}
+	} else {
+		c.setConvolutionIR(nil, 0)
+	}
+
+	return nil
+}
+
 // addTrack registers a cycling-note track with the engine. nextFireT is
 // initialized to 0, which (combined with curSlot=-1) means "fire the slot
 // matching the current time on the very next render call."
