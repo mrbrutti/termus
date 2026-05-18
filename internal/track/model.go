@@ -20,11 +20,44 @@ type File struct {
 	// One of: lofi, jazz, chill, ambient. Resolved via gen.MixBusByName.
 	// If absent, no profile is applied (behavior unchanged).
 	MixBus          string          `yaml:"mix_bus,omitempty"`
+	// Motifs is an optional library of named motifs (SP7).
+	// Each entry may reference others via based_on and apply textual
+	// transforms (transpose, retrograde, invert, augment, diminish).
+	Motifs          []MotifEntry    `yaml:"motifs,omitempty"`
+	// ChordMarkov is an optional file-level Markov table for chord progressions
+	// (SP7). Weights per state should sum to ~1.0; a warning is emitted if not.
+	ChordMarkov     *ChordMarkov    `yaml:"chord_markov,omitempty"`
 	Roles           map[string]Role `yaml:"roles,omitempty"`
 	Sections        []Section       `yaml:"sections"`
 	Globals         Profile         `yaml:"globals,omitempty"`
 	VariationBudget VariationBudget `yaml:"variation_budget,omitempty"`
 	Lint            LintControl     `yaml:"lint,omitempty"`
+}
+
+// MotifEntry defines a named motif with optional transforms (SP7).
+// Transforms are applied textually on the pattern string.
+type MotifEntry struct {
+	Name       string  `yaml:"name"`
+	Pattern    string  `yaml:"pattern"`   // e.g. "5 . . 7 | 9 . 7 5"
+	BasedOn    string  `yaml:"based_on"`  // optional: name of parent motif
+	Transpose  int     `yaml:"transpose"` // semitones — shifts scale-degree digits
+	Retrograde bool    `yaml:"retrograde"`
+	Invert     int     `yaml:"invert"`   // 0 = no, else pivot scale degree
+	Augment    float64 `yaml:"augment"`  // duration multiplier, e.g. 1.5
+	Diminish   float64 `yaml:"diminish"` // duration multiplier, e.g. 0.5
+}
+
+// ChordMarkov holds a Markov successor table for chord progressions (SP7).
+// Weights per state should sum to ~1.0; a warning is emitted by ValidateChordMarkov.
+type ChordMarkov struct {
+	Transitions map[string]map[string]float64 `yaml:"transitions"`
+}
+
+// NotePool is a weighted-random note pool for a role (SP7).
+// Keys are scale degrees (e.g. "1", "3", "5") and values are relative weights.
+// Weights should sum to ~1.0; a warning is emitted if they do not.
+type NotePool struct {
+	Choices map[string]float64 `yaml:"choices"`
 }
 
 type Section struct {
@@ -48,11 +81,48 @@ type Section struct {
 	// Accepts both plain string and map form per entry; see ChordSpec.
 	// When present it augments the plain Harmony string with voicing hints.
 	HarmonyChords []ChordSpec     `yaml:"harmony_chords,omitempty"`
+	// Automation holds per-section breakpoint curves for parameters like
+	// cutoff, pan, expression (SP7). Inert at render time; consumed by
+	// future compile-time rewriters.
+	Automation    []AutomationLane `yaml:"automation,omitempty"`
+	// Substitutions holds harmonic substitution directives for this section
+	// (SP7). Applied deterministically via a seed when compiling.
+	Substitutions []SubstitutionRule `yaml:"substitutions,omitempty"`
 	Profile       Profile         `yaml:"profile,omitempty"`
 	Roles         map[string]Role `yaml:"roles,omitempty"`
 	Orchestration Orchestration   `yaml:"orchestration,omitempty"`
 	Arrangement   Arrangement     `yaml:"arrangement,omitempty"`
 	Events        []Event         `yaml:"events,omitempty"`
+}
+
+// AutomationLane describes a per-section breakpoint curve for a named
+// parameter (SP7). Param is one of: "cutoff", "pan", "expression".
+type AutomationLane struct {
+	Param       string `yaml:"param"`
+	Breakpoints []Bkpt `yaml:"breakpoints"`
+}
+
+// Bkpt is a single breakpoint in an AutomationLane.
+// AtPercent is 0..100 of the section duration; Value is the parameter value.
+type Bkpt struct {
+	AtPercent float64 `yaml:"at"`
+	Value     float64 `yaml:"value"`
+}
+
+// SubstitutionRule specifies a harmonic substitution directive (SP7).
+// The renderer does not apply these at runtime; they are consumed by the
+// ApplySubstitutions compile-time rewriter in internal/gen.
+type SubstitutionRule struct {
+	// Rule is one of: tritone_sub, ii_V_chain, secondary_dominant, deceptive.
+	Rule        string  `yaml:"rule"`
+	// ApplyTo constrains which chord role triggers the rule (e.g. "V", "I").
+	ApplyTo     string  `yaml:"apply_to"`
+	// Before is an optional anchor chord for ii_V_chain insertion.
+	Before      string  `yaml:"before"`
+	// Of is the target chord for secondary_dominant (e.g. "ii").
+	Of          string  `yaml:"of"`
+	// Probability is 0..1; when < 1 the rule is applied probabilistically.
+	Probability float64 `yaml:"probability"`
 }
 
 type Arrangement struct {
@@ -101,6 +171,10 @@ type Role struct {
 	Wow         *WowOverride `yaml:"wow,omitempty"`
 	// VelocityCurve is a string identifier for a velocity mapping preset.
 	VelocityCurve string    `yaml:"velocity_curve,omitempty"`
+	// Notes is an optional weighted-random note pool (SP7).
+	// When present the role's generator draws from these scale degrees
+	// according to their relative weights.
+	Notes         *NotePool `yaml:"notes,omitempty"`
 }
 
 type PhraseBlock struct {
