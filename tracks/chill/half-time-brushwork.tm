@@ -1,58 +1,69 @@
 title: Half-Time Brushwork
-description: Half-time brushed groove with swing pocket and slow pan drift.
+description: Half-time brushed chill with dense electric piano comping, syncopated bass, pad sustain, guitar texture, and sax lead.
 style: chill
 mix_bus: chill
 listen_mode: album-side
 seed: 27845
-tags: [chill, halftime, brushes, swing, moody]
+tags: [chill, halftime, brushes, swing, moody, pad, sax]
 key: Emin
 tempo: 72
-globals: {density: steady, brightness: warm, motion: gentle, reverb: room}
+globals: {density: full, brightness: warm, motion: moving, reverb: halo}
 roles:
   keys:
     family: electric_piano
     tone: [warm, dusty]
     register: mid
     prominence: support
-    pattern: "x..x .... x..x ...."
+    pattern: "x.x..x.. x.x..x.."
+  pad:
+    family: pad
+    tone: [soft, wide]
+    register: mid
+    prominence: air
+    pattern: "x..............."
   bass:
     family: bass
     tone: [round, woody]
     register: low
     prominence: anchor
-    pattern: "x... .... x..x ...."
+    pattern: "x..x x..x x.x. x..."
   kick:
     family: drums
     tone: [soft, dusty]
     prominence: anchor
-    pattern: "x....... | ....x..."
+    pattern: "x.......x......."
   snare:
     family: drums
     tone: [soft]
     prominence: support
-    pattern: "........ | ....x..."
+    pattern: "....x.......x..."
   hat:
     family: drums
-    tone: [dry]
+    tone: [dry, tight]
     prominence: support
-    pattern: "x.x.x.x. | x.x.x.x."
+    pattern: "x.x.x.x.x.x.x.x."
+  ride:
+    family: drums
+    tone: [live, soft]
+    prominence: support
+    pattern: "....x.......x..."
   guitar:
     family: guitar
     tone: [warm, soft]
     register: mid
-    prominence: air
+    prominence: support
     pattern: "..x. .... ..x. ...."
   lead:
     family: reed_lead
-    tone: [breathy]
+    tone: [breathy, intimate]
     register: mid-high
     prominence: lead
     motif: "5 . 7 . | 9 . 7 5"
 sections:
   - id: intro
     title: brushed arrival
-    duration: 16s
-    harmony: "Em9 Cmaj9"
+    duration: 14s
+    harmony: "Em9 Cmaj9 | Am7 D7"
     scene: "intro hush"
     variation: "establish"
     groove: swing_56
@@ -60,29 +71,51 @@ sections:
       - param: expression
         breakpoints:
           - {at: 0, value: 0.35}
-          - {at: 100, value: 0.6}
+          - {at: 100, value: 0.65}
   - id: verse
     title: slow-motion glide
-    duration: 38s
+    duration: 32s
     harmony: "Em9 Cmaj9 | Am7 Dsus4"
     scene: "head glide"
     variation: "statement"
     groove: swing_56
+    substitutions:
+      - {rule: secondary_dominant, of: ii, probability: 0.7}
     automation:
       - param: expression
         breakpoints:
-          - {at: 0, value: 0.6}
-          - {at: 50, value: 0.55}
-          - {at: 100, value: 0.55}
+          - {at: 0, value: 0.65}
+          - {at: 50, value: 0.7}
+          - {at: 100, value: 0.65}
   - id: bridge
     title: middle distance
-    duration: 24s
+    duration: 22s
     harmony: "Fmaj9 E7 | Am9 Dsus4"
     scene: "bridge tilt"
     variation: "open-register"
     groove: swing_56
     substitutions:
-      - {rule: secondary_dominant, of: ii, probability: 0.7}
+      - {rule: secondary_dominant, of: ii, probability: 1.0}
+    automation:
+      - param: expression
+        breakpoints:
+          - {at: 0, value: 0.7}
+          - {at: 60, value: 0.9}
+          - {at: 100, value: 0.8}
+  - id: verse2
+    title: amber return
+    duration: 24s
+    harmony: "Em9 Cmaj9 | Am7 D7"
+    scene: "head glide"
+    variation: "sequence-up"
+    groove: swing_56
+    substitutions:
+      - {rule: ii_V_chain, apply_to: I, probability: 0.8}
+    automation:
+      - param: expression
+        breakpoints:
+          - {at: 0, value: 0.8}
+          - {at: 100, value: 0.75}
   - id: outro
     title: last light fades
     duration: 18s
@@ -90,8 +123,10 @@ sections:
     scene: "outro hush"
     variation: "cadence"
     groove: swing_56
+    substitutions:
+      - {rule: deceptive, apply_to: V, probability: 1.0}
     automation:
       - param: expression
         breakpoints:
-          - {at: 0, value: 0.55}
+          - {at: 0, value: 0.75}
           - {at: 100, value: 0.2}
