@@ -2,7 +2,7 @@ title: Harbor Cassette Fade
 description: Slow-motion tape Rhodes with dense boom-bap, open-hat accents, walking sub, vibes texture, and sax motif.
 style: lofi
 mix_bus: lofi
-listen_mode: album-side
+listen_mode: hour-stream
 seed: 51908
 tags: [lofi, harbor, cassette, rhodes, tape, sub, vibes]
 key: Emin

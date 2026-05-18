@@ -74,7 +74,28 @@ func renderPlaylistOutWith(outDir string, pl *gen.Playlist, volume int, build pl
 		plan := audio.PlanRender(algo, track.Duration.Seconds())
 		base := fmt.Sprintf("%0*d-%s-%d.wav", digits, i+1, safeFileStem(track.Spec.Name), track.Seed)
 		absPath := filepath.Join(outDir, base)
-		frames, err := render(absPath, algo, plan, volume)
+		var (
+			frames int
+			err    error
+		)
+		// SP17: when the playlist Track carries an internal section schedule,
+		// render through each section with the matching algorithm. Sections
+		// are sample-aligned with no crossfade at boundaries. The legacy
+		// single-section render path is retained for plain multi-track
+		// playlists (radio mode etc.).
+		if len(track.Sections) > 1 {
+			stops := make([]audio.SectionStop, 0, len(track.Sections))
+			for _, stop := range track.Sections {
+				secFrames := int(stop.Duration.Seconds() * 44100.0)
+				stops = append(stops, audio.SectionStop{
+					Algo:   build(track.Spec, stop.Seed),
+					Frames: secFrames,
+				})
+			}
+			frames, err = audio.RenderSectionsToWAV(absPath, stops, volume)
+		} else {
+			frames, err = render(absPath, algo, plan, volume)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("render track %d (%s): %w", i+1, track.Spec.Name, err)
 		}

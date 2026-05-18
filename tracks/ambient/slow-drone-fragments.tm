@@ -2,7 +2,7 @@ title: Slow Drone Fragments
 description: A-minor ambient — intent-driven layered drones, bell arpeggios, no drums. SP16 reference.
 style: ambient
 mix_bus: ambient
-listen_mode: album-side
+listen_mode: hour-stream
 seed: 11023
 tags: [ambient, drone, modal, sp16]
 key: Amin

@@ -61,7 +61,19 @@ func Analyze(file *File, compiled *Compiled) ReviewReport {
 	report.Sections = make([]ReviewSection, 0, len(sections))
 	var planList []gen.AuthoredTrackPlan
 	if compiled != nil {
+		// SP17: a compiled track is now a single Track holding a Sections
+		// schedule. Walk the schedule (when present) to gather plans in
+		// section order. Legacy single-section playlists (Sections nil) keep
+		// behaving as before.
 		for _, track := range compiled.Playlist.Tracks {
+			if len(track.Sections) > 0 {
+				for _, stop := range track.Sections {
+					if plan, ok := compiled.Plans[stop.PlanKey]; ok {
+						planList = append(planList, plan)
+					}
+				}
+				continue
+			}
 			if plan, ok := compiled.Plans[playlistKey(track.Spec, track.Seed)]; ok {
 				planList = append(planList, plan)
 			}

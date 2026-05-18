@@ -2,7 +2,7 @@ title: Dusty Swing / After Hours
 description: F-major bop blues — intent-driven rootless piano, walking bass, spang-a-lang ride. SP16 reference.
 style: jazz
 mix_bus: jazz
-listen_mode: album-side
+listen_mode: hour-stream
 seed: 31440
 tags: [jazz, swing, bop, walking, sp16]
 key: Fmaj

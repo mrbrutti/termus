@@ -55,7 +55,7 @@ func Compile(file *File, defaultSeed int64, defaultListenMode gen.ListeningMode)
 			Name:       file.Title,
 			Mode:       gen.PlaylistScore,
 			ListenMode: listenMode,
-			Tracks:     make([]gen.Track, 0, len(sections)),
+			Tracks:     make([]gen.Track, 0, 1),
 		},
 		Profiles: make(map[string]gen.ControlProfile, len(sections)),
 		Plans:    make(map[string]gen.AuthoredTrackPlan, len(sections)),
@@ -65,6 +65,12 @@ func Compile(file *File, defaultSeed int64, defaultListenMode gen.ListeningMode)
 			return nil, err
 		}
 	}
+	// SP17: build a single seamless Track holding all sections as an internal
+	// schedule. Each section still gets its own plan keyed by spec+seed; the
+	// playback engine swaps plans at section boundaries without crossfading.
+	sectionStops := make([]gen.SectionStop, 0, len(sections))
+	var cursor time.Duration
+	var firstSectionSeed int64
 	for i, section := range sections {
 		dur, err := time.ParseDuration(section.Duration)
 		if err != nil || dur <= 0 {
@@ -112,12 +118,6 @@ func Compile(file *File, defaultSeed int64, defaultListenMode gen.ListeningMode)
 		if title == "" {
 			title = spec.Label()
 		}
-		compiled.Playlist.Tracks = append(compiled.Playlist.Tracks, gen.Track{
-			Spec:     spec,
-			Seed:     seed,
-			Duration: dur,
-			Title:    title,
-		})
 		key := playlistKey(spec, seed)
 		compiled.Profiles[key] = profile
 		plan, err := buildAuthoredPlan(spec, file, section, mergedRoles, dur, profile, seed)
@@ -125,10 +125,37 @@ func Compile(file *File, defaultSeed int64, defaultListenMode gen.ListeningMode)
 			return nil, fmt.Errorf("sections[%d].plan: %w", i, err)
 		}
 		compiled.Plans[key] = plan
+		sectionStops = append(sectionStops, gen.SectionStop{
+			Title:     title,
+			Seed:      seed,
+			Duration:  dur,
+			StartTime: cursor,
+			PlanKey:   key,
+		})
+		if i == 0 {
+			firstSectionSeed = seed
+		}
+		cursor += dur
 	}
+	// SP17: assemble the single Track. The Track's outer Seed/Title come from
+	// the first section so legacy code that reads Track.Spec / Track.Seed (e.g.
+	// the build closures that key plan lookups) still sees a valid lookup.
+	loopEvolving := listenMode == gen.ListeningModeHourStream || listenMode == gen.ListeningModeAlbumSide
+	trackTitle := strings.TrimSpace(file.Title)
+	if trackTitle == "" {
+		trackTitle = spec.Label()
+	}
+	compiled.Playlist.Tracks = append(compiled.Playlist.Tracks, gen.Track{
+		Spec:                spec,
+		Seed:                firstSectionSeed,
+		Duration:            cursor,
+		Title:               trackTitle,
+		Sections:            sectionStops,
+		LoopForeverEvolving: loopEvolving,
+	})
 	resolvedFile := *file
 	resolvedFile.Sections = sections
-	compiled.Warnings = lintFile(&resolvedFile, compiled.Playlist.Tracks)
+	compiled.Warnings = lintFile(&resolvedFile, compiled.Playlist.Tracks, len(sections))
 	return compiled, nil
 }
 
@@ -204,12 +231,16 @@ func (p Profile) resolve(base gen.ControlProfile) (gen.ControlProfile, error) {
 	return out, nil
 }
 
-func lintFile(file *File, tracks []gen.Track) []Warning {
+// lintFile inspects the authored file plus the compiled track schedule and
+// returns warnings. sectionCount is the number of resolved sections in the
+// compiled output (post-SP17 a single Track may carry many sections, so the
+// legacy "len(tracks)" check was no longer meaningful).
+func lintFile(file *File, tracks []gen.Track, sectionCount int) []Warning {
 	var warnings []Warning
 	if len(file.Roles) == 0 {
 		warnings = append(warnings, Warning{Path: "roles", Message: "no top-level roles defined; authored arrangement may stay thin"})
 	}
-	if len(tracks) < 2 {
+	if sectionCount < 2 {
 		warnings = append(warnings, Warning{Path: "sections", Message: "single-section track may still feel static; add contrast sections"})
 		return warnings
 	}

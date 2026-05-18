@@ -3,7 +3,7 @@ description: C-major chill — intent-driven pad sustain, Rhodes comp, half-time
 style: chill
 substyle: half-time-chill
 mix_bus: chill
-listen_mode: album-side
+listen_mode: hour-stream
 seed: 19334
 tags: [chill, pad, halftime, sp16]
 key: Cmaj

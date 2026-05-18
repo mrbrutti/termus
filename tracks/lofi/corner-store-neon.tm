@@ -2,7 +2,7 @@ title: Corner Store Neon
 description: Buzzing fluorescent guitar loop with dense boom-bap, ghost hats, sub-bass stabs, and Rhodes chops.
 style: lofi
 mix_bus: lofi
-listen_mode: album-side
+listen_mode: hour-stream
 seed: 37220
 tags: [lofi, guitar, neon, swing, boom-bap, ghost]
 key: Fmin
