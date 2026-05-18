@@ -109,6 +109,14 @@ type Section struct {
 	// role name. Use this when one role's pattern is a different loop length than
 	// the rest of the section (e.g. a 4-bar bass line over 2-bar drums).
 	RoleLoopBars map[string]int `yaml:"role_loop_bars,omitempty"`
+
+	// Intensity (SP16) is a 0..1 indicator the renderer can use to drive
+	// section-level mix automation. nil = inherit defaults.
+	Intensity *float64 `yaml:"intensity,omitempty"`
+
+	// FillAtEnd (SP16) hints to the renderer that a fill should be appended
+	// in the last bar of the section (drum fills, melody pickup, etc.).
+	FillAtEnd bool `yaml:"fill_at_end,omitempty"`
 }
 
 // NoteEvent is one explicit note in a role's event list (SP14).
@@ -237,6 +245,63 @@ type Role struct {
 	// section. 0 = auto-detect from the max event beat (rounded up to nearest bar).
 	// Section.LoopBars (or Section.RoleLoopBars[name]) overrides this.
 	LoopBars int `yaml:"loop_bars,omitempty"`
+
+	// Voice (SP16) names a curated voice from synth.VoiceLibrary. The voice
+	// maps to an SF2 preset plus EQ/envelope shaping. When empty the role
+	// falls back to family-based SF2 selection.
+	Voice string `yaml:"voice,omitempty"`
+
+	// AutoVoice (SP16) names a voicing-engine style. When set, the engine
+	// generates idiomatic events from the section's harmony using the style.
+	// Choices: rhodes_comp, jazz_rootless_a, jazz_rootless_b, drop2, drop3,
+	// shell_voicing, walking_bass, walking_with_anticipation, pedal_root,
+	// pad_sustain, pad_crossfade, bell_arpeggio.
+	AutoVoice string `yaml:"auto_voice,omitempty"`
+
+	// AutoPhrase (SP16) names a melodic phrase shape for lead/melody roles.
+	// Choices: ascending_arc, descending_arc, question_answer, call_response,
+	// bop_line, blues_lick, slow_ballad, modal_drift.
+	AutoPhrase string `yaml:"auto_phrase,omitempty"`
+
+	// Humanize (SP16) is the per-role humanisation config. Zero value =
+	// "use family default".
+	Humanize HumanizeSpec `yaml:"humanize,omitempty"`
+
+	// Chain (SP16) is the per-role mix-chain override. Unset fields inherit
+	// the family default.
+	Chain ChainSpec `yaml:"chain,omitempty"`
+}
+
+// HumanizeSpec (SP16) is the per-role humanization configuration consumed by
+// the SP16 Humanize() routine. All fields are optional; the zero value means
+// "use family default".
+type HumanizeSpec struct {
+	// TimingMs is the ± per-event timing jitter in milliseconds.
+	TimingMs float64 `yaml:"timing_ms,omitempty"`
+	// Velocity is the ± per-event velocity jitter (MIDI 0..127).
+	Velocity int `yaml:"velocity,omitempty"`
+	// Accent is the accent-profile name applied after jitter:
+	//   "dilla", "swing_accent", "clean", "phrase_arc".
+	Accent string `yaml:"accent,omitempty"`
+	// PhraseShape is the section-level dynamic shape:
+	//   "steady", "crescendo", "decrescendo", "arc".
+	PhraseShape string `yaml:"phrase_shape,omitempty"`
+}
+
+// IsZero reports whether the HumanizeSpec is the YAML zero value (no fields
+// set). Callers should treat a zero spec as "use family default".
+func (s HumanizeSpec) IsZero() bool {
+	return s.TimingMs == 0 && s.Velocity == 0 && s.Accent == "" && s.PhraseShape == ""
+}
+
+// ChainSpec (SP16) is the per-role mix-chain override. Pointer-typed numeric
+// fields use nil to mean "inherit the family default"; the empty string
+// likewise inherits.
+type ChainSpec struct {
+	ReverbSend    *float64 `yaml:"reverb_send,omitempty"`
+	CompressStyle string   `yaml:"compress,omitempty"`
+	TapeDriveDB   *float64 `yaml:"tape_drive_db,omitempty"`
+	PanOffset     *float64 `yaml:"pan_offset,omitempty"`
 }
 
 type PhraseBlock struct {
