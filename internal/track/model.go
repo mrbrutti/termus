@@ -98,6 +98,17 @@ type Section struct {
 	// the algorithm's pattern logic for that role in this section.
 	// Resolution precedence: section.RoleEvents[role] > role.Events > algorithm fallback.
 	RoleEvents map[string][]NoteEvent `yaml:"role_events,omitempty"`
+
+	// LoopBars (SP15) is an optional explicit loop length in bars (4/4 = 4 beats per bar).
+	// When set, event lists for this section are repeated every LoopBars bars across
+	// the section's full duration. 0 = auto-detect from the max event beat.
+	// Applies to both role-level and section-level RoleEvents.
+	LoopBars int `yaml:"loop_bars,omitempty"`
+
+	// RoleLoopBars (SP15) is an optional per-role override of LoopBars, keyed by
+	// role name. Use this when one role's pattern is a different loop length than
+	// the rest of the section (e.g. a 4-bar bass line over 2-bar drums).
+	RoleLoopBars map[string]int `yaml:"role_loop_bars,omitempty"`
 }
 
 // NoteEvent is one explicit note in a role's event list (SP14).
@@ -221,6 +232,11 @@ type Role struct {
 	// not have its own per-section RoleEvents entry for this role. The engine
 	// repeats the event sequence across the section.
 	Events        []NoteEvent `yaml:"events,omitempty"`
+	// LoopBars (SP15) is the role's explicit loop length in bars (4 beats each).
+	// When set, the Events list is repeated every LoopBars bars across the
+	// section. 0 = auto-detect from the max event beat (rounded up to nearest bar).
+	// Section.LoopBars (or Section.RoleLoopBars[name]) overrides this.
+	LoopBars int `yaml:"loop_bars,omitempty"`
 }
 
 type PhraseBlock struct {
