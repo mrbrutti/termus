@@ -102,9 +102,7 @@ func ensurePhraseBlock(phrases map[string]PhraseBlock, label string, block Phras
 	if strings.TrimSpace(current.Motif) == "" && strings.TrimSpace(block.Motif) != "" {
 		current.Motif = block.Motif
 	}
-	if strings.TrimSpace(current.Harmony) == "" && strings.TrimSpace(block.Harmony) != "" {
-		current.Harmony = block.Harmony
-	}
+	// PhraseBlock.Harmony removed in SP8 (v1 dead field).
 	phrases[key] = current
 	return phrases
 }

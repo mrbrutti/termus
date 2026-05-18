@@ -86,6 +86,19 @@ func buildAuthoredPlan(spec gen.AlgoSpec, file *File, section Section, roles map
 	slotCount := targetBars * authoredSlotsPerBar
 	ctx := ctxForSection(pack, section, profile, seed)
 	phraseSpans := compilePhraseSpans(ctx, targetBars)
+	// SP8: wire mix_bus from file level, groove from section level.
+	mixBus := strings.TrimSpace(file.MixBus)
+	groove := strings.TrimSpace(section.Groove)
+
+	// SP8: compile automation lanes from section.Automation.
+	compiledAutomation := compileAutomationLanes(section.Automation)
+
+	// SP8: apply harmonic substitutions at compile time (item 5).
+	// Convert the string-based harmony labels and apply SubstRules if present.
+	if len(section.Substitutions) > 0 {
+		harmonyBars = applyHarmonySubstitutions(harmonyBars, section.Substitutions, seed)
+	}
+
 	plan := gen.AuthoredTrackPlan{
 		Style:       spec.Name,
 		Section:     firstNonBlank(section.Title, section.ID),
@@ -97,6 +110,9 @@ func buildAuthoredPlan(spec gen.AlgoSpec, file *File, section Section, roles map
 		SlotCount:   slotCount,
 		ChordSpans:  compileChordSpans(harmonyBars),
 		PhraseSpans: phraseSpans,
+		MixBus:      mixBus,
+		Groove:      groove,
+		Automation:  compiledAutomation,
 	}
 	roleNames := make([]string, 0, len(roles))
 	for name, role := range roles {
@@ -110,6 +126,13 @@ func buildAuthoredPlan(spec gen.AlgoSpec, file *File, section Section, roles map
 		roleNames = append(roleNames, name)
 	}
 	sort.Strings(roleNames)
+
+	// SP8: compile per-role reverb bus configuration (item 3).
+	roleReverb := compileRoleReverb(roles)
+	if len(roleReverb) > 0 {
+		plan.RoleReverb = roleReverb
+	}
+
 	for _, roleName := range roleNames {
 		role := roles[roleName]
 		rendered, err := compileRoleTracks(ctx, roleName, role, harmonyBars, targetBars, phraseSpans)
@@ -124,6 +147,97 @@ func buildAuthoredPlan(spec gen.AlgoSpec, file *File, section Section, roles map
 		return gen.AuthoredTrackPlan{}, fmt.Errorf("no active authored role tracks compiled")
 	}
 	return plan, nil
+}
+
+// compileAutomationLanes converts track.AutomationLane to gen.AuthoredAutomationLane.
+func compileAutomationLanes(lanes []AutomationLane) []gen.AuthoredAutomationLane {
+	if len(lanes) == 0 {
+		return nil
+	}
+	out := make([]gen.AuthoredAutomationLane, 0, len(lanes))
+	for _, lane := range lanes {
+		if strings.TrimSpace(lane.Param) == "" || len(lane.Breakpoints) == 0 {
+			continue
+		}
+		compiled := gen.AuthoredAutomationLane{
+			Param:       strings.TrimSpace(lane.Param),
+			Breakpoints: make([][2]float64, 0, len(lane.Breakpoints)),
+		}
+		for _, bp := range lane.Breakpoints {
+			at01 := bp.AtPercent / 100.0
+			if at01 < 0 {
+				at01 = 0
+			}
+			if at01 > 1 {
+				at01 = 1
+			}
+			compiled.Breakpoints = append(compiled.Breakpoints, [2]float64{at01, bp.Value})
+		}
+		out = append(out, compiled)
+	}
+	return out
+}
+
+// compileRoleReverb builds a map of role name → AuthoredRoleReverb from
+// Role.Room and Role.ReverbSendDB. Roles without a Room are skipped.
+func compileRoleReverb(roles map[string]Role) map[string]gen.AuthoredRoleReverb {
+	out := map[string]gen.AuthoredRoleReverb{}
+	for name, role := range roles {
+		room := strings.TrimSpace(role.Room)
+		if room == "" {
+			continue
+		}
+		sendDB := -12.0 // default send level
+		if role.ReverbSendDB != nil {
+			sendDB = *role.ReverbSendDB
+		}
+		out[name] = gen.AuthoredRoleReverb{
+			IRName: room,
+			SendDB: sendDB,
+		}
+	}
+	return out
+}
+
+// applyHarmonySubstitutions rewrites the chord labels in the harmony bars
+// using gen.ApplySubstitutions. The substitution rules are applied to the
+// chord label strings (e.g. "Imaj7", "V7") that populated the bars.
+func applyHarmonySubstitutions(bars []authoredHarmonyBar, rules []SubstitutionRule, seed int64) []authoredHarmonyBar {
+	if len(bars) == 0 || len(rules) == 0 {
+		return bars
+	}
+	// Convert SubstitutionRule → gen.SubstRule.
+	genRules := make([]gen.SubstRule, 0, len(rules))
+	for _, r := range rules {
+		genRules = append(genRules, gen.SubstRule{
+			Rule:        r.Rule,
+			ApplyTo:     r.ApplyTo,
+			Before:      r.Before,
+			Of:          r.Of,
+			Probability: r.Probability,
+		})
+	}
+	// Flatten all chord labels across bars into a single slice, substitute,
+	// then repack. This preserves bar structure by round-trip indexing.
+	var labels []string
+	var indices []struct{ bar, chord int }
+	for b, bar := range bars {
+		for c, chord := range bar.chords {
+			labels = append(labels, chord.Label)
+			indices = append(indices, struct{ bar, chord int }{b, c})
+		}
+	}
+	rewritten := gen.ApplySubstitutions(labels, genRules, seed)
+	out := make([]authoredHarmonyBar, len(bars))
+	for i, bar := range bars {
+		out[i].chords = append([]authoredChord(nil), bar.chords...)
+	}
+	for i, idx := range indices {
+		if i < len(rewritten) {
+			out[idx.bar].chords[idx.chord].Label = rewritten[i]
+		}
+	}
+	return out
 }
 
 func resolveTempoBPM(raw string, pack stylePack) float64 {
@@ -2442,9 +2556,7 @@ func roleForPhrase(role Role, label string) Role {
 	if strings.TrimSpace(block.Motif) != "" {
 		out.Motif = block.Motif
 	}
-	if strings.TrimSpace(block.Harmony) != "" {
-		out.Harmony = block.Harmony
-	}
+	// Role.Harmony and PhraseBlock.Harmony removed in SP8 (v1 dead fields).
 	if block.Active != nil {
 		out.Active = block.Active
 	}

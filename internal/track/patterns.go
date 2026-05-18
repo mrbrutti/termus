@@ -121,9 +121,7 @@ func validateRole(name string, role Role) error {
 	if err := validatePattern(role.Motif, "melody"); err != nil {
 		return fmt.Errorf("roles.%s.motif: %w", name, err)
 	}
-	if err := validatePattern(role.Harmony, "harmony"); err != nil {
-		return fmt.Errorf("roles.%s.harmony: %w", name, err)
-	}
+	// Role.Harmony removed in SP8 (v1 dead field).
 	if role.Register != "" && !registerRE.MatchString(role.Register) {
 		return fmt.Errorf("roles.%s.register: invalid register %q", name, role.Register)
 	}
@@ -134,9 +132,7 @@ func validateRole(name string, role Role) error {
 		if err := validatePattern(block.Motif, "melody"); err != nil {
 			return fmt.Errorf("roles.%s.phrases.%s.motif: %w", name, phrase, err)
 		}
-		if err := validatePattern(block.Harmony, "harmony"); err != nil {
-			return fmt.Errorf("roles.%s.phrases.%s.harmony: %w", name, phrase, err)
-		}
+		// PhraseBlock.Harmony removed in SP8 (v1 dead field).
 	}
 	return nil
 }

@@ -157,7 +157,8 @@ type Role struct {
 	Prominence   string                 `yaml:"prominence,omitempty"`
 	Pattern      string                 `yaml:"pattern,omitempty"`
 	Motif        string                 `yaml:"motif,omitempty"`
-	Harmony      string                 `yaml:"harmony,omitempty"`
+	// Harmony was the v1 per-role harmony string. Removed in SP8; it was never
+	// consumed by the render pipeline. Use Section.Harmony or Section.HarmonyChords.
 	Phrases      map[string]PhraseBlock `yaml:"phrases,omitempty"`
 	Active       *bool                  `yaml:"active,omitempty"`
 	// Character knobs (SP6) — all optional; zero = use default.
@@ -180,8 +181,9 @@ type Role struct {
 type PhraseBlock struct {
 	Pattern string `yaml:"pattern,omitempty"`
 	Motif   string `yaml:"motif,omitempty"`
-	Harmony string `yaml:"harmony,omitempty"`
-	Active  *bool  `yaml:"active,omitempty"`
+	// Harmony was the v1 per-phrase harmony override. Removed in SP8; it was
+	// dead weight — never consumed by the render pipeline.
+	Active *bool `yaml:"active,omitempty"`
 }
 
 // ChordSpec is the voice-leading-aware chord specification (SP6).

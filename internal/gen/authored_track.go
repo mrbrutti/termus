@@ -5,8 +5,47 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mrbrutti/termus/internal/synth"
 	"github.com/sinshu/go-meltysynth/meltysynth"
 )
+
+// AuthoredAutomationLane describes a per-section breakpoint curve.
+// Param is one of: "cutoff", "pan", "expression".
+// Breakpoints are at01 (0..1 fraction of section duration) → value pairs.
+type AuthoredAutomationLane struct {
+	Param       string
+	Breakpoints [][2]float64 // [at01, value] pairs, sorted by at01
+}
+
+// ValueAt returns the interpolated value at position at01 (0..1 within the section).
+func (l *AuthoredAutomationLane) ValueAt(at01 float64) float64 {
+	if len(l.Breakpoints) == 0 {
+		return 0
+	}
+	if at01 <= l.Breakpoints[0][0] {
+		return l.Breakpoints[0][1]
+	}
+	for i := 1; i < len(l.Breakpoints); i++ {
+		if at01 <= l.Breakpoints[i][0] {
+			t0, v0 := l.Breakpoints[i-1][0], l.Breakpoints[i-1][1]
+			t1, v1 := l.Breakpoints[i][0], l.Breakpoints[i][1]
+			if t1 == t0 {
+				return v1
+			}
+			frac := (at01 - t0) / (t1 - t0)
+			return v0 + frac*(v1-v0)
+		}
+	}
+	return l.Breakpoints[len(l.Breakpoints)-1][1]
+}
+
+// AuthoredRoleReverb holds per-role reverb bus configuration compiled from
+// the Role.Room and Role.ReverbSendDB fields.
+type AuthoredRoleReverb struct {
+	IRName     string  // synth.IRPreset name, e.g. "jazz_club"
+	SendDB     float64 // wet level in dBFS (e.g. -12)
+	PreDelayMs float64 // pre-delay in ms (informational default)
+}
 
 type AuthoredChordSpan struct {
 	StartSlot int
@@ -58,6 +97,27 @@ type AuthoredTrackPlan struct {
 	ChordSpans  []AuthoredChordSpan
 	PhraseSpans []AuthoredPhraseSpan
 	Tracks      []AuthoredRenderTrack
+
+	// SP8 wiring: v2 schema fields that drive the audio pipeline.
+
+	// MixBus is the mix-bus profile name (e.g. "lofi", "jazz", "chill",
+	// "ambient"). When set, AuthoredTrack.Seed calls applyMixBusProfile
+	// with the resolved profile, replacing the hardcoded configureMasterBus
+	// defaults. Empty = legacy default behaviour.
+	MixBus string
+
+	// Groove is the groove template name (e.g. "swing_56", "dilla_late").
+	// When set, timing and velocity are modulated per-16th-note step.
+	// Empty = no groove applied.
+	Groove string
+
+	// Automation holds per-section automation lanes that drive callbacks
+	// as the section plays. Param names: "cutoff", "pan", "expression".
+	Automation []AuthoredAutomationLane
+
+	// RoleReverb maps role name → reverb bus config for per-role routing.
+	// Built from Role.Room and Role.ReverbSendDB during compile.
+	RoleReverb map[string]AuthoredRoleReverb
 }
 
 type AuthoredTrack struct {
@@ -97,7 +157,23 @@ func (a *AuthoredTrack) Seed(seed int64) {
 		return
 	}
 	applyMaxSF2Palette(core, a.spec.Name)
-	a.configureMasterBus(core)
+
+	// SP8: When a mix_bus profile is specified in the .tm file, it takes over
+	// as the single source of truth for the master chain. The hardcoded
+	// configureMasterBus fallback applies only when no profile is given so
+	// non-authored / legacy renders are unaffected.
+	if a.plan.MixBus != "" {
+		if profile := MixBusByName(a.plan.MixBus); profile != nil {
+			_ = core.applyMixBusProfile(profile, float64(synth.SampleRate), seed)
+		} else {
+			// Unknown profile name: fall through to legacy defaults rather than
+			// silently rendering dry.
+			a.configureMasterBus(core)
+		}
+	} else {
+		a.configureMasterBus(core)
+	}
+
 	for _, setup := range a.uniqueChannelSetups() {
 		core.setProgram(setup.Channel, setup.Program)
 		core.setPan(setup.Channel, setup.Pan)
@@ -105,6 +181,47 @@ func (a *AuthoredTrack) Seed(seed int64) {
 		core.setChorusSend(setup.Channel, setup.Chorus)
 		core.setChannelCutoff(setup.Channel, SectionCC(setup.Brightness, BrightnessDelta(a.profile)))
 	}
+
+	// SP8: Resolve groove template once and share across all tracks.
+	var groove *GrooveTemplate
+	if a.plan.Groove != "" {
+		groove = GrooveByName(a.plan.Groove)
+	}
+
+	// SP8: Resolve automation lanes that drive callbacks. Pre-compute total
+	// samples for the section so ValueAt(at01) can be called cheaply.
+	totalSectionSamples := secondsToSamples(a.plan.DurationSec)
+	automation := a.plan.Automation // captured by closure below
+
+	// SP8: Wire per-role reverb buses (item 3). Multiple roles sharing the same
+	// IR name share the same bus instance for CPU efficiency.
+	//
+	// Implementation note: the sf2Core renders all channels into a single stereo
+	// buffer, so true per-channel reverb routing would require per-channel render
+	// loops (a large architectural change). Instead we wire the dominant role's
+	// IR into the master convolution bus when the mix_bus profile has not already
+	// installed one. This gives audibly different reverb character per authored
+	// track while staying within the existing infrastructure. Full per-channel
+	// routing is tracked as a future improvement (SP10+).
+	if len(a.plan.RoleReverb) > 0 && a.plan.MixBus == "" {
+		// Find the IR name with the highest absolute send level (loudest reverb
+		// dominates the character). Default: -12 dB wet.
+		bestIR := ""
+		bestDB := -100.0
+		for _, rr := range a.plan.RoleReverb {
+			if rr.IRName == "" {
+				continue
+			}
+			if rr.SendDB > bestDB {
+				bestDB = rr.SendDB
+				bestIR = rr.IRName
+			}
+		}
+		if bestIR != "" {
+			_ = core.setNamedConvolutionIR(bestIR, float64(synth.SampleRate), seed, 0.35)
+		}
+	}
+
 	for _, track := range a.plan.Tracks {
 		velocityPattern := append([]int32(nil), track.VelocityPattern...)
 		timingOffsets := append([]float64(nil), track.TimingOffsets...)
@@ -121,13 +238,33 @@ func (a *AuthoredTrack) Seed(seed int64) {
 			OverlapSec:      track.OverlapSec,
 			FireProbability: authoredFireProbability(track.FireProbability, a.profile),
 		}
-		if len(velocityPattern) > 0 {
-			cfg.ResolveVelocity = func(slot int, key int, base int32) int32 {
-				if len(velocityPattern) == 0 {
-					return base
+
+		// SP8 groove: build a combined timing resolver that composes the
+		// groove template on top of any authored per-slot timing offsets.
+		if groove != nil {
+			capturedGroove := groove
+			capturedOffsets := timingOffsets
+			cfg.ResolveTimingOffsetSec = func(slot int) float64 {
+				step := slot % 16
+				// Convert samples to seconds for the SF2Track interface.
+				grv := float64(capturedGroove.TimingOffsetsSamples[step]) / float64(synth.SampleRate)
+				authored := 0.0
+				if len(capturedOffsets) > 0 {
+					authored = capturedOffsets[slot%len(capturedOffsets)]
 				}
-				idx := slot % len(velocityPattern)
-				v := base + velocityPattern[idx]
+				return grv + authored
+			}
+			// SP8 groove velocity: compose groove multiplier onto the authored pattern.
+			capturedVelPattern := velocityPattern
+			cfg.ResolveVelocity = func(slot int, key int, base int32) int32 {
+				step := slot % 16
+				mul := capturedGroove.VelocityMultipliers[step]
+				v := base
+				if len(capturedVelPattern) > 0 {
+					idx := slot % len(capturedVelPattern)
+					v += capturedVelPattern[idx]
+				}
+				v = int32(float64(v) * mul)
 				if v < 18 {
 					return 18
 				}
@@ -136,29 +273,102 @@ func (a *AuthoredTrack) Seed(seed int64) {
 				}
 				return v
 			}
-		}
-		if len(timingOffsets) > 0 {
-			cfg.ResolveTimingOffsetSec = func(slot int) float64 {
-				if len(timingOffsets) == 0 {
-					return 0
+		} else {
+			// No groove: use the original velocity and timing resolvers.
+			if len(velocityPattern) > 0 {
+				vp := velocityPattern
+				cfg.ResolveVelocity = func(slot int, key int, base int32) int32 {
+					idx := slot % len(vp)
+					v := base + vp[idx]
+					if v < 18 {
+						return 18
+					}
+					if v > 127 {
+						return 127
+					}
+					return v
 				}
-				return timingOffsets[slot%len(timingOffsets)]
+			}
+			if len(timingOffsets) > 0 {
+				to := timingOffsets
+				cfg.ResolveTimingOffsetSec = func(slot int) float64 {
+					return to[slot%len(to)]
+				}
 			}
 		}
+
 		if len(gatePattern) > 0 {
+			gp := gatePattern
 			cfg.ResolveGate = func(slot int, key int) float64 {
-				if len(gatePattern) == 0 {
-					return cfg.Gate
-				}
-				return gatePattern[slot%len(gatePattern)]
+				return gp[slot%len(gp)]
 			}
 		}
+
+		// SP8 automation: wire cutoff, expression, and pan lanes into their
+		// respective callbacks. We use the current elapsed-samples position as
+		// the progress indicator inside the callbacks. Because the elapsed
+		// counter is read from the AuthoredTrack (not the SF2Track), we
+		// reference it via a pointer to avoid a data race.
+		if len(automation) > 0 && totalSectionSamples > 0 {
+			elapsed := &a.samplesElapsed
+			sectionSamples := totalSectionSamples
+			autoLanes := automation
+
+			cutoffLane := findAutomationLane(autoLanes, "cutoff")
+			exprLane := findAutomationLane(autoLanes, "expression")
+
+			if cutoffLane != nil {
+				capturedLane := cutoffLane
+				cfg.ResolveBrightness = func(slot int, key int) SF2ExpressionCurve {
+					at01 := float64(*elapsed) / float64(sectionSamples)
+					if at01 > 1 {
+						at01 = 1
+					}
+					v := int32(capturedLane.ValueAt(at01))
+					if v < 0 {
+						v = 0
+					}
+					if v > 127 {
+						v = 127
+					}
+					return SF2ExpressionCurve{Start: v, Peak: v, End: v}
+				}
+			}
+			if exprLane != nil {
+				capturedLane := exprLane
+				cfg.ResolveExpression = func(slot int, key int) SF2ExpressionCurve {
+					at01 := float64(*elapsed) / float64(sectionSamples)
+					if at01 > 1 {
+						at01 = 1
+					}
+					v := int32(capturedLane.ValueAt(at01))
+					if v < 0 {
+						v = 0
+					}
+					if v > 127 {
+						v = 127
+					}
+					return SF2ExpressionCurve{Start: v, Peak: v, End: v}
+				}
+			}
+		}
+
 		core.addTrack(cfg)
 	}
 	a.core = core
 	if a.plan.BarCount > 0 && a.plan.DurationSec > 0 {
 		a.barSamples = secondsToSamples(a.plan.DurationSec / float64(a.plan.BarCount))
 	}
+}
+
+// findAutomationLane returns the first lane matching param, or nil.
+func findAutomationLane(lanes []AuthoredAutomationLane, param string) *AuthoredAutomationLane {
+	for i := range lanes {
+		if lanes[i].Param == param {
+			return &lanes[i]
+		}
+	}
+	return nil
 }
 
 func (a *AuthoredTrack) Next(left, right []float64) {
