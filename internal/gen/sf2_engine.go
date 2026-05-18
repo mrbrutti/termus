@@ -1,6 +1,7 @@
 package gen
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 
@@ -795,6 +796,23 @@ func (e *sf2Core) setConvolutionIR(ir []float64, wet float64) {
 		e.convR = synth.NewFFTConvolver(scaled, fftBlockSize)
 	}
 	e.convWet = wet
+}
+
+// setNamedConvolutionIR loads an IR preset by name from synth.IRLibrary and
+// installs it on the master bus at the given wet level. Returns an error if
+// the name doesn't exist. The IR is generated deterministically for the given
+// seed; pass 0 to use the package default.
+//
+// This entry point is intended for SP5/SP6 style wiring that selects reverb
+// by character name (e.g. "jazz_club") rather than by raw IR buffer.
+func (e *sf2Core) setNamedConvolutionIR(name string, sampleRate float64, seed int64, wet float64) error {
+	preset := synth.IRByName(name)
+	if preset == nil {
+		return fmt.Errorf("sf2Core: IR preset %q not found in library", name)
+	}
+	ir := preset.Generate(sampleRate, seed)
+	e.setConvolutionIR(ir, wet)
+	return nil
 }
 
 // addTrack registers a cycling-note track with the engine. nextFireT is
