@@ -95,10 +95,47 @@ func expandFormTemplate(t FormTemplate, bpm float64) []Section {
 			TransitionToNext: fs.TransitionToNext,
 			Arrangement18:    cloneSchedule(fs.Arrangement),
 			Duration:         barsToDurationString(fs.Bars, bpm),
+			Events:           formSectionEvents(fs),
 		}
 		out = append(out, sec)
 	}
 	return out
+}
+
+// formSectionEvents (SP19) synthesises arrangement-level Events for a
+// form-driven section so review/discover tooling sees the implicit moments
+// the form template describes (transitions, role entries/exits). These
+// events do not change rendering — they document the form structurally.
+func formSectionEvents(fs FormSection) []Event {
+	var out []Event
+	if kind := mapTransitionKind(fs.TransitionToNext); kind != "" {
+		out = append(out, Event{Kind: kind, Bars: 1, Slot: 0})
+	}
+	for role, sched := range fs.Arrangement {
+		if sched.EnterBar > 1 {
+			out = append(out, Event{Kind: "pickup", Bar: sched.EnterBar, Slot: 0, Roles: []string{role}})
+		}
+		if sched.ExitBar > 0 && sched.ExitBar <= fs.Bars {
+			out = append(out, Event{Kind: "tag", Bar: sched.ExitBar, Slot: 0, Roles: []string{role}})
+		}
+	}
+	return out
+}
+
+// mapTransitionKind maps a transition_to_next value to a validateEvent-known
+// event kind. Unknown / empty returns "" (skip).
+func mapTransitionKind(transition string) string {
+	switch strings.ToLower(strings.TrimSpace(transition)) {
+	case "turnaround", "fill":
+		return "fill"
+	case "pickup":
+		return "pickup"
+	case "swell":
+		return "swell"
+	case "breakdown":
+		return "break"
+	}
+	return ""
 }
 
 func cloneSchedule(in map[string]RoleSchedule) map[string]RoleSchedule {

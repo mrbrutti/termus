@@ -114,8 +114,37 @@ func applySP18SectionTransforms(_ *File, section Section, eventsByRole map[strin
 			eventsByRole[role] = evs
 		}
 	}
+	// 2b. Phrase-level dynamics (SP19-A). Layered on top of the section
+	// envelope. Default on for sections with a PhraseStructure; opt-out via
+	// `phrase_dynamics: off`.
+	if phraseDynamicsEnabled(section) {
+		for role, evs := range eventsByRole {
+			applyPhraseDynamicsToEvents(evs, section.PhraseStructure, beatsPerSection)
+			eventsByRole[role] = evs
+		}
+	}
 	// 3. Transition.
 	if strings.TrimSpace(section.TransitionToNext) != "" {
 		applyTransition(TransitionStyle(strings.ToLower(strings.TrimSpace(section.TransitionToNext))), eventsByRole, beatsPerSection)
 	}
+	// 4. SP19-C pickup / anacrusis. Overlays pickup events on the section's
+	// tail so the lead role glides into the next section's downbeat.
+	if section.PickupBeats > 0 {
+		spec := resolvePickupSpec(section, eventsByRole)
+		applyPickupToSectionTail(spec, eventsByRole, beatsPerSection)
+	}
+}
+
+// phraseDynamicsEnabled returns true when the section should receive the
+// SP19-A per-phrase velocity envelope. Default: on when the section declares
+// a PhraseStructure. Authors can disable with `phrase_dynamics: off`.
+func phraseDynamicsEnabled(section Section) bool {
+	if strings.TrimSpace(section.PhraseStructure) == "" {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(section.PhraseDynamics)) {
+	case "off", "false", "no", "disabled":
+		return false
+	}
+	return true
 }

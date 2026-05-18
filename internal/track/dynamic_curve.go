@@ -76,3 +76,125 @@ func applyDynamicCurveToEvents(events []NoteEvent, curve string, totalBeats floa
 		events[i].Vel = nv
 	}
 }
+
+// SP19-A: phrase-level dynamic curves.
+//
+// Real 8-bar phrases breathe inside a section. We layer a per-phrase envelope
+// on top of the section curve. Phrase positions:
+//
+//	first phrase   → crescendo (introduce)
+//	middle phrases → arc       (rise / fall)
+//	last phrase    → decrescendo (close)
+//
+// The phrase envelope modulates velocity by ±10% (smaller than the section
+// envelope's ±20%) — multiplicative on top of whatever applyDynamicCurveToEvents
+// already produced.
+//
+// Section.PhraseStructure drives which phrase letter each phrase carries.
+// If empty / unknown, we treat the section as a single phrase and skip the
+// per-phrase pass.
+
+// phraseShapeForPosition returns the phrase-level dynamic shape for a phrase
+// at position phraseIdx out of totalPhrases. First = crescendo, last =
+// decrescendo, anything else = arc.
+func phraseShapeForPosition(phraseIdx, totalPhrases int) string {
+	if totalPhrases <= 1 {
+		return "arc"
+	}
+	switch phraseIdx {
+	case 0:
+		return "crescendo"
+	case totalPhrases - 1:
+		return "decrescendo"
+	default:
+		return "arc"
+	}
+}
+
+// phraseLevelScale returns the per-phrase velocity scale factor at the given
+// progress (0..1) inside the phrase using the per-phrase shape. The
+// modulation depth is ±10% (so values land between 0.90 and 1.10).
+func phraseLevelScale(shape string, progress float64) float64 {
+	if progress < 0 {
+		progress = 0
+	}
+	if progress > 1 {
+		progress = 1
+	}
+	switch strings.ToLower(strings.TrimSpace(shape)) {
+	case "arc":
+		peak := 0.55
+		dist := math.Abs(progress - peak)
+		maxDist := math.Max(peak, 1.0-peak)
+		ratio := dist / maxDist
+		return 1.10 - 0.20*ratio
+	case "crescendo":
+		return 0.92 + 0.16*progress
+	case "decrescendo":
+		return 1.08 - 0.16*progress
+	case "wave":
+		return 1.0 + 0.08*math.Sin(progress*math.Pi*2)
+	case "steady", "":
+		return 1.0
+	}
+	return 1.0
+}
+
+// applyPhraseDynamicsToEvents scales velocities by an additional per-phrase
+// envelope. The events are bucketed into phrase plans (from expandPhraseStructure)
+// and within each phrase the shape from phraseShapeForPosition is sampled at
+// the event's position inside the phrase span.
+//
+// Mutates the slice in place. Safe to call when structureName is empty or
+// totalBeats is non-positive — in that case it returns without changes.
+//
+// Behaviour interacts with applyDynamicCurveToEvents: that one should be
+// called first (section envelope), then this one composes on top. The two
+// scale factors multiply, so combined modulation is up to ±30%.
+func applyPhraseDynamicsToEvents(events []NoteEvent, structureName string, totalBeats float64) {
+	if len(events) == 0 || totalBeats <= 0 {
+		return
+	}
+	plans := expandPhraseStructure(structureName, totalBeats)
+	if len(plans) <= 1 {
+		return
+	}
+	for i, ev := range events {
+		// Find the phrase containing this event's beat. Events use Beat
+		// 1-indexed (Beat=1.0 is first beat of section).
+		var phraseIdx int = -1
+		var p PhrasePlan
+		for j, candidate := range plans {
+			start := candidate.StartBeat
+			end := candidate.StartBeat + candidate.Beats
+			if ev.Beat >= start && ev.Beat < end {
+				phraseIdx = j
+				p = candidate
+				break
+			}
+		}
+		if phraseIdx < 0 {
+			// Past the end (event beat == total+1). Use last phrase.
+			phraseIdx = len(plans) - 1
+			p = plans[phraseIdx]
+		}
+		if p.Beats <= 0 {
+			continue
+		}
+		shape := phraseShapeForPosition(phraseIdx, len(plans))
+		progress := (ev.Beat - p.StartBeat) / p.Beats
+		scale := phraseLevelScale(shape, progress)
+		v := ev.Vel
+		if v == 0 {
+			v = 80
+		}
+		nv := int(float64(v)*scale + 0.5)
+		if nv < 1 {
+			nv = 1
+		}
+		if nv > 127 {
+			nv = 127
+		}
+		events[i].Vel = nv
+	}
+}

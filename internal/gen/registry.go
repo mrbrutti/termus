@@ -108,6 +108,13 @@ var registry = map[string]AlgoSpec{
 
 // aliases maps legacy algorithm names to their new genre names. The CLI
 // keeps accepting old names but resolves them to the new specs.
+//
+// SP19: blues and rock are added as no-code-change tests. Blues maps to
+// jazz (the closest existing engine — both share walking bass, blues lick
+// auto-phrasing, and the jazz_blues_12bar form). Rock maps to lofi (the
+// only available kit — dusty kick/snare with tape saturation). See
+// tracks/blues/ and tracks/rock/ for the .tm authoring. Engine limitations
+// for these genres are documented in the SP19 report.
 var aliases = map[string]string{
 	"eno":            "ambient-synth",
 	"eno-sf2":        "ambient",
@@ -120,6 +127,8 @@ var aliases = map[string]string{
 	"markov-sf2":     "classical",
 	"chill":          "lofi",
 	"sf2":            "jazz",
+	"blues":          "jazz",
+	"rock":           "lofi",
 }
 
 // Resolve returns the AlgoSpec for a name (genre name or legacy alias).

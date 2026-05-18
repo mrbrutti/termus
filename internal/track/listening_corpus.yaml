@@ -1,37 +1,61 @@
 genres:
   ambient:
-    canonical: ambient/slow-drone-fragments
+    canonical: ambient/deep-sea-cathedral
     corpus:
-      - ambient/slow-drone-fragments
-      - ambient/bell-struck-skylight
-      - ambient/deep-pad-breath
+      - ambient/deep-sea-cathedral
+      - ambient/forest-after-rain
+      - ambient/glacial-slow-drift
+      - ambient/stellar-aurora
     ab:
-      - {label: "drone vs bell", a: ambient/slow-drone-fragments, b: ambient/bell-struck-skylight, seconds: 48}
-      - {label: "bell vs breath pad", a: ambient/bell-struck-skylight, b: ambient/deep-pad-breath, seconds: 48}
+      - {label: "cathedral vs forest rain", a: ambient/deep-sea-cathedral, b: ambient/forest-after-rain, seconds: 48}
+      - {label: "glacial vs aurora", a: ambient/glacial-slow-drift, b: ambient/stellar-aurora, seconds: 48}
+  blues:
+    canonical: blues/delta-crossroads
+    corpus:
+      - blues/delta-crossroads
+      - blues/twelve-bar-rain
+      - blues/chicago-after-midnight
+      - blues/mississippi-slow-drag
+    ab:
+      - {label: "delta vs slow rain", a: blues/delta-crossroads, b: blues/twelve-bar-rain, seconds: 44}
+      - {label: "chicago vs mississippi", a: blues/chicago-after-midnight, b: blues/mississippi-slow-drag, seconds: 44}
   chill:
-    canonical: chill/sunday-afternoon-drive
+    canonical: chill/coastal-cliff-morning
     corpus:
-      - chill/sunday-afternoon-drive
-      - chill/half-time-brushwork
-      - chill/chord-pad-b-section
+      - chill/coastal-cliff-morning
+      - chill/mountain-fog-drift
+      - chill/sunset-balcony-loop
+      - chill/midnight-pool-blue
     ab:
-      - {label: "afternoon drive vs brushwork", a: chill/sunday-afternoon-drive, b: chill/half-time-brushwork, seconds: 44}
-      - {label: "brushwork vs chord pad", a: chill/half-time-brushwork, b: chill/chord-pad-b-section, seconds: 44}
+      - {label: "coastal vs fog", a: chill/coastal-cliff-morning, b: chill/mountain-fog-drift, seconds: 44}
+      - {label: "sunset vs midnight pool", a: chill/sunset-balcony-loop, b: chill/midnight-pool-blue, seconds: 44}
   jazz:
-    canonical: jazz/dusty-swing-after-hours
+    canonical: jazz/autumn-leaves-after-hours
     corpus:
-      - jazz/dusty-swing-after-hours
-      - jazz/bossa-nova-rooftop
-      - jazz/midnight-ballad-slow
+      - jazz/autumn-leaves-after-hours
+      - jazz/blue-bossa-late-set
+      - jazz/bourbon-street-blues
+      - jazz/coltrane-modal-meditation
     ab:
-      - {label: "swing bop vs bossa", a: jazz/dusty-swing-after-hours, b: jazz/bossa-nova-rooftop, seconds: 40}
-      - {label: "bossa vs ballad", a: jazz/bossa-nova-rooftop, b: jazz/midnight-ballad-slow, seconds: 40}
+      - {label: "autumn vs bossa", a: jazz/autumn-leaves-after-hours, b: jazz/blue-bossa-late-set, seconds: 40}
+      - {label: "bourbon vs modal", a: jazz/bourbon-street-blues, b: jazz/coltrane-modal-meditation, seconds: 40}
   lofi:
-    canonical: lofi/bookstore-after-rain
+    canonical: lofi/rainy-window-cafe
     corpus:
-      - lofi/bookstore-after-rain
-      - lofi/corner-store-neon
-      - lofi/harbor-cassette-fade
+      - lofi/rainy-window-cafe
+      - lofi/midnight-train-window
+      - lofi/bookstore-quiet-aisle
+      - lofi/autumn-walk-home
     ab:
-      - {label: "bookstore vs corner store", a: lofi/bookstore-after-rain, b: lofi/corner-store-neon, seconds: 44}
-      - {label: "corner store vs harbor", a: lofi/corner-store-neon, b: lofi/harbor-cassette-fade, seconds: 44}
+      - {label: "rainy cafe vs midnight train", a: lofi/rainy-window-cafe, b: lofi/midnight-train-window, seconds: 44}
+      - {label: "bookstore vs autumn walk", a: lofi/bookstore-quiet-aisle, b: lofi/autumn-walk-home, seconds: 44}
+  rock:
+    canonical: rock/garage-saturday-night
+    corpus:
+      - rock/garage-saturday-night
+      - rock/highway-sunset-cruise
+      - rock/basement-jam-session
+      - rock/anthem-stadium-rise
+    ab:
+      - {label: "garage vs highway", a: rock/garage-saturday-night, b: rock/highway-sunset-cruise, seconds: 44}
+      - {label: "basement vs anthem", a: rock/basement-jam-session, b: rock/anthem-stadium-rise, seconds: 44}

@@ -118,12 +118,25 @@ type AuthoredTrackPlan struct {
 	// RoleReverb maps role name → reverb bus config for per-role routing.
 	// Built from Role.Room and Role.ReverbSendDB during compile.
 	RoleReverb map[string]AuthoredRoleReverb
+
+	// SP19-D: optional ambient texture layers compiled from File.Textures.
+	// Each entry is rendered alongside the music and summed into the master
+	// stereo output at the configured level.
+	Textures []AuthoredTexture
+}
+
+// AuthoredTexture (SP19-D) is one resolved ambient-texture layer for a plan.
+type AuthoredTexture struct {
+	Name    string  // rain, room_tone, vinyl, tape_hiss, cafe
+	LevelDB float64 // peak level in dBFS
 }
 
 type AuthoredTrack struct {
 	spec           AlgoSpec
 	sf             *meltysynth.SoundFont
 	plan           AuthoredTrackPlan
+	basePlan       AuthoredTrackPlan // SP19-B: untouched baseline plan
+	iteration      int               // SP19-B: current loop iteration index
 	profile        ControlProfile
 	core           *sf2Core
 	samplesElapsed int64
@@ -132,11 +145,27 @@ type AuthoredTrack struct {
 
 func NewAuthoredTrack(spec AlgoSpec, sf *meltysynth.SoundFont, plan AuthoredTrackPlan) Algorithm {
 	return &AuthoredTrack{
-		spec:    spec,
-		sf:      sf,
-		plan:    plan,
-		profile: DefaultControlProfile(),
+		spec:     spec,
+		sf:       sf,
+		plan:     plan,
+		basePlan: clonePlan(plan),
+		profile:  DefaultControlProfile(),
 	}
+}
+
+// ApplyIteration (SP19-B) rewrites the track's plan to reflect a given loop
+// iteration. iter==0 leaves the plan untouched; iter>=1 adds variations:
+//   - drum fill / hat probability bumped (more activity)
+//   - voicing-styled tracks alternate inversions between iter 1 and 2
+//   - extra "iteration_active" roles activate at iter>=2
+//
+// The method does not call Seed — the caller must call Seed afterwards.
+func (a *AuthoredTrack) ApplyIteration(iter int) {
+	if iter < 0 {
+		iter = 0
+	}
+	a.iteration = iter
+	a.plan = mutatePlanForIteration(a.basePlan, iter)
 }
 
 func (a *AuthoredTrack) Name() string { return a.spec.Name }
@@ -220,6 +249,27 @@ func (a *AuthoredTrack) Seed(seed int64) {
 		if bestIR != "" {
 			_ = core.setNamedConvolutionIR(bestIR, float64(synth.SampleRate), seed, 0.35)
 		}
+	}
+
+	// SP19-D: install ambient texture layers when configured. Each layer is
+	// rendered in parallel with the music in the SF2 core's master mix.
+	if len(a.plan.Textures) > 0 {
+		layers := make([]*synth.TextureLayer, 0, len(a.plan.Textures))
+		for i, txCfg := range a.plan.Textures {
+			layer := synth.NewTextureLayer(float64(synth.SampleRate), synth.TextureConfig{
+				Kind:    synth.TextureKind(txCfg.Name),
+				LevelDB: txCfg.LevelDB,
+				Seed:    seed ^ int64(0x7e7c7b00+i),
+			})
+			if layer != nil {
+				layers = append(layers, layer)
+			}
+		}
+		if len(layers) > 0 {
+			core.setTextureLayers(layers)
+		}
+	} else {
+		core.setTextureLayers(nil)
 	}
 
 	for _, track := range a.plan.Tracks {

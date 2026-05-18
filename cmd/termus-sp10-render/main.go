@@ -56,20 +56,32 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Filter to our 12 target tracks across the 4 genres
+	// Filter to our 24 SP19 target tracks across the 6 genres
 	target := map[string]bool{
-		"lofi/bookstore-after-rain":    true,
-		"lofi/corner-store-neon":       true,
-		"lofi/harbor-cassette-fade":    true,
-		"jazz/dusty-swing-after-hours": true,
-		"jazz/bossa-nova-rooftop":      true,
-		"jazz/midnight-ballad-slow":    true,
-		"chill/sunday-afternoon-drive": true,
-		"chill/half-time-brushwork":    true,
-		"chill/chord-pad-b-section":    true,
-		"ambient/slow-drone-fragments": true,
-		"ambient/bell-struck-skylight": true,
-		"ambient/deep-pad-breath":      true,
+		"lofi/rainy-window-cafe":            true,
+		"lofi/midnight-train-window":        true,
+		"lofi/bookstore-quiet-aisle":        true,
+		"lofi/autumn-walk-home":             true,
+		"jazz/autumn-leaves-after-hours":    true,
+		"jazz/blue-bossa-late-set":          true,
+		"jazz/bourbon-street-blues":         true,
+		"jazz/coltrane-modal-meditation":    true,
+		"chill/coastal-cliff-morning":       true,
+		"chill/mountain-fog-drift":          true,
+		"chill/sunset-balcony-loop":         true,
+		"chill/midnight-pool-blue":          true,
+		"ambient/deep-sea-cathedral":        true,
+		"ambient/forest-after-rain":         true,
+		"ambient/glacial-slow-drift":        true,
+		"ambient/stellar-aurora":            true,
+		"blues/delta-crossroads":            true,
+		"blues/twelve-bar-rain":             true,
+		"blues/chicago-after-midnight":      true,
+		"blues/mississippi-slow-drag":       true,
+		"rock/garage-saturday-night":        true,
+		"rock/highway-sunset-cruise":        true,
+		"rock/basement-jam-session":         true,
+		"rock/anthem-stadium-rise":          true,
 	}
 
 	var selected []track.Entry

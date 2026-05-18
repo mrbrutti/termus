@@ -1,18 +1,22 @@
-title: Bookstore After Rain
-description: SP18 form-driven lofi — D minor, lofi_loop_form. Multi-section motif development, instrument arrangement arc, explicit section transitions.
+title: Rainy Window Cafe
+description: "SP19 lofi loop in D minor with actual rain ambience (texture: rain). Rhodes + walking sub-bass + brushed drums."
 style: lofi
-substyle: piano-ballad
+substyle: rainy-cafe
 listen_mode: hour-stream
-seed: 28011
-tags: [lofi, piano, rain, dilla, sp18]
+seed: 71001
+tags: [lofi, rhodes, rain, brushes, sp19]
 key: Dmin
 tempo: 84
 mix_bus: lofi
 globals: {density: full, brightness: warm, motion: gentle, reverb: warm}
 
-# SP18 multi-scale form: lofi_loop_form expands into intro/loop_a/loop_b/bridge/loop_c/outro.
-# Total: 8 + 16 + 16 + 8 + 16 + 8 = 72 bars @ 84 BPM = ~3.4m per pass; hour-stream loops the
-# pass to fill the hour.
+# SP19-D: real rain ambience replacing the "rain-like vinyl noise" misperception.
+textures:
+  - {name: rain, level_db: -36}
+  - {name: vinyl, level_db: -44}
+
+# SP18 form: lofi_loop_form. SP19-A: phrase dynamics auto-on for AABA sections.
+# Pickup beats on loop_b lead the listener into the bridge.
 form: lofi_loop_form
 total_duration: 6m
 
@@ -41,6 +45,15 @@ roles:
     humanize: {timing_ms: 4, velocity: 6}
     chain: {reverb_send: 0.12, compress: gentle, pan_offset: -0.08}
 
+  sub:
+    family: synth_bass
+    voice: lofi_round_bass
+    auto_voice: pedal_root
+    register: sub
+    prominence: anchor
+    humanize: {timing_ms: 3, velocity: 4}
+    chain: {reverb_send: 0.04, compress: punchy, pan_offset: 0}
+
   kick:
     family: drums
     voice: lofi_dusty_kick
@@ -61,33 +74,33 @@ roles:
     family: drums
     prominence: support
     humanize: {timing_ms: 4, velocity: 6, accent: dilla}
-    chain: {reverb_send: 0.28, compress: punchy}
+    chain: {reverb_send: 0.34, compress: punchy}
     loop_bars: 2
     events:
-      - {beat: 2.00, pitch: "", dur: 0.25, vel: 102}
-      - {beat: 2.75, pitch: "", dur: 0.25, vel: 44, art: ghost}
-      - {beat: 3.50, pitch: "", dur: 0.25, vel: 40, art: ghost}
-      - {beat: 4.00, pitch: "", dur: 0.25, vel: 100}
-      - {beat: 6.00, pitch: "", dur: 0.25, vel: 102}
-      - {beat: 6.50, pitch: "", dur: 0.25, vel: 44, art: ghost}
-      - {beat: 7.50, pitch: "", dur: 0.25, vel: 40, art: ghost}
-      - {beat: 8.00, pitch: "", dur: 0.25, vel: 100}
+      - {beat: 2.00, pitch: "", dur: 0.25, vel: 96}
+      - {beat: 2.50, pitch: "", dur: 0.20, vel: 44, art: ghost}
+      - {beat: 3.50, pitch: "", dur: 0.20, vel: 40, art: ghost}
+      - {beat: 4.00, pitch: "", dur: 0.25, vel: 94}
+      - {beat: 6.00, pitch: "", dur: 0.25, vel: 96}
+      - {beat: 6.50, pitch: "", dur: 0.20, vel: 44, art: ghost}
+      - {beat: 7.50, pitch: "", dur: 0.20, vel: 40, art: ghost}
+      - {beat: 8.00, pitch: "", dur: 0.25, vel: 94}
 
   hat:
     family: drums
     prominence: support
     humanize: {timing_ms: 2, velocity: 4}
-    chain: {reverb_send: 0.10, compress: "off", pan_offset: 0.25}
+    chain: {reverb_send: 0.12, compress: "off", pan_offset: 0.25}
     loop_bars: 1
     events:
-      - {beat: 1.0, pitch: "", dur: 0.1, vel: 76}
-      - {beat: 1.5, pitch: "", dur: 0.1, vel: 56}
-      - {beat: 2.0, pitch: "", dur: 0.1, vel: 72}
-      - {beat: 2.5, pitch: "", dur: 0.1, vel: 78, art: accent}
-      - {beat: 3.0, pitch: "", dur: 0.1, vel: 72}
-      - {beat: 3.5, pitch: "", dur: 0.1, vel: 56}
-      - {beat: 4.0, pitch: "", dur: 0.1, vel: 72}
-      - {beat: 4.5, pitch: "", dur: 0.1, vel: 78, art: accent}
+      - {beat: 1.0, pitch: "", dur: 0.1, vel: 72}
+      - {beat: 1.5, pitch: "", dur: 0.1, vel: 52}
+      - {beat: 2.0, pitch: "", dur: 0.1, vel: 68}
+      - {beat: 2.5, pitch: "", dur: 0.1, vel: 76, art: accent}
+      - {beat: 3.0, pitch: "", dur: 0.1, vel: 68}
+      - {beat: 3.5, pitch: "", dur: 0.1, vel: 52}
+      - {beat: 4.0, pitch: "", dur: 0.1, vel: 68}
+      - {beat: 4.5, pitch: "", dur: 0.1, vel: 76, art: accent}
 
   pad:
     family: pad
