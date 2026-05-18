@@ -301,7 +301,21 @@ func lintFile(file *File, tracks []gen.Track, sectionCount int) []Warning {
 		warnings = append(warnings, Warning{Path: "sections", Message: "track has no clear cadence or ending shape; add a cadence/outro scene or ending event"})
 	}
 	for i := 1; i < len(file.Sections); i++ {
-		if sectionSimilarity(file, file.Sections[i-1], file.Sections[i]) >= 0.80 {
+		prev, curr := file.Sections[i-1], file.Sections[i]
+		// SP18 form-driven sections (verse_a1, verse_a2, verse_a3) share
+		// harmony by design — the variation is in motif_treatment, role,
+		// arrangement, dynamic_curve, transition_to_next. If any of those
+		// differ the similarity warning is noise.
+		formDistinct := prev.Role != curr.Role ||
+			prev.MotifTreatment != curr.MotifTreatment ||
+			prev.DynamicCurve != curr.DynamicCurve ||
+			prev.TransitionToNext != curr.TransitionToNext ||
+			prev.PhraseStructure != curr.PhraseStructure ||
+			len(prev.Arrangement18) != len(curr.Arrangement18)
+		if formDistinct {
+			continue
+		}
+		if sectionSimilarity(file, prev, curr) >= 0.80 {
 			warnings = append(warnings, Warning{Path: fmt.Sprintf("sections[%d]", i), Message: "section is too similar to its neighbor; change harmony, phrase blocks, orchestration, or arrangement"})
 		}
 	}
