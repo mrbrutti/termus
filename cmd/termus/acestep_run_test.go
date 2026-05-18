@@ -1,9 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/mrbrutti/termus/internal/acestep"
+	"github.com/mrbrutti/termus/internal/tui"
 )
 
 // TestResolveEngineForTrack_AutoReadsTM verifies that with --engine auto, the
@@ -110,3 +117,67 @@ acestep:
     - id: a
       bars: 4
 `
+
+// TestStderrSinkPrintsInstallPhaseChange verifies the headless sink writes one
+// stderr line per phase transition and suppresses duplicate phases.
+func TestStderrSinkPrintsInstallPhaseChange(t *testing.T) {
+	var buf bytes.Buffer
+	sink := newStderrSink(&buf)
+	sink.Send(tui.ACEStepInstallProgressMsg{Phase: "install:python", Detail: "installing python"})
+	sink.Send(tui.ACEStepInstallProgressMsg{Phase: "install:python", Detail: "still installing"})
+	sink.Send(tui.ACEStepInstallProgressMsg{Phase: "install:model", Detail: "downloading model"})
+	out := buf.String()
+	if !strings.Contains(out, "install:python: installing python") {
+		t.Fatalf("missing first phase line:\n%s", out)
+	}
+	if strings.Contains(out, "still installing") {
+		t.Fatalf("duplicate phase should not print:\n%s", out)
+	}
+	if !strings.Contains(out, "install:model: downloading model") {
+		t.Fatalf("missing model phase line:\n%s", out)
+	}
+}
+
+// TestStderrSinkSurfacesReadyMessage covers the final ready event.
+func TestStderrSinkSurfacesReadyMessage(t *testing.T) {
+	var buf bytes.Buffer
+	sink := newStderrSink(&buf)
+	sink.Send(tui.ACEStepReadyMsg{Detail: "engine ready"})
+	if !strings.Contains(buf.String(), "engine ready") {
+		t.Fatalf("expected ready detail on stderr, got %q", buf.String())
+	}
+}
+
+// TestInstallEventPercentMonotone ensures the install percentages we expose to
+// the loader never regress as the install proceeds. The exact numbers are
+// approximations; the property under test is monotonicity.
+func TestInstallEventPercentMonotone(t *testing.T) {
+	phases := []string{"python", "deps", "model", "done"}
+	last := -1.0
+	for _, p := range phases {
+		got := installEventPercent(acestep.InstallEvent{Phase: p})
+		if got < last {
+			t.Fatalf("percent regressed at phase %q: %f < %f", p, got, last)
+		}
+		last = got
+	}
+}
+
+// TestStatusEventPercentMonotone covers the daemon-lifecycle phases.
+func TestStatusEventPercentMonotone(t *testing.T) {
+	phases := []string{"checking-install", "installing", "starting-daemon", "loading-model", "ready"}
+	last := -1.0
+	for _, p := range phases {
+		got := statusEventPercent(acestep.StatusEvent{Phase: p})
+		if got < last {
+			t.Fatalf("percent regressed at phase %q: %f < %f", p, got, last)
+		}
+		last = got
+	}
+}
+
+// TestSinkInterfaceTeaProgramCompat is a compile-time check that *tea.Program
+// satisfies our messageSink interface.
+func TestSinkInterfaceTeaProgramCompat(t *testing.T) {
+	var _ messageSink = (*tea.Program)(nil)
+}

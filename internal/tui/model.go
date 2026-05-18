@@ -58,6 +58,46 @@ type StartupLoadMsg struct {
 	Done    bool
 }
 
+// ACEStepInstallProgressMsg streams installer progress (downloading model,
+// installing python, etc.) into the startup-loading overlay used by the TUI.
+// Percent is in [0,1]; Title/Detail override the current loader text when
+// non-empty.
+type ACEStepInstallProgressMsg struct {
+	Phase   string
+	Title   string
+	Detail  string
+	Percent float64
+	Err     error
+}
+
+// ACEStepStatusMsg streams the daemon lifecycle phases (starting-daemon,
+// loading-model, ready) into the loader. The TUI keeps the loader open until
+// ACEStepReadyMsg arrives.
+type ACEStepStatusMsg struct {
+	Phase   string
+	Title   string
+	Detail  string
+	Percent float64
+	Err     error
+}
+
+// ACEStepRenderingMsg drives the small "generating next track…" indicator
+// that appears in the playback bar while AI tracks are being rendered in the
+// background after playback has started. Done=true clears the indicator.
+type ACEStepRenderingMsg struct {
+	Seq      int
+	Detail   string
+	Done     bool
+	Err      error
+}
+
+// ACEStepReadyMsg dismisses the startup-loading overlay and transitions the
+// TUI into the now-playing view. Sent once the first AI-generated track has
+// been queued and playback can begin.
+type ACEStepReadyMsg struct {
+	Detail string
+}
+
 type TrackLoadResultMsg struct {
 	EntryID    string
 	EntryTitle string
@@ -102,6 +142,13 @@ type Model struct {
 	startupTitle       string
 	startupDetail      string
 	startupPercent     float64
+
+	// SP23 ACE-Step background rendering indicator. Drives the small
+	// "generating next track…" badge that appears in the playback bar while
+	// AI tracks render in the background.
+	aceRenderActive bool
+	aceRenderSeq    int
+	aceRenderDetail string
 	status             string
 	statusTTL          time.Time
 	stickyStatus       string
@@ -979,6 +1026,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case StartupLoadMsg:
 		m.applyStartupLoad(msg)
 		return m, nil
+	case ACEStepInstallProgressMsg:
+		m.applyACEStepInstall(msg)
+		return m, nil
+	case ACEStepStatusMsg:
+		m.applyACEStepStatus(msg)
+		return m, nil
+	case ACEStepRenderingMsg:
+		m.applyACEStepRendering(msg)
+		return m, nil
+	case ACEStepReadyMsg:
+		m.applyACEStepReady(msg)
+		return m, nil
 	case TrackLoadResultMsg:
 		m.startupLoading = false
 		m.splashVisible = false
@@ -1402,6 +1461,75 @@ func (m *Model) applyStartupLoad(msg StartupLoadMsg) {
 	m.splashVisible = true
 }
 
+// applyACEStepInstall maps an installer phase to the startup-loading overlay.
+// On error the loader text reflects the failure but the overlay stays open
+// until ACEStepReadyMsg (or the next status) clears it; the caller chooses
+// whether to send a Done=true StartupLoadMsg to dismiss explicitly.
+func (m *Model) applyACEStepInstall(msg ACEStepInstallProgressMsg) {
+	if msg.Title != "" {
+		m.startupTitle = msg.Title
+	} else if m.startupTitle == "" {
+		m.startupTitle = "Setting up AI engine"
+	}
+	if msg.Err != nil {
+		m.startupDetail = "install failed: " + msg.Err.Error()
+	} else if msg.Detail != "" {
+		m.startupDetail = msg.Detail
+	}
+	m.startupPercent = clamp01(msg.Percent)
+	m.startupLoading = true
+	m.splashVisible = true
+}
+
+// applyACEStepStatus maps a daemon lifecycle phase to the loader.
+func (m *Model) applyACEStepStatus(msg ACEStepStatusMsg) {
+	if msg.Title != "" {
+		m.startupTitle = msg.Title
+	} else if m.startupTitle == "" {
+		m.startupTitle = "Starting AI engine"
+	}
+	if msg.Err != nil {
+		m.startupDetail = "engine error: " + msg.Err.Error()
+	} else if msg.Detail != "" {
+		m.startupDetail = msg.Detail
+	}
+	m.startupPercent = clamp01(msg.Percent)
+	m.startupLoading = true
+	m.splashVisible = true
+}
+
+// applyACEStepRendering updates the small "generating next track…" badge in
+// the playback bar. Done=true clears it.
+func (m *Model) applyACEStepRendering(msg ACEStepRenderingMsg) {
+	if msg.Done {
+		m.aceRenderActive = false
+		m.aceRenderSeq = 0
+		m.aceRenderDetail = ""
+		return
+	}
+	m.aceRenderActive = true
+	m.aceRenderSeq = msg.Seq
+	if msg.Err != nil {
+		m.aceRenderDetail = "render error: " + msg.Err.Error()
+		return
+	}
+	if msg.Detail != "" {
+		m.aceRenderDetail = msg.Detail
+	} else {
+		m.aceRenderDetail = fmt.Sprintf("generating track %d", msg.Seq+1)
+	}
+}
+
+// applyACEStepReady dismisses the startup-loading overlay and starts the
+// regular playback view.
+func (m *Model) applyACEStepReady(msg ACEStepReadyMsg) {
+	m.startupLoading = false
+	m.splashVisible = false
+	if msg.Detail != "" {
+		m.flashStatus(msg.Detail, 3*time.Second)
+	}
+}
+
 func topBar(m Model, w int, theme ColorTheme, compact bool) string {
 	currentAlgo := m.currentAlgoIdentity()
 	var label string
@@ -1513,6 +1641,13 @@ func playbackBar(m Model, w int, theme ColorTheme, samples []float64, compact bo
 	}
 	if m.recording && !m.recordStartedAt.IsZero() {
 		leftParts = append(leftParts, formatElapsed("rec", time.Since(m.recordStartedAt)))
+	}
+	if m.aceRenderActive {
+		label := m.aceRenderDetail
+		if label == "" {
+			label = "generating next track"
+		}
+		leftParts = append(leftParts, "AI: "+label)
 	}
 	leftText := trimToWidth(strings.Join(leftParts, " · "), maxInt(0, w-22))
 	meter, clipped := meterSummary(samples)

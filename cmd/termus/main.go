@@ -119,6 +119,8 @@ func main() {
 	acestepOutputDir := flag.String("acestep-output-dir", "", "also save each ACE-Step render to this directory")
 	acestepRenderTimeout := flag.Duration("acestep-render-timeout", 5*time.Minute, "per-render HTTP timeout")
 	acestepPort := flag.Int("acestep-port", 7790, "port the managed ACE-Step daemon should listen on")
+	acestepNoTUI := flag.Bool("acestep-no-tui", false,
+		"disable the TUI for ACE-Step playback and stream one-line progress to stderr instead (auto-enabled on non-TTY stderr)")
 
 	flag.Parse()
 
@@ -181,6 +183,8 @@ func main() {
 				port:         *acestepPort,
 				serviceDir:   defaultACEStepServiceDir(),
 				autoStart:    strings.TrimSpace(*acestepServiceURL) == "",
+				noTUI:        *acestepNoTUI,
+				initialVol:   *initialVol,
 			}
 			if !opts.autoStart && opts.serviceURL == "" {
 				opts.serviceURL = fmt.Sprintf("http://localhost:%d", *acestepPort)

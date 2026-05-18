@@ -571,3 +571,86 @@ func TestRenderVolumeLineShowsCenteredFeedback(t *testing.T) {
 func keyMsg(key string) tea.KeyMsg {
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)}
 }
+
+func TestACEStepInstallProgressMsgUpdatesLoader(t *testing.T) {
+	m := Model{themes: []ColorTheme{DefaultTheme()}}
+	m.applyACEStepInstall(ACEStepInstallProgressMsg{
+		Phase:   "install:model",
+		Title:   "Setting up AI engine",
+		Detail:  "downloading model",
+		Percent: 0.55,
+	})
+	if !m.startupLoading {
+		t.Fatal("startup loader should be active after install progress")
+	}
+	if m.startupTitle != "Setting up AI engine" {
+		t.Fatalf("title = %q", m.startupTitle)
+	}
+	if m.startupDetail != "downloading model" {
+		t.Fatalf("detail = %q", m.startupDetail)
+	}
+	if m.startupPercent < 0.54 || m.startupPercent > 0.56 {
+		t.Fatalf("percent = %f", m.startupPercent)
+	}
+}
+
+func TestACEStepStatusMsgUpdatesLoader(t *testing.T) {
+	m := Model{themes: []ColorTheme{DefaultTheme()}}
+	m.applyACEStepStatus(ACEStepStatusMsg{
+		Phase:   "loading-model",
+		Title:   "Starting AI engine",
+		Detail:  "warming up MLX",
+		Percent: 0.78,
+	})
+	if !m.startupLoading {
+		t.Fatal("status msg should keep startup loader active")
+	}
+	if m.startupTitle != "Starting AI engine" {
+		t.Fatalf("title = %q", m.startupTitle)
+	}
+	if m.startupDetail != "warming up MLX" {
+		t.Fatalf("detail = %q", m.startupDetail)
+	}
+}
+
+func TestACEStepReadyMsgDismissesLoader(t *testing.T) {
+	m := Model{startupLoading: true, splashVisible: true, themes: []ColorTheme{DefaultTheme()}}
+	m.applyACEStepReady(ACEStepReadyMsg{Detail: "engine ready"})
+	if m.startupLoading {
+		t.Fatal("startupLoading should be cleared after ready")
+	}
+	if m.splashVisible {
+		t.Fatal("splashVisible should be cleared after ready")
+	}
+}
+
+func TestACEStepRenderingMsgTogglesCornerIndicator(t *testing.T) {
+	m := Model{themes: []ColorTheme{DefaultTheme()}}
+	m.applyACEStepRendering(ACEStepRenderingMsg{Seq: 2, Detail: "generating track 3"})
+	if !m.aceRenderActive {
+		t.Fatal("rendering should be marked active")
+	}
+	if m.aceRenderSeq != 2 || m.aceRenderDetail != "generating track 3" {
+		t.Fatalf("seq=%d detail=%q", m.aceRenderSeq, m.aceRenderDetail)
+	}
+	m.applyACEStepRendering(ACEStepRenderingMsg{Seq: 2, Done: true})
+	if m.aceRenderActive {
+		t.Fatal("rendering should be cleared on Done")
+	}
+}
+
+func TestACEStepRenderingMsgShowsInPlaybackBar(t *testing.T) {
+	m := Model{
+		algo:              "ACE-Step",
+		volume:            70,
+		aceRenderActive:   true,
+		aceRenderSeq:      1,
+		aceRenderDetail:   "generating track 2",
+		startedAt:         time.Now().Add(-30 * time.Second),
+		themes:            []ColorTheme{DefaultTheme()},
+	}
+	bar := playbackBar(m, 100, DefaultTheme(), make([]float64, 200), false)
+	if !strings.Contains(bar, "generating track 2") {
+		t.Fatalf("playback bar should surface rendering detail: %q", bar)
+	}
+}

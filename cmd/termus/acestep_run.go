@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -13,9 +14,14 @@ import (
 	"syscall"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/mrbrutti/termus/internal/acestep"
 	"github.com/mrbrutti/termus/internal/audio"
+	"github.com/mrbrutti/termus/internal/gen"
+	"github.com/mrbrutti/termus/internal/scope"
 	"github.com/mrbrutti/termus/internal/track"
+	"github.com/mrbrutti/termus/internal/tui"
 )
 
 // acestepOptions is the subset of the CLI flags that govern ACE-Step playback.
@@ -31,64 +37,109 @@ type acestepOptions struct {
 	autoStart    bool // when true, manage the daemon ourselves
 	port         int
 	serviceDir   string
+	noTUI        bool // when true, skip the TUI and stream plain stderr updates
+	initialVol   int
 }
 
-// runACEStepPlayback opens the given .tm, ensures the ACE-Step daemon is
-// running (auto-bootstrapping if needed), and streams forever.
-func runACEStepPlayback(ctx context.Context, opts acestepOptions) error {
-	file, err := track.ParseFile(opts.trackPath)
-	if err != nil {
-		return fmt.Errorf("parse %s: %w", opts.trackPath, err)
-	}
-	if file.RenderEngine != track.RenderEngineACEStep {
-		return fmt.Errorf("track %s has render_engine=%q; --engine acestep requires render_engine=%q",
-			opts.trackPath, file.RenderEngine, track.RenderEngineACEStep)
-	}
-	if file.Acestep == nil {
-		return fmt.Errorf("track %s sets render_engine=acestep but the 'acestep:' block is missing", opts.trackPath)
-	}
+// messageSink is the minimum surface acestep streaming needs in order to push
+// status updates somewhere. In TUI mode it is a *tea.Program; in headless mode
+// it is a small adapter that writes phase changes to stderr.
+type messageSink interface {
+	Send(msg tea.Msg)
+}
 
+// stderrSink turns tea.Msg events into one-line stderr prints. Used by the
+// headless (non-TTY or --no-tui) code path so scripted callers still see
+// progress, just as before SP23.
+type stderrSink struct {
+	w         io.Writer
+	mu        struct{ lastPhase string }
+	lastRender atomic.Int64
+}
+
+func newStderrSink(w io.Writer) *stderrSink {
+	if w == nil {
+		w = os.Stderr
+	}
+	return &stderrSink{w: w}
+}
+
+func (s *stderrSink) Send(msg tea.Msg) {
+	switch ev := msg.(type) {
+	case tui.ACEStepInstallProgressMsg:
+		if ev.Err != nil {
+			fmt.Fprintf(s.w, "preparing AI engine: %s: ERROR: %v\n", ev.Phase, ev.Err)
+			return
+		}
+		if ev.Phase != s.mu.lastPhase {
+			s.mu.lastPhase = ev.Phase
+			fmt.Fprintf(s.w, "preparing AI engine: %s: %s\n", ev.Phase, ev.Detail)
+		}
+	case tui.ACEStepStatusMsg:
+		if ev.Err != nil {
+			fmt.Fprintf(s.w, "preparing AI engine: %s: ERROR: %v\n", ev.Phase, ev.Err)
+			return
+		}
+		if ev.Phase != s.mu.lastPhase {
+			s.mu.lastPhase = ev.Phase
+			fmt.Fprintf(s.w, "preparing AI engine: %s: %s\n", ev.Phase, ev.Detail)
+		}
+	case tui.ACEStepRenderingMsg:
+		if ev.Done {
+			return
+		}
+		// Throttle render-progress lines so we don't spam stderr.
+		now := time.Now().UnixMilli()
+		last := s.lastRender.Load()
+		if now-last < 2000 {
+			return
+		}
+		s.lastRender.Store(now)
+		if ev.Err != nil {
+			fmt.Fprintf(s.w, "termus: render seq=%d: %v\n", ev.Seq, ev.Err)
+			return
+		}
+		detail := ev.Detail
+		if detail == "" {
+			detail = fmt.Sprintf("generating track %d", ev.Seq+1)
+		}
+		fmt.Fprintf(s.w, "termus: %s\n", detail)
+	case tui.ACEStepReadyMsg:
+		if ev.Detail != "" {
+			fmt.Fprintf(s.w, "termus: %s\n", ev.Detail)
+		} else {
+			fmt.Fprintln(s.w, "termus: AI engine ready")
+		}
+	}
+}
+
+// runACEStep is the top-level entry. It chooses between TUI mode and the
+// legacy stderr-only headless mode and dispatches accordingly.
+func runACEStep(ctx context.Context, opts acestepOptions) error {
+	if opts.noTUI || !isTerminal(os.Stderr) {
+		return runACEStepHeadless(ctx, opts)
+	}
+	return runACEStepWithTUI(ctx, opts)
+}
+
+// runACEStepHeadless preserves the pre-SP23 stderr-printing behaviour for
+// non-interactive callers (scripts, redirected stderr, --no-tui).
+func runACEStepHeadless(ctx context.Context, opts acestepOptions) error {
+	sink := newStderrSink(os.Stderr)
+	file, err := loadACEStepTrack(opts.trackPath)
+	if err != nil {
+		return err
+	}
 	if opts.outputDir != "" {
 		if err := os.MkdirAll(opts.outputDir, 0o755); err != nil {
 			return fmt.Errorf("mkdir %s: %w", opts.outputDir, err)
 		}
 	}
-
-	var client *acestep.Client
-	var manager *acestep.Manager
-	if opts.autoStart {
-		manager, client, err = ensureACEStepReady(ctx, opts)
-		if err != nil {
-			return err
-		}
-	} else {
-		client = acestep.NewClient(opts.serviceURL, opts.renderTO)
-		healthCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		health, err := client.Health(healthCtx)
-		cancel()
-		if err != nil {
-			return fmt.Errorf("ACE-Step service health check at %s failed: %w (did you start services/acestep/server.py? See services/acestep/README.md)",
-				opts.serviceURL, err)
-		}
-		if !health.Loaded {
-			return fmt.Errorf("ACE-Step service at %s reachable but not loaded (backend=%s, mock=%v, error=%q)",
-				opts.serviceURL, health.Backend, health.MockMode, health.Error)
-		}
-		fmt.Fprintf(os.Stderr, "termus: connected to ACE-Step service at %s (backend=%s, model=%s, mock=%v, load_time=%.1fs)\n",
-			opts.serviceURL, health.Backend, health.ModelName, health.MockMode, health.LoadTimeSeconds)
-	}
-
-	baseSpec, err := acestep.CompileV3(file)
+	client, manager, err := acquireACEStepClient(ctx, opts, sink)
 	if err != nil {
-		return fmt.Errorf("compile v3: %w", err)
+		return err
 	}
-	prod := &renderingProducer{
-		client:    client,
-		baseSpec:  baseSpec,
-		outputDir: opts.outputDir,
-		trackName: acestepTrackNameFromPath(opts.trackPath),
-	}
-
+	prod := newRenderingProducer(client, file, opts.trackPath, opts.outputDir, sink)
 	s := audio.NewStreamer(audio.StreamerConfig{
 		Producer:     prod,
 		QueueDepth:   opts.queueDepth,
@@ -96,10 +147,8 @@ func runACEStepPlayback(ctx context.Context, opts acestepOptions) error {
 		MaxTracks:    opts.maxTracks,
 		Logger:       os.Stderr,
 	})
-
 	streamCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(sigCh)
@@ -111,23 +160,18 @@ func runACEStepPlayback(ctx context.Context, opts acestepOptions) error {
 		case <-streamCtx.Done():
 		}
 	}()
-
 	if err := s.Start(streamCtx); err != nil {
 		return fmt.Errorf("start streamer: %w", err)
 	}
-
 	statusDone := make(chan struct{})
-	go acestepStatusHeartbeat(streamCtx, s, statusDone)
-
+	go acestepStatusHeartbeat(streamCtx, s, statusDone, os.Stderr)
 	<-streamCtx.Done()
 	fmt.Fprintln(os.Stderr, "termus: shutting down...")
 	s.Stop()
 	<-statusDone
-
 	if manager != nil {
 		_ = manager.Shutdown(context.Background())
 	}
-
 	if last := s.Status().LastError; last != nil && !errors.Is(last, context.Canceled) {
 		return fmt.Errorf("streamer ended with error: %w", last)
 	}
@@ -135,66 +179,322 @@ func runACEStepPlayback(ctx context.Context, opts acestepOptions) error {
 	return nil
 }
 
-// ensureACEStepReady boots a Manager, streams its status events to stderr,
-// and returns once a Client is ready.
-func ensureACEStepReady(ctx context.Context, opts acestepOptions) (*acestep.Manager, *acestep.Client, error) {
+// runACEStepWithTUI launches bubbletea immediately and drives the engine
+// bootstrap + first-track render in a goroutine, surfacing every status as a
+// tea.Msg the model already knows how to render.
+func runACEStepWithTUI(ctx context.Context, opts acestepOptions) error {
+	file, err := loadACEStepTrack(opts.trackPath)
+	if err != nil {
+		return err
+	}
+	if opts.outputDir != "" {
+		if err := os.MkdirAll(opts.outputDir, 0o755); err != nil {
+			return fmt.Errorf("mkdir %s: %w", opts.outputDir, err)
+		}
+	}
+	vol := opts.initialVol
+	if vol <= 0 {
+		vol = 70
+	}
+	title := acestepTrackNameFromPath(opts.trackPath)
+	ring := scope.NewRing(4096)
+	cmd := &acestepCommander{}
+	model := tui.New(ring, cmd, "ACE-Step", title, 0, vol).
+		WithStartupLoading("Setting up AI engine", "preparing AI engine...", 0)
+	prog := tea.NewProgram(model, tea.WithAltScreen())
+
+	streamCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
+	go func() {
+		select {
+		case <-sigCh:
+			cancel()
+			prog.Quit()
+		case <-streamCtx.Done():
+		}
+	}()
+
+	var managerHolder atomic.Pointer[acestep.Manager]
+	// Spawn the boot+playback goroutine. It sends progress messages until the
+	// streamer goroutines own their own lifecycle.
+	go func() {
+		client, manager, err := acquireACEStepClient(streamCtx, opts, prog)
+		if err != nil {
+			prog.Send(tui.ACEStepStatusMsg{
+				Phase:  "error",
+				Detail: err.Error(),
+				Err:    err,
+			})
+			// Give the user a moment to read the failure before quitting.
+			time.Sleep(2 * time.Second)
+			prog.Quit()
+			return
+		}
+		if manager != nil {
+			managerHolder.Store(manager)
+		}
+		prog.Send(tui.ACEStepStatusMsg{
+			Phase:   "rendering",
+			Title:   "Generating Music",
+			Detail:  "composing first track (~10s)…",
+			Percent: 0.85,
+		})
+		prod := newRenderingProducer(client, file, opts.trackPath, opts.outputDir, prog)
+		// Hook so the streamer marks "ready" as soon as the first track is
+		// produced and queued.
+		prod.onFirstReady = func() {
+			prog.Send(tui.ACEStepReadyMsg{Detail: "AI engine ready"})
+		}
+		s := audio.NewStreamer(audio.StreamerConfig{
+			Producer:     prod,
+			QueueDepth:   opts.queueDepth,
+			CrossfadeSec: opts.crossfadeSec,
+			MaxTracks:    opts.maxTracks,
+			Logger:       io.Discard,
+		})
+		if err := s.Start(streamCtx); err != nil {
+			prog.Send(tui.ACEStepStatusMsg{
+				Phase:  "error",
+				Detail: "start streamer: " + err.Error(),
+				Err:    err,
+			})
+			time.Sleep(2 * time.Second)
+			prog.Quit()
+			return
+		}
+		<-streamCtx.Done()
+		s.Stop()
+	}()
+
+	if _, err := prog.Run(); err != nil {
+		cancel()
+		return fmt.Errorf("tui error: %w", err)
+	}
+	cancel()
+	if m := managerHolder.Load(); m != nil {
+		_ = m.Shutdown(context.Background())
+	}
+	return nil
+}
+
+// acestepCommander is the minimal audio.Commander needed to construct a
+// tui.Model for ACE-Step. It owns no algorithm; the TUI in this mode only
+// needs to render the loading overlay and a minimal now-playing view, so the
+// commander's algorithm-related methods are no-ops.
+type acestepCommander struct{}
+
+// We satisfy audio.Commander with no-op implementations.
+func (c *acestepCommander) SetVolume(_ int)                              {}
+func (c *acestepCommander) DebugStatus() gen.DebugStatus                 { return gen.DebugStatus{} }
+func (c *acestepCommander) TogglePause()                                 {}
+func (c *acestepCommander) ToggleRecord() (string, error)                { return "", nil }
+func (c *acestepCommander) SwapAlgorithm(_ gen.Algorithm)                {}
+func (c *acestepCommander) SwapAlgorithmFade(_ gen.Algorithm, _ int)     {}
+
+// runACEStepPlayback is kept as a thin shim for any external callers.
+// Internally everything routes through runACEStep, which dispatches between
+// the TUI and headless code paths.
+func runACEStepPlayback(ctx context.Context, opts acestepOptions) error {
+	return runACEStep(ctx, opts)
+}
+
+// loadACEStepTrack parses and validates an ACE-Step .tm file.
+func loadACEStepTrack(path string) (*track.File, error) {
+	file, err := track.ParseFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	if file.RenderEngine != track.RenderEngineACEStep {
+		return nil, fmt.Errorf("track %s has render_engine=%q; --engine acestep requires render_engine=%q",
+			path, file.RenderEngine, track.RenderEngineACEStep)
+	}
+	if file.Acestep == nil {
+		return nil, fmt.Errorf("track %s sets render_engine=acestep but the 'acestep:' block is missing", path)
+	}
+	return file, nil
+}
+
+// acquireACEStepClient connects to either a managed or externally-running
+// ACE-Step daemon depending on opts. Streams install + status events to the
+// sink (typically a *tea.Program; nil suppresses events).
+func acquireACEStepClient(ctx context.Context, opts acestepOptions, sink messageSink) (*acestep.Client, *acestep.Manager, error) {
+	if !opts.autoStart {
+		client := acestep.NewClient(opts.serviceURL, opts.renderTO)
+		healthCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		health, err := client.Health(healthCtx)
+		cancel()
+		if err != nil {
+			return nil, nil, fmt.Errorf("ACE-Step service health check at %s failed: %w (did you start services/acestep/server.py? See services/acestep/README.md)",
+				opts.serviceURL, err)
+		}
+		if !health.Loaded {
+			return nil, nil, fmt.Errorf("ACE-Step service at %s reachable but not loaded (backend=%s, mock=%v, error=%q)",
+				opts.serviceURL, health.Backend, health.MockMode, health.Error)
+		}
+		if sink != nil {
+			sink.Send(tui.ACEStepStatusMsg{
+				Phase:   "ready",
+				Detail:  fmt.Sprintf("connected to %s", opts.serviceURL),
+				Percent: 1.0,
+			})
+		}
+		return client, nil, nil
+	}
+	manager, client, err := ensureACEStepReady(ctx, opts, sink)
+	if err != nil {
+		return nil, nil, err
+	}
+	return client, manager, nil
+}
+
+// ensureACEStepReady boots a Manager and, while it works, streams install +
+// status events to the sink as tea.Msg values. The sink can be a *tea.Program
+// in TUI mode or a stderrSink in headless mode.
+func ensureACEStepReady(ctx context.Context, opts acestepOptions, sink messageSink) (*acestep.Manager, *acestep.Client, error) {
 	installer := acestep.NewInstaller(opts.serviceDir, nil)
 	if !installer.IsInstalled() {
 		size := installer.EstimatedSize()
-		fmt.Fprintf(os.Stderr, "termus: ACE-Step engine not installed. Setup will download:\n")
-		fmt.Fprintf(os.Stderr, "  Python 3.11           ~%s\n", humanBytes(size.Python))
-		fmt.Fprintf(os.Stderr, "  Dependencies          ~%s\n", humanBytes(size.Deps))
-		fmt.Fprintf(os.Stderr, "  ACE-Step model        ~%s\n", humanBytes(size.Model))
-		fmt.Fprintf(os.Stderr, "  Total                 ~%s\n", humanBytes(size.Total()))
-		if !confirmInstall() {
-			return nil, nil, errors.New("ACE-Step install declined")
+		// In TUI mode the install prompt would race with the alt-screen; the
+		// non-interactive default is "yes" via the existing helper (which we
+		// only call when there's a stdin and no TUI). For TUI mode we
+		// auto-confirm so the loader can take over.
+		if _, ok := sink.(*stderrSink); ok {
+			fmt.Fprintf(os.Stderr, "termus: ACE-Step engine not installed. Setup will download:\n")
+			fmt.Fprintf(os.Stderr, "  Python 3.11           ~%s\n", humanBytes(size.Python))
+			fmt.Fprintf(os.Stderr, "  Dependencies          ~%s\n", humanBytes(size.Deps))
+			fmt.Fprintf(os.Stderr, "  ACE-Step model        ~%s\n", humanBytes(size.Model))
+			fmt.Fprintf(os.Stderr, "  Total                 ~%s\n", humanBytes(size.Total()))
+			if !confirmInstall() {
+				return nil, nil, errors.New("ACE-Step install declined")
+			}
+		} else if sink != nil {
+			sink.Send(tui.ACEStepInstallProgressMsg{
+				Phase:   "installing",
+				Title:   "Setting up AI engine",
+				Detail:  fmt.Sprintf("first run: downloading ~%s of model + deps…", humanBytes(size.Total())),
+				Percent: 0.02,
+			})
 		}
 	}
-	// Wire an installer that emits to stderr.
 	evCh := make(chan acestep.InstallEvent, 32)
 	installer.Events = evCh
 	stCh := make(chan acestep.StatusEvent, 16)
 	mgr := &acestep.Manager{
 		Installer: installer,
 		Port:      opts.port,
-		Logger:    os.Stderr,
+		Logger:    io.Discard,
 	}
+	doneEvents := make(chan struct{})
+	doneStatus := make(chan struct{})
 	go func() {
-		// Lightweight event drain: print phase changes to stderr.
-		var lastPhase string
+		defer close(doneEvents)
 		for ev := range evCh {
-			if ev.Phase != lastPhase {
-				fmt.Fprintf(os.Stderr, "preparing AI engine: %s: %s\n", ev.Phase, ev.Message)
-				lastPhase = ev.Phase
+			if sink == nil {
 				continue
 			}
-			// Same phase, just update the line if it's short enough.
-			if len(ev.Message) < 80 {
-				fmt.Fprintf(os.Stderr, "  %s\n", ev.Message)
-			}
+			pct := installEventPercent(ev)
+			sink.Send(tui.ACEStepInstallProgressMsg{
+				Phase:   ev.Phase,
+				Title:   installPhaseTitle(ev.Phase),
+				Detail:  ev.Message,
+				Percent: pct,
+				Err:     ev.Err,
+			})
 		}
 	}()
 	go func() {
-		var lastPhase string
+		defer close(doneStatus)
 		for ev := range stCh {
-			if ev.Phase == lastPhase {
+			if sink == nil {
 				continue
 			}
-			lastPhase = ev.Phase
-			if ev.Err != nil {
-				fmt.Fprintf(os.Stderr, "preparing AI engine: %s: ERROR: %v\n", ev.Phase, ev.Err)
-				continue
-			}
-			fmt.Fprintf(os.Stderr, "preparing AI engine: %s: %s\n", ev.Phase, ev.Message)
+			pct := statusEventPercent(ev)
+			sink.Send(tui.ACEStepStatusMsg{
+				Phase:   ev.Phase,
+				Title:   statusPhaseTitle(ev.Phase),
+				Detail:  ev.Message,
+				Percent: pct,
+				Err:     ev.Err,
+			})
 		}
 	}()
 	client, err := mgr.EnsureReady(ctx, stCh)
 	close(evCh)
 	close(stCh)
+	<-doneEvents
+	<-doneStatus
 	if err != nil {
 		return nil, nil, fmt.Errorf("ACE-Step bootstrap failed: %w", err)
 	}
 	return mgr, client, nil
+}
+
+// installPhaseTitle is the loader title surfaced for each installer phase.
+func installPhaseTitle(phase string) string {
+	switch phase {
+	case "install:python", "python":
+		return "Setting up AI engine"
+	case "install:deps", "deps", "pip":
+		return "Setting up AI engine"
+	case "install:model", "model":
+		return "Downloading model"
+	default:
+		return "Setting up AI engine"
+	}
+}
+
+// statusPhaseTitle is the loader title surfaced for each manager phase.
+func statusPhaseTitle(phase string) string {
+	switch phase {
+	case "checking-install":
+		return "Setting up AI engine"
+	case "installing":
+		return "Setting up AI engine"
+	case "starting-daemon":
+		return "Starting AI engine"
+	case "loading-model":
+		return "Starting AI engine"
+	case "ready":
+		return "Generating Music"
+	default:
+		return "Starting AI engine"
+	}
+}
+
+// installEventPercent maps installer phases to a coarse loader percentage.
+// The installer doesn't yet expose precise progress so we approximate.
+func installEventPercent(ev acestep.InstallEvent) float64 {
+	switch ev.Phase {
+	case "install:python", "python":
+		return 0.10
+	case "install:deps", "deps", "pip":
+		return 0.30
+	case "install:model", "model":
+		return 0.55
+	case "install:done", "done":
+		return 0.65
+	}
+	return 0.05
+}
+
+// statusEventPercent maps manager phases to a coarse loader percentage.
+func statusEventPercent(ev acestep.StatusEvent) float64 {
+	switch ev.Phase {
+	case "checking-install":
+		return 0.05
+	case "installing":
+		return 0.10
+	case "starting-daemon":
+		return 0.65
+	case "loading-model":
+		return 0.78
+	case "ready":
+		return 0.85
+	}
+	return 0.05
 }
 
 // confirmInstall prompts the user to confirm a ~11.5 GB download. Returns
@@ -224,13 +524,28 @@ func humanBytes(n int64) string {
 
 // renderingProducer turns each Produce(seq) call into an HTTP /render call
 // against the ACE-Step service. Seed is offset by seq so successive tracks
-// are variations.
+// are variations. It optionally streams seq-level progress to a sink so the
+// TUI can show a "generating next track…" badge.
 type renderingProducer struct {
-	client    *acestep.Client
-	baseSpec  acestep.RenderSpec
-	outputDir string
-	trackName string
-	count     atomic.Int64
+	client       *acestep.Client
+	baseSpec     acestep.RenderSpec
+	outputDir    string
+	trackName    string
+	count        atomic.Int64
+	sink         messageSink
+	onFirstReady func()
+	firstSent    atomic.Bool
+}
+
+func newRenderingProducer(client *acestep.Client, file *track.File, trackPath, outputDir string, sink messageSink) *renderingProducer {
+	baseSpec, _ := acestep.CompileV3(file)
+	return &renderingProducer{
+		client:    client,
+		baseSpec:  baseSpec,
+		outputDir: outputDir,
+		trackName: acestepTrackNameFromPath(trackPath),
+		sink:      sink,
+	}
 }
 
 func (p *renderingProducer) Produce(ctx context.Context, seq int) ([]byte, error) {
@@ -238,26 +553,44 @@ func (p *renderingProducer) Produce(ctx context.Context, seq int) ([]byte, error
 	if spec.Seed >= 0 {
 		spec.Seed += int64(seq)
 	}
+	if p.sink != nil {
+		detail := "composing first track (~10s)…"
+		if seq > 0 {
+			detail = fmt.Sprintf("generating track %d", seq+1)
+		}
+		p.sink.Send(tui.ACEStepRenderingMsg{Seq: seq, Detail: detail})
+	}
 	t0 := time.Now()
 	data, err := p.client.Render(ctx, spec)
 	if err != nil {
+		if p.sink != nil {
+			p.sink.Send(tui.ACEStepRenderingMsg{Seq: seq, Err: err})
+		}
 		return nil, err
 	}
-	fmt.Fprintf(os.Stderr, "termus: rendered seq=%d (%d bytes, %.1fs)\n",
-		seq, len(data), time.Since(t0).Seconds())
 
 	if p.outputDir != "" {
 		path := filepath.Join(p.outputDir, fmt.Sprintf("%s-%03d.wav", p.trackName, seq))
 		if err := os.WriteFile(path, data, 0o644); err != nil {
-			fmt.Fprintf(os.Stderr, "termus: warning: write %s: %v\n", path, err)
+			// Non-fatal: log to discard logger; sink will not see this.
+			_ = err
 		}
 	}
 	p.count.Add(1)
+	if p.sink != nil {
+		p.sink.Send(tui.ACEStepRenderingMsg{Seq: seq, Done: true, Detail: fmt.Sprintf("rendered seq=%d in %.1fs", seq, time.Since(t0).Seconds())})
+	}
+	if !p.firstSent.Swap(true) && p.onFirstReady != nil {
+		p.onFirstReady()
+	}
 	return data, nil
 }
 
-func acestepStatusHeartbeat(ctx context.Context, s *audio.Streamer, done chan<- struct{}) {
+func acestepStatusHeartbeat(ctx context.Context, s *audio.Streamer, done chan<- struct{}, w io.Writer) {
 	defer close(done)
+	if w == nil {
+		w = io.Discard
+	}
 	tick := time.NewTicker(5 * time.Second)
 	defer tick.Stop()
 	for {
@@ -266,7 +599,7 @@ func acestepStatusHeartbeat(ctx context.Context, s *audio.Streamer, done chan<- 
 			return
 		case <-tick.C:
 			st := s.Status()
-			fmt.Fprintf(os.Stderr, "termus: status: playing=%v seq=%d queue=%d\n",
+			fmt.Fprintf(w, "termus: status: playing=%v seq=%d queue=%d\n",
 				st.Playing, st.CurrentSeq, st.QueueDepth)
 		}
 	}
@@ -402,3 +735,21 @@ func trackPathFromSelection(value string) (string, error) {
 	}
 	return entry.Path, nil
 }
+
+// isTerminal returns true when fd looks like an interactive terminal. We use
+// this to auto-select the TUI vs the stderr-only path. A best-effort
+// implementation: TERM=dumb or non-character device means headless.
+func isTerminal(f *os.File) bool {
+	if f == nil {
+		return false
+	}
+	if strings.EqualFold(os.Getenv("TERM"), "dumb") {
+		return false
+	}
+	info, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
+}
+
