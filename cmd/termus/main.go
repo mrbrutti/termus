@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -104,6 +105,21 @@ func main() {
 	exportMIDI := flag.Bool("midi", false, "with --out/--playlist-out, also export captured MIDI files when supported")
 	debugView := flag.Bool("debug", false, "show the musical debug inspector in the TUI")
 	renderSeconds := flag.Float64("seconds", defaultRenderSeconds, "render duration in seconds when --out is provided")
+
+	// SP22 ACE-Step engine flags.
+	engineFlag := flag.String("engine", "auto",
+		"playback engine: 'sf2' (procedural/SoundFont) | 'acestep' (AI streaming) | 'auto' (read render_engine from .tm)")
+	acestepInstall := flag.Bool("acestep-install", false,
+		"run the ACE-Step toolchain installer (uv + Python + venv + model) and exit")
+	acestepServiceURL := flag.String("acestep-service-url", "",
+		"connect to an externally-managed ACE-Step daemon at this URL instead of spawning one")
+	acestepCrossfade := flag.Float64("acestep-crossfade", 3.0, "crossfade seconds between ACE-Step renders")
+	acestepQueueDepth := flag.Int("acestep-queue-depth", 2, "look-ahead queue depth for ACE-Step streaming")
+	acestepMaxTracks := flag.Int("acestep-max-tracks", 0, "stop after N ACE-Step renders (0 = infinite)")
+	acestepOutputDir := flag.String("acestep-output-dir", "", "also save each ACE-Step render to this directory")
+	acestepRenderTimeout := flag.Duration("acestep-render-timeout", 5*time.Minute, "per-render HTTP timeout")
+	acestepPort := flag.Int("acestep-port", 7790, "port the managed ACE-Step daemon should listen on")
+
 	flag.Parse()
 
 	visited := map[string]bool{}
@@ -128,6 +144,57 @@ func main() {
 			}
 		}
 		return
+	}
+
+	// --acestep-install short-circuit: run the installer and exit.
+	if *acestepInstall {
+		if err := runACEStepInstall(); err != nil {
+			fmt.Fprintln(os.Stderr, "acestep install:", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// --engine routing: if a .tm track is named, decide which engine handles
+	// it. The flag overrides the .tm's render_engine; "auto" reads from the
+	// .tm itself (empty -> sf2).
+	if *trackName != "" {
+		path, err := trackPathFromSelection(*trackName)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "track:", err)
+			os.Exit(2)
+		}
+		engine, err := resolveEngineForTrack(path, *engineFlag)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		if engine == "acestep" {
+			opts := acestepOptions{
+				trackPath:    path,
+				serviceURL:   strings.TrimSpace(*acestepServiceURL),
+				crossfadeSec: *acestepCrossfade,
+				queueDepth:   *acestepQueueDepth,
+				maxTracks:    *acestepMaxTracks,
+				outputDir:    *acestepOutputDir,
+				renderTO:     *acestepRenderTimeout,
+				port:         *acestepPort,
+				serviceDir:   defaultACEStepServiceDir(),
+				autoStart:    strings.TrimSpace(*acestepServiceURL) == "",
+			}
+			if !opts.autoStart && opts.serviceURL == "" {
+				opts.serviceURL = fmt.Sprintf("http://localhost:%d", *acestepPort)
+			}
+			if err := runACEStepPlayback(context.Background(), opts); err != nil {
+				fmt.Fprintln(os.Stderr, "acestep:", err)
+				os.Exit(1)
+			}
+			return
+		}
+		// engine == "sf2" → fall through to the existing path.
+	} else if *engineFlag == "acestep" {
+		fmt.Fprintln(os.Stderr, "--engine acestep requires --track <path-to-tm-with-render_engine=acestep>")
+		os.Exit(2)
 	}
 
 	listenMode, ok := gen.ResolveListeningMode(*listenModeName)
