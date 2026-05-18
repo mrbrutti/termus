@@ -280,7 +280,14 @@ func lintFile(file *File, tracks []gen.Track, sectionCount int) []Warning {
 		if brightAttackCount(roles) > 6 {
 			warnings = append(warnings, Warning{Path: fmt.Sprintf("sections[%d].roles", idx), Message: "too many simultaneous bright attack roles; soften or stagger the ensemble"})
 		}
-		if strings.Contains(strings.ToLower(section.Scene+" "+section.Variation), "cadence") || strings.Contains(strings.ToLower(section.Scene+" "+section.Variation), "outro") {
+		hay := strings.ToLower(section.Scene + " " + section.Variation + " " + section.Role + " " + section.ID + " " + section.TransitionToNext)
+		for _, kw := range []string{"cadence", "outro", "recede", "ending", "release", "resolve", "tag", "coda", "fade"} {
+			if strings.Contains(hay, kw) {
+				cadenceFound = true
+				break
+			}
+		}
+		if section.DynamicCurve == "decrescendo" {
 			cadenceFound = true
 		}
 		for _, event := range sectionEvents(section) {
