@@ -256,19 +256,27 @@ func lintFile(file *File, tracks []gen.Track, sectionCount int) []Warning {
 		return warnings
 	}
 	uniqueHarmony := map[string]bool{}
-	sceneCount := 0
+	contrastCount := 0
 	for _, section := range file.Sections {
 		if strings.TrimSpace(section.Harmony) != "" {
 			uniqueHarmony[strings.TrimSpace(section.Harmony)] = true
 		}
-		if strings.TrimSpace(section.Scene) != "" {
-			sceneCount++
+		// SP18 form-driven sections express contrast via Role, MotifTreatment,
+		// DynamicCurve, TransitionToNext, or PhraseStructure in addition to the
+		// legacy Scene field. Any of these counts as a contrast signal.
+		if strings.TrimSpace(section.Scene) != "" ||
+			strings.TrimSpace(section.Role) != "" ||
+			strings.TrimSpace(section.MotifTreatment) != "" ||
+			strings.TrimSpace(section.DynamicCurve) != "" ||
+			strings.TrimSpace(section.TransitionToNext) != "" ||
+			strings.TrimSpace(section.PhraseStructure) != "" {
+			contrastCount++
 		}
 	}
 	if len(uniqueHarmony) < 2 {
 		warnings = append(warnings, Warning{Path: "sections.harmony", Message: "all sections share similar harmony; consider stronger sectional contrast"})
 	}
-	if sceneCount == 0 {
+	if contrastCount == 0 {
 		warnings = append(warnings, Warning{Path: "sections.scene", Message: "no section scenes defined; role contrast may be weak"})
 	}
 	cadenceFound := false
