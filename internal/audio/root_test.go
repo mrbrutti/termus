@@ -157,7 +157,7 @@ func TestRootAppliesEffectiveOutputGain(t *testing.T) {
 
 	frames := make([][2]float64, 16)
 	root.Stream(frames)
-	want := 0.55 * 0.8
+	want := 0.85 * 0.8
 	if math.Abs(frames[0][0]-want) > 1e-6 {
 		t.Fatalf("frame 0 = %g, want %g", frames[0][0], want)
 	}

@@ -1521,7 +1521,7 @@ func (a *Chill) snareFillNoteAt(slot int) int {
 }
 
 func (a *Chill) hihatFireProbability() float64 {
-	return 0.78
+	return 0.92
 }
 
 func (a *Chill) hihatSwingAmount() float64 {
