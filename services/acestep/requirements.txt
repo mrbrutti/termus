@@ -1,0 +1,13 @@
+# Termus ACE-Step service dependencies.
+#
+# IMPORTANT: the acestep package itself is NOT on PyPI. Install it from the
+# repo (see install.sh which clones it and runs `pip install -e .`). These
+# pins cover only the HTTP server shim and shared infrastructure.
+
+fastapi>=0.110.0,<1.0
+uvicorn[standard]>=0.27.0,<1.0
+pydantic>=2.5.0,<3.0
+
+# For tests
+pytest>=7.0,<9.0
+httpx>=0.27.0,<1.0    # FastAPI TestClient transport
