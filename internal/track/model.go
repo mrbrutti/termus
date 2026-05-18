@@ -6,12 +6,103 @@ import (
 	"github.com/mrbrutti/termus/internal/gen"
 )
 
+// RenderEngine selects which engine produces audio for a track.
+//
+// "sf2" (or empty) preserves the v1/v2 procedural path - the existing
+// authored compiler and SF2 sampler. "acestep" routes the track through the
+// SP21 streaming pipeline backed by services/acestep (Python ACE-Step
+// inference daemon).
+//
+// Tracks without a render_engine field default to SF2, so adding this
+// field is a strictly opt-in v3 extension. Every existing v1/v2 file
+// continues to compile and render unchanged.
+type RenderEngine string
+
+const (
+	// RenderEngineSF2 is the procedural / SoundFont path (default).
+	RenderEngineSF2 RenderEngine = "sf2"
+	// RenderEngineACEStep is the SP21 AI-generator path. Requires the
+	// Python service in services/acestep to be running.
+	RenderEngineACEStep RenderEngine = "acestep"
+)
+
+// AcestepSpec is the v3 authoring block that maps a track.File onto the
+// ACE-Step inference inputs (services/acestep/server.py /render). Only
+// consumed when File.RenderEngine == "acestep".
+//
+// Field naming mirrors the wire shape in internal/acestep/spec.go so the
+// prompt compiler is a straightforward translation pass.
+type AcestepSpec struct {
+	// Style is a natural-language paragraph that becomes the bulk of the
+	// ACE-Step "caption" prompt, e.g. "warm lo-fi rhodes in a quiet
+	// bookstore on a rainy night". < ~400 chars recommended.
+	Style string `yaml:"style"`
+
+	// Tags are rank-ordered descriptors. ACE-Step's docs say the first tag
+	// should be the genre. The compiler joins these into the caption.
+	Tags []string `yaml:"tags,omitempty"`
+
+	// Scale is the modal context: "minor", "major", "dorian", etc. When
+	// empty the compiler infers from File.Key (presence of "min" → minor).
+	Scale string `yaml:"scale,omitempty"`
+
+	// TimeSignature is the meter, e.g. "4/4", "3/4", "6/8".
+	TimeSignature string `yaml:"time_signature,omitempty"`
+
+	// ReferenceAudio is an optional path to a reference WAV/MP3 for style
+	// transfer or cover tasks. The CLI loads the file and base64-encodes it
+	// onto the wire; the field on the wire is the encoded blob, not a path.
+	ReferenceAudio string `yaml:"reference_audio,omitempty"`
+
+	// Sections is the v3 section-level description list. Each entry maps
+	// to one section_descriptions[] entry on the wire and contributes to
+	// the harmony chain.
+	Sections []AcestepSection `yaml:"sections,omitempty"`
+
+	// Motif is a natural-language motif description, e.g.
+	// "wandering minor melody, scale degrees 5 7 5 3".
+	Motif string `yaml:"motif,omitempty"`
+
+	// SeedOverride pins the seed at the acestep block level. When nil the
+	// compiler falls back to File.Seed.
+	SeedOverride *int64 `yaml:"seed,omitempty"`
+
+	// InferenceSteps is the diffusion step count override. 0 = use the
+	// turbo default (8). Higher values trade speed for quality.
+	InferenceSteps int `yaml:"inference_steps,omitempty"`
+}
+
+// AcestepSection is one v3 section entry.
+type AcestepSection struct {
+	// ID is a short label, e.g. "intro", "head", "outro".
+	ID string `yaml:"id,omitempty"`
+	// Bars is the section length in 4-beat bars. Used to compute total
+	// duration when AcestepSpec doesn't set a higher-level duration.
+	Bars int `yaml:"bars,omitempty"`
+	// Description is the natural-language sentence for this section, e.g.
+	// "soft intro with brushed kick, rhodes states the motif".
+	Description string `yaml:"description"`
+	// Harmony is the chord progression for this section as a single string,
+	// e.g. "Am7 Fmaj7 Dm7 G7sus".
+	Harmony string `yaml:"harmony,omitempty"`
+	// Dynamic is one of "soft", "building", "peak", "drop", "fade".
+	// Folded into the section description text.
+	Dynamic string `yaml:"dynamic,omitempty"`
+}
+
 type File struct {
 	Title           string          `yaml:"title"`
 	Description     string          `yaml:"description,omitempty"`
 	Style           string          `yaml:"style"`
 	Substyle        string          `yaml:"substyle,omitempty"`
 	ListenMode      string          `yaml:"listen_mode,omitempty"`
+	// RenderEngine (SP21) selects which engine renders this track.
+	// Empty or "sf2" keeps the existing procedural path; "acestep" routes
+	// through the AI generator (Acestep block must be set).
+	RenderEngine RenderEngine `yaml:"render_engine,omitempty"`
+	// Acestep (SP21) holds v3 ACE-Step authoring data. Only consumed when
+	// RenderEngine == "acestep".
+	Acestep *AcestepSpec `yaml:"acestep,omitempty"`
 	Seed            int64           `yaml:"seed,omitempty"`
 	Tags            []string        `yaml:"tags,omitempty"`
 	Key             string          `yaml:"key,omitempty"`

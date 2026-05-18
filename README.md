@@ -62,6 +62,17 @@ Notes:
 - The sampled algorithms can run with a curated SoundFont preset or your own `.sf2` file.
 - The long-form engine now evolves by episode and movement instead of short fixed loops.
 
+## Engines
+
+termus has two render engines. The engine is selected per-track in the `.tm` file via the `render_engine:` field.
+
+| `render_engine:` | Description |
+| - | - |
+| `sf2` (default, or unset) | The original procedural engine. Authored compiler + algorithmic generators + SoundFont sampler. Pure Go. No external dependencies beyond bundled `.sf2` files. Used by every track up through v2 of the `.tm` schema and remains the default. |
+| `acestep` (opt-in, SP21) | AI generation via the ACE-Step diffusion model running in a local Python service. Streaming playback with look-ahead queueing and equal-power crossfade between successive renders. Requires `services/acestep/install.sh` (5-10 GB model download) and the daemon to be running. Played via `termus-stream` rather than `termus`. |
+
+Old tracks with no `render_engine:` field continue to compile and render unchanged on the SF2 path. The ACE-Step path is documented in [`docs/acestep-engine.md`](docs/acestep-engine.md); the reference v3 track is `tracks/lofi/bookstore-rainy-night-v3.tm`.
+
 ## Listening Modes
 
 Listening modes shape the session profile and some export defaults.

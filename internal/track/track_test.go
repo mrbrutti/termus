@@ -1348,6 +1348,13 @@ func TestBundledTracksParseAndCompile(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Parse %s: %v", path, err)
 		}
+		// SP21: ACE-Step tracks route through the AI engine; they don't
+		// have SF2-style Sections, Roles, etc. and aren't compiled by
+		// the procedural pipeline. Skip them in the SF2 conformance
+		// gate.
+		if file.RenderEngine == RenderEngineACEStep {
+			continue
+		}
 		compiled, err := Compile(file, 7, gen.ListeningModeEndless)
 		if err != nil {
 			t.Fatalf("Compile %s: %v", path, err)
@@ -1395,6 +1402,12 @@ func TestBundledTracksMeetReviewGate(t *testing.T) {
 		file, err := Parse(data)
 		if err != nil {
 			t.Fatalf("Parse %s: %v", path, err)
+		}
+		// SP21: ACE-Step tracks are reviewed by ear (or by the
+		// services/acestep test suite), not by the procedural review
+		// gate, which depends on SF2 compile output.
+		if file.RenderEngine == RenderEngineACEStep {
+			continue
 		}
 		compiled, err := Compile(file, 7, gen.ListeningModeEndless)
 		if err != nil {
