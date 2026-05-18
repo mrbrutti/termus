@@ -1,13 +1,13 @@
 title: Midnight Ballad Slow
-description: Slow ballad trio with tritone subs on V, expression swells, and a brushed feel.
+description: Slow ballad with dense piano lead, walking bass on every quarter, brushes texture, strings halo, tritone subs.
 style: jazz
 mix_bus: jazz
 listen_mode: album-side
 seed: 62738
-tags: [jazz, ballad, slow, piano, brushes]
+tags: [jazz, ballad, slow, piano, brushes, walking, strings]
 key: Dbmaj
 tempo: 58
-globals: {density: sparse, brightness: warm, phrase: long}
+globals: {density: heavy, brightness: warm, motion: moving, phrase: long}
 roles:
   piano:
     family: acoustic_piano
@@ -22,65 +22,106 @@ roles:
     articulation: walk
     register: low
     prominence: anchor
-    pattern: "x... x... | x... x..."
+    pattern: "x...x...x...x..."
   brushes:
     family: drums
     tone: [live, soft]
     articulation: swing
     prominence: support
-    pattern: "x.x. x.x. | x.x. x.x."
+    pattern: "x.x.x.x. x.x.x.x."
+  ride:
+    family: drums
+    tone: [live, soft]
+    articulation: swing
+    prominence: support
+    pattern: "x..xx..x x..xx..x"
+  snare:
+    family: drums
+    tone: [live, soft]
+    articulation: swing
+    prominence: support
+    pattern: "..x...x. ..x...x."
   strings:
     family: strings
     tone: [soft, warm]
     register: mid-high
     prominence: air
-    pattern: "x....... | ........"
+    pattern: "x..............."
+  comp:
+    family: acoustic_piano
+    tone: [soft, warm]
+    articulation: comp
+    register: mid
+    prominence: support
+    pattern: "x.....x. ..x....."
 sections:
   - id: intro
     title: late-hour hush
     duration: 14s
-    harmony: "Dbmaj7 Bbm7"
+    harmony: "Dbmaj9 Bbm11 | Ebm9 Ab9sus4"
     scene: "intro hush"
     variation: "establish"
     groove: straight
     automation:
       - param: expression
         breakpoints:
-          - {at: 0, value: 0.3}
-          - {at: 100, value: 0.6}
+          - {at: 0, value: 0.35}
+          - {at: 100, value: 0.65}
   - id: head
     title: slow confession
-    duration: 36s
-    harmony: "Dbmaj7 Bbm7 | Ebm7 Ab7 | Dbmaj7 Bbm7 | Ebm7 Ab7"
+    duration: 32s
+    harmony: "Dbmaj9 Bbm11 | Ebm9 Ab9sus4 | Dbmaj9 Bbm11 | Ebm9 Ab9sus4"
     scene: "head lyrical"
     variation: "statement"
     groove: straight
     substitutions:
-      - {rule: tritone_sub, apply_to: V, probability: 0.7}
+      - {rule: tritone_sub, apply_to: V, probability: 0.8}
     automation:
       - param: expression
         breakpoints:
-          - {at: 0, value: 0.6}
-          - {at: 50, value: 0.9}
-          - {at: 100, value: 0.75}
+          - {at: 0, value: 0.65}
+          - {at: 50, value: 0.95}
+          - {at: 100, value: 0.8}
   - id: bridge
     title: tender pivot
-    duration: 22s
-    harmony: "Gbmaj7 F7 | Bbm7 Eb7 | Ebm7 Ab7 | Dbmaj7 Bbm7"
+    duration: 24s
+    harmony: "Gbmaj9 F9 | Bbm11 Eb9sus4 | Ebm9 Ab9sus4 | Dbmaj9 Bbm11"
     scene: "bridge lift"
     variation: "open-register"
     groove: straight
     substitutions:
       - {rule: tritone_sub, apply_to: V, probability: 1.0}
-  - id: outro
-    title: last note rings
-    duration: 18s
-    harmony: "Ebm7 Ab7 | Dbmaj7 Dbmaj7"
-    scene: "outro cadence"
-    variation: "cadence"
-    groove: straight
     automation:
       - param: expression
         breakpoints:
-          - {at: 0, value: 0.75}
-          - {at: 100, value: 0.25}
+          - {at: 0, value: 0.8}
+          - {at: 60, value: 1.0}
+          - {at: 100, value: 0.85}
+  - id: head2
+    title: recapitulation
+    duration: 24s
+    harmony: "Dbmaj9 Bbm11 | Ebm9 Ab9sus4 | Dbmaj9 Bbm11 | Ebm9 Ab9sus4"
+    scene: "head lyrical"
+    variation: "sequence-up"
+    groove: straight
+    substitutions:
+      - {rule: ii_V_chain, apply_to: I, probability: 0.9}
+    automation:
+      - param: expression
+        breakpoints:
+          - {at: 0, value: 0.85}
+          - {at: 100, value: 0.8}
+  - id: outro
+    title: last note rings
+    duration: 18s
+    harmony: "Ebm9 Ab9sus4 | Dbmaj9 Dbmaj9"
+    scene: "outro cadence"
+    variation: "cadence"
+    groove: straight
+    substitutions:
+      - {rule: deceptive, apply_to: V, probability: 1.0}
+    automation:
+      - param: expression
+        breakpoints:
+          - {at: 0, value: 0.8}
+          - {at: 100, value: 0.2}
