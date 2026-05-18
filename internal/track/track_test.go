@@ -1336,8 +1336,8 @@ func TestBundledTracksParseAndCompile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Glob: %v", err)
 	}
-	if len(paths) < 12 {
-		t.Fatalf("expected at least 12 bundled tracks, got %d", len(paths))
+	if len(paths) < 24 {
+		t.Fatalf("expected at least 24 bundled tracks, got %d", len(paths))
 	}
 	for _, path := range paths {
 		data, err := os.ReadFile(path)
@@ -1366,7 +1366,7 @@ func TestBundledTracksParseAndCompile(t *testing.T) {
 	}
 }
 
-func TestBundledTrackLibraryHasThreePerGenre(t *testing.T) {
+func TestBundledTrackLibraryHasFourPerGenre(t *testing.T) {
 	entries, err := Discover(filepath.Join("..", "..", "tracks"))
 	if err != nil {
 		t.Fatalf("Discover: %v", err)
@@ -1375,9 +1375,9 @@ func TestBundledTrackLibraryHasThreePerGenre(t *testing.T) {
 	for _, entry := range entries {
 		counts[entry.Style]++
 	}
-	for _, style := range []string{"ambient", "jazz", "lofi", "chill"} {
-		if got := counts[style]; got < 3 {
-			t.Fatalf("expected at least 3 %s tracks, got %d", style, got)
+	for _, style := range []string{"ambient", "blues", "chill", "jazz", "lofi", "rock"} {
+		if got := counts[style]; got < 4 {
+			t.Fatalf("expected at least 4 %s tracks, got %d", style, got)
 		}
 	}
 }
@@ -1454,14 +1454,14 @@ func TestDiscoverSurfacesResolvedSubstyle(t *testing.T) {
 	var found Entry
 	ok := false
 	for _, entry := range entries {
-		if entry.ID == "jazz/dusty-swing-after-hours" {
+		if entry.ID == "jazz/autumn-leaves-after-hours" {
 			found = entry
 			ok = true
 			break
 		}
 	}
 	if !ok {
-		t.Fatal("expected jazz/dusty-swing-after-hours in discovered entries")
+		t.Fatal("expected jazz/autumn-leaves-after-hours in discovered entries")
 	}
 	if found.SectionCount == 0 || len(found.Structure) == 0 {
 		t.Fatalf("expected discovered structure metadata for %s", found.ID)

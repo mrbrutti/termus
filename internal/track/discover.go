@@ -148,6 +148,16 @@ func loadEntry(root, path string) (Entry, error) {
 }
 
 func buildEntrySummary(file *File, pack stylePack) ([]string, []EntrySection, []string, int, string) {
+	// SP19: if the file is form-only (no explicit sections) expand the form
+	// template here so the Discover summary captures structure metadata.
+	// Compile() does the same expansion later — this duplication keeps the
+	// summary in sync.
+	if len(file.Sections) == 0 && strings.TrimSpace(file.Form) != "" {
+		if template, ok := ResolveForm(file.Form); ok {
+			bpm := resolveBPMHint(file.Tempo, template.DefaultBPM)
+			file.Sections = expandFormTemplate(template, bpm)
+		}
+	}
 	sections, err := resolveSections(file)
 	if err != nil {
 		sections = append([]Section(nil), file.Sections...)

@@ -12,3 +12,12 @@ type Algorithm interface {
 	// len(left) == len(right) is guaranteed by the caller.
 	Next(left, right []float64)
 }
+
+// IterationApplier (SP19-B) is an optional capability that lets a section's
+// algorithm receive an iteration counter when the host loops the section
+// schedule. The host (TUI / playlist) calls ApplyIteration before the next
+// section's Seed; algorithms that implement it can rewrite their plan to add
+// drum-fill density, alternate voicings, activate extra roles, etc.
+type IterationApplier interface {
+	ApplyIteration(iter int)
+}

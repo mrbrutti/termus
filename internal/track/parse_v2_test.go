@@ -418,10 +418,10 @@ sections:
 // parse correctly and carry the expected v2 fields (mix_bus, groove, etc.).
 func TestV2TracksParseAndHaveV2Fields(t *testing.T) {
 	paths := []string{
-		filepath.Join("..", "..", "tracks", "lofi", "bookstore-after-rain.tm"),
-		filepath.Join("..", "..", "tracks", "jazz", "dusty-swing-after-hours.tm"),
-		filepath.Join("..", "..", "tracks", "chill", "sunday-afternoon-drive.tm"),
-		filepath.Join("..", "..", "tracks", "ambient", "slow-drone-fragments.tm"),
+		filepath.Join("..", "..", "tracks", "lofi", "rainy-window-cafe.tm"),
+		filepath.Join("..", "..", "tracks", "jazz", "autumn-leaves-after-hours.tm"),
+		filepath.Join("..", "..", "tracks", "chill", "coastal-cliff-morning.tm"),
+		filepath.Join("..", "..", "tracks", "ambient", "deep-sea-cathedral.tm"),
 	}
 	for _, path := range paths {
 		data, err := os.ReadFile(path)

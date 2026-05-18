@@ -39,6 +39,11 @@ type File struct {
 	// One of: lofi, jazz, chill, ambient. Resolved via gen.MixBusByName.
 	// If absent, no profile is applied (behavior unchanged).
 	MixBus          string          `yaml:"mix_bus,omitempty"`
+	// Textures (SP19-D) is an optional list of procedural ambient texture
+	// layers (rain, room_tone, vinyl, tape_hiss, cafe). Layers are summed
+	// into the master bus alongside the music. Each texture has an
+	// independent gain (level_db).
+	Textures        []TextureSpec   `yaml:"textures,omitempty"`
 	// Motifs is an optional library of named motifs (SP7).
 	// Each entry may reference others via based_on and apply textual
 	// transforms (transpose, retrograde, invert, augment, diminish).
@@ -51,6 +56,14 @@ type File struct {
 	Globals         Profile         `yaml:"globals,omitempty"`
 	VariationBudget VariationBudget `yaml:"variation_budget,omitempty"`
 	Lint            LintControl     `yaml:"lint,omitempty"`
+}
+
+// TextureSpec (SP19-D) describes one procedural ambient texture layer.
+//   Name is one of: rain, room_tone, vinyl, tape_hiss, cafe.
+//   LevelDB is the per-layer gain in dBFS (typically -36..-46).
+type TextureSpec struct {
+	Name    string  `yaml:"name"`
+	LevelDB float64 `yaml:"level_db,omitempty"`
 }
 
 // MotifDef (SP18) is one entry in the file-level MotifLibrary.
@@ -186,6 +199,30 @@ type Section struct {
 	// arc, crescendo, decrescendo, wave, steady. The dynamic_curve module
 	// scales velocities by ±20% across the section based on the curve.
 	DynamicCurve string `yaml:"dynamic_curve,omitempty"`
+
+	// PhraseDynamics (SP19-A) opts the per-phrase velocity envelope in/out.
+	// Default empty / "on" / "auto" enables the layer for sections that
+	// declare PhraseStructure. Set to "off" to disable. The phrase layer
+	// modulates velocity by ±10% in addition to DynamicCurve.
+	PhraseDynamics string `yaml:"phrase_dynamics,omitempty"`
+
+	// SP19-C pickup / anacrusis support.
+	//
+	// PickupBeats is the number of beats (0..4) of pickup that lead INTO
+	// this section's downbeat from the previous section's last bar. When
+	// non-zero, the engine borrows the last PickupBeats of the previous
+	// section and overlays anacrusis events on PickupRole there.
+	PickupBeats int `yaml:"pickup_beats,omitempty"`
+
+	// PickupRole is the role that plays the pickup notes. When empty and
+	// PickupBeats > 0, the engine picks the first melodic role available
+	// (lead/sax/rhodes/piano/keys).
+	PickupRole string `yaml:"pickup_role,omitempty"`
+
+	// PickupMotif is an optional explicit scale-degree pattern for the
+	// pickup (e.g. "5 . 7 .">"). When empty, the engine generates a default
+	// stepwise approach into the section's first chord root.
+	PickupMotif string `yaml:"pickup_motif,omitempty"`
 
 	// TransitionToNext (SP18) is the explicit connection style at the end of
 	// this section. Known values: turnaround, pickup, fill, breakdown, swell.

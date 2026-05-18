@@ -113,6 +113,7 @@ func buildAuthoredPlan(spec gen.AlgoSpec, file *File, section Section, roles map
 		MixBus:      mixBus,
 		Groove:      groove,
 		Automation:  compiledAutomation,
+		Textures:    compileTextures(file.Textures),
 	}
 	// SP14: ensure roles referenced only by section.RoleEvents (with no
 	// declared Role entry at file or section level) still get a track. We
@@ -221,6 +222,41 @@ func buildAuthoredPlan(spec gen.AlgoSpec, file *File, section Section, roles map
 		return gen.AuthoredTrackPlan{}, fmt.Errorf("no active authored role tracks compiled")
 	}
 	return plan, nil
+}
+
+// compileTextures (SP19-D) converts the file-level TextureSpec list into
+// gen.AuthoredTexture entries with default levels filled in.
+func compileTextures(specs []TextureSpec) []gen.AuthoredTexture {
+	if len(specs) == 0 {
+		return nil
+	}
+	out := make([]gen.AuthoredTexture, 0, len(specs))
+	for _, s := range specs {
+		name := strings.ToLower(strings.TrimSpace(s.Name))
+		if name == "" {
+			continue
+		}
+		level := s.LevelDB
+		if level == 0 {
+			// Default per-texture levels chosen for sit-in-the-background mix.
+			switch name {
+			case "rain":
+				level = -38
+			case "room_tone":
+				level = -42
+			case "vinyl":
+				level = -40
+			case "tape_hiss":
+				level = -48
+			case "cafe":
+				level = -36
+			default:
+				level = -42
+			}
+		}
+		out = append(out, gen.AuthoredTexture{Name: name, LevelDB: level})
+	}
+	return out
 }
 
 // compileAutomationLanes converts track.AutomationLane to gen.AuthoredAutomationLane.

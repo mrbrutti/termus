@@ -221,6 +221,11 @@ type sf2Core struct {
 	// crackleProb path when non-nil. nil = fall through to legacy inline.
 	sharedVinyl *synth.Vinyl
 
+	// SP19-D: optional ambient texture layers (rain, room_tone, vinyl,
+	// tape_hiss, cafe). Each is summed into the master alongside the
+	// music. Empty = no texture rendered.
+	textures []*synth.TextureLayer
+
 	// Optional convolution reverb. When non-nil, applied in parallel with
 	// the dry signal at convWet mix level. Each channel has its own
 	// instance, both seeded from the same IR. nil disables convolution.
@@ -750,6 +755,13 @@ func (e *sf2Core) setSharedTape(cfg synth.TapeConfig) {
 // bus, replacing the legacy inline crackleProb path. Nil disables it.
 func (e *sf2Core) setSharedVinyl(sampleRate float64, cfg synth.VinylConfig) {
 	e.sharedVinyl = synth.NewVinyl(sampleRate, cfg)
+}
+
+// setTextureLayers installs SP19-D ambient texture layers on the master bus.
+// Each layer is summed into the master stereo output. Passing nil or an empty
+// slice removes any installed textures.
+func (e *sf2Core) setTextureLayers(layers []*synth.TextureLayer) {
+	e.textures = layers
 }
 
 // setConvolutionIR installs a convolution reverb on the master bus. The IR is
@@ -1470,6 +1482,15 @@ func (e *sf2Core) renderInto(left, right []float64) {
 			c := e.stepCrackle()
 			l += c
 			r += c
+		}
+		// SP19-D: sum any installed ambient textures into the master mix.
+		for _, tx := range e.textures {
+			if tx == nil {
+				continue
+			}
+			tL, tR := tx.Tick()
+			l += tL
+			r += tR
 		}
 		if e.hissLevel > 0 {
 			// Stereo-decorrelated white noise — independent samples per channel.

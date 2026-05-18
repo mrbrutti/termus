@@ -422,6 +422,16 @@ func (m *Model) advanceSectionIfDue() bool {
 	// produces audible variation without needing a different plan.
 	algoSeed := nextStop.Seed
 	algo := m.buildFn(track.Spec, algoSeed)
+	// SP19-B: apply per-iteration variations to the new algorithm if it
+	// supports the IterationApplier capability. ApplyIteration modifies the
+	// plan, so it must run before the algorithm's Seed() — the build path
+	// calls Seed internally so we re-seed here after ApplyIteration.
+	if iter := m.loopIteration; iter > 0 {
+		if applier, ok := algo.(gen.IterationApplier); ok {
+			applier.ApplyIteration(iter)
+			algo.Seed(algoSeed)
+		}
+	}
 	// Zero-fade swap is the key to "seamless" — the audio thread replaces
 	// the algorithm immediately, no fade envelope is applied.
 	m.cmd.SwapAlgorithmFade(algo, 0)
