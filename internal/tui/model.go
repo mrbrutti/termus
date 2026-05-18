@@ -151,6 +151,17 @@ type Model struct {
 	splashUntil     time.Time
 	recordStartedAt time.Time
 	listeningMode   string
+
+	// SP17 section schedule (seamless single-track multi-section playback).
+	// sectionIdx is the index into Track.Sections of the currently-playing
+	// section. sectionStartedAt is when the current section's plan started.
+	// nextSectionAt is when the next section's plan should swap in (no
+	// crossfade). loopIteration counts how many times the section schedule
+	// has cycled when LoopForeverEvolving is set.
+	sectionIdx       int
+	sectionStartedAt time.Time
+	nextSectionAt    time.Time
+	loopIteration    int
 }
 
 // New constructs a Model. keyName is e.g. "Cmin".
@@ -241,8 +252,26 @@ func (m Model) WithPlaylist(p *gen.Playlist, startIdx int, fadeFrames int) Model
 	if p != nil && startIdx < len(p.Tracks) {
 		m.trackStartedAt = time.Now()
 		m.nextTrackAt = time.Now().Add(p.Tracks[startIdx].Duration)
+		m.armSectionSchedule(p.Tracks[startIdx], time.Now())
 	}
 	return m
+}
+
+// armSectionSchedule resets the in-track section cursor to the first section
+// of the given Track, anchored at startTime. Called whenever a new Track
+// becomes the active playlist entry. For legacy single-section tracks this
+// is a no-op aside from clearing the cursor.
+func (m *Model) armSectionSchedule(track gen.Track, startTime time.Time) {
+	m.sectionIdx = 0
+	m.loopIteration = 0
+	m.sectionStartedAt = startTime
+	if len(track.Sections) <= 1 {
+		// Single-section (or empty) Tracks have no internal schedule; the
+		// next-section timer is parked indefinitely.
+		m.nextSectionAt = time.Time{}
+		return
+	}
+	m.nextSectionAt = startTime.Add(track.Sections[0].Duration)
 }
 
 func (m Model) WithTrackBrowser(entries []TrackNavEntry, loader TrackLoader, visible bool) Model {
@@ -268,14 +297,16 @@ func (m *Model) advancePlaylist() {
 	m.algo = track.Spec.Label()
 	m.seed = track.Seed
 	m.touchCurrentSeed()
-	m.trackStartedAt = time.Now()
-	m.nextTrackAt = time.Now().Add(track.Duration)
+	now := time.Now()
+	m.trackStartedAt = now
+	m.nextTrackAt = now.Add(track.Duration)
+	m.armSectionSchedule(track, now)
 	label := track.Spec.Label()
 	if strings.TrimSpace(track.Title) != "" {
 		label = track.Title + " · " + label
 	}
-	m.flashStatus(fmt.Sprintf("▶ %d/%d %s",
-		m.playlistIdx+1, len(m.playlist.Tracks), label), 3*time.Second)
+	m.flashStatus(fmt.Sprintf("▶ %s %s",
+		playlistPositionLabel(m), label), 3*time.Second)
 
 	// Keep the genre cycle index in sync if this track matches a genre.
 	for i, g := range m.genres {
@@ -284,6 +315,120 @@ func (m *Model) advancePlaylist() {
 			break
 		}
 	}
+}
+
+// playlistPositionLabel returns the display string that goes where the
+// legacy "1/4" playlist-position fraction used to live. For multi-section
+// single-track playback (SP17) this is the current section title. For
+// genuine multi-track playlists (radio, mixed) it's still the fraction.
+// Returns empty string when no playlist is active.
+func playlistPositionLabel(m *Model) string {
+	if m == nil || m.playlist == nil {
+		return ""
+	}
+	if section := m.currentSectionLabel(); section != "" {
+		if m.activeTrackLoopsForever() && m.loopIteration > 0 {
+			return fmt.Sprintf("%s · loop %d", section, m.loopIteration+1)
+		}
+		return section
+	}
+	if len(m.playlist.Tracks) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d/%d", m.playlistIdx+1, len(m.playlist.Tracks))
+}
+
+// activeTrack returns the playlist's currently-playing track and true, or a
+// zero Track and false when no playlist is active.
+func (m *Model) activeTrack() (gen.Track, bool) {
+	if m.playlist == nil || m.playlistIdx < 0 || m.playlistIdx >= len(m.playlist.Tracks) {
+		return gen.Track{}, false
+	}
+	return m.playlist.Tracks[m.playlistIdx], true
+}
+
+// activeTrackLoopsForever reports whether the playlist's current track has
+// LoopForeverEvolving set. Used to suppress outer playlist crossfades when
+// the section schedule should recycle internally.
+func (m *Model) activeTrackLoopsForever() bool {
+	track, ok := m.activeTrack()
+	if !ok {
+		return false
+	}
+	return track.LoopForeverEvolving && len(track.Sections) > 1
+}
+
+// currentSectionLabel returns a display name for the active section when the
+// current track is a single seamless composition with a section schedule.
+// Returns empty string when there is no schedule (legacy multi-track
+// playlists).
+func (m *Model) currentSectionLabel() string {
+	track, ok := m.activeTrack()
+	if !ok {
+		return ""
+	}
+	if len(track.Sections) <= 1 {
+		return ""
+	}
+	if m.sectionIdx < 0 || m.sectionIdx >= len(track.Sections) {
+		return ""
+	}
+	title := strings.TrimSpace(track.Sections[m.sectionIdx].Title)
+	if title == "" {
+		title = fmt.Sprintf("section %d", m.sectionIdx+1)
+	}
+	return title
+}
+
+// advanceSectionIfDue checks whether the playback has crossed the boundary
+// to the next section. When it has, swaps the algorithm's plan in-place
+// with zero crossfade (a seamless plan-swap) and re-arms the timer for the
+// following section. Returns true when a swap was performed.
+//
+// For LoopForeverEvolving tracks, walking past the last section recycles to
+// section 0 with a fresh seed offset so the same authored composition keeps
+// rendering with evolving variation for hours.
+func (m *Model) advanceSectionIfDue() bool {
+	track, ok := m.activeTrack()
+	if !ok {
+		return false
+	}
+	if len(track.Sections) <= 1 || m.buildFn == nil {
+		return false
+	}
+	if m.nextSectionAt.IsZero() {
+		return false
+	}
+	now := time.Now()
+	if !now.After(m.nextSectionAt) {
+		return false
+	}
+	nextIdx := m.sectionIdx + 1
+	if nextIdx >= len(track.Sections) {
+		if !track.LoopForeverEvolving {
+			// No loop and we've hit the last section's end — leave the
+			// timer parked so the outer playlist advance handles it.
+			m.nextSectionAt = time.Time{}
+			return false
+		}
+		nextIdx = 0
+		m.loopIteration++
+	}
+	nextStop := track.Sections[nextIdx]
+	// Build the section's algorithm using the authored seed (which keys
+	// directly into Compiled.Plans). On loop iterations beyond the first
+	// we still use the same authored seed so the plan lookup succeeds; the
+	// natural re-seeding of the algorithm between section transitions
+	// produces audible variation without needing a different plan.
+	algoSeed := nextStop.Seed
+	algo := m.buildFn(track.Spec, algoSeed)
+	// Zero-fade swap is the key to "seamless" — the audio thread replaces
+	// the algorithm immediately, no fade envelope is applied.
+	m.cmd.SwapAlgorithmFade(algo, 0)
+	m.sectionIdx = nextIdx
+	m.sectionStartedAt = now
+	m.nextSectionAt = now.Add(nextStop.Duration)
+	return true
 }
 
 func (m Model) morphFadeFrames() int {
@@ -840,8 +985,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.playlist = msg.Playlist
 		m.playlistIdx = 0
 		m.playlistFade = 88200
-		m.trackStartedAt = time.Now()
-		m.nextTrackAt = time.Now().Add(first.Duration)
+		now := time.Now()
+		m.trackStartedAt = now
+		m.nextTrackAt = now.Add(first.Duration)
+		m.armSectionSchedule(first, now)
 		m.algo = msg.Spec.Label()
 		m.seed = msg.Seed
 		m.activeTrackID = msg.EntryID
@@ -1057,8 +1204,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.splashVisible && time.Now().After(m.splashUntil) {
 			m.splashVisible = false
 		}
-		if m.playlist != nil && !m.paused && time.Now().After(m.nextTrackAt) {
-			m.advancePlaylist()
+		if m.playlist != nil && !m.paused {
+			// SP17: advance section schedule BEFORE the outer playlist
+			// boundary. A LoopForeverEvolving track suppresses the playlist
+			// advance because the section schedule recycles internally.
+			if m.advanceSectionIfDue() {
+				// section advanced; recompute nextTrackAt if track is looping
+			}
+			loopingTrack := m.activeTrackLoopsForever()
+			if !loopingTrack && time.Now().After(m.nextTrackAt) {
+				m.advancePlaylist()
+			}
 		}
 		return m, tick()
 	}
@@ -1240,11 +1396,16 @@ func topBar(m Model, w int, theme ColorTheme, compact bool) string {
 	currentAlgo := m.currentAlgoIdentity()
 	var label string
 	if m.playlist != nil {
+		// SP17: when the active track is a single seamless composition
+		// (Sections > 1), show the section name; otherwise keep the
+		// "playlist-position" fraction display for true multi-track
+		// playlists (radio mode, mixed playlists).
+		positionLabel := playlistPositionLabel(&m)
 		if compact {
-			label = fmt.Sprintf("termus · %s · %d/%d · %d", currentAlgo, m.playlistIdx+1, len(m.playlist.Tracks), m.seed)
+			label = fmt.Sprintf("termus · %s · %s · %d", currentAlgo, positionLabel, m.seed)
 		} else {
-			label = fmt.Sprintf("termus · %s · %d/%d %s · seed=%d",
-				m.playlist.Name, m.playlistIdx+1, len(m.playlist.Tracks),
+			label = fmt.Sprintf("termus · %s · %s %s · seed=%d",
+				m.playlist.Name, positionLabel,
 				currentAlgo, m.seed)
 		}
 	} else {
@@ -1336,8 +1497,8 @@ func playbackBar(m Model, w int, theme ColorTheme, samples []float64, compact bo
 				fmt.Sprintf("fade %s", shortDuration(time.Duration(m.playlistFade)*time.Second/44100)),
 			)
 		}
-		if len(m.playlist.Tracks) > 0 {
-			leftParts = append(leftParts, fmt.Sprintf("%d/%d", m.playlistIdx+1, len(m.playlist.Tracks)))
+		if pos := playlistPositionLabel(&m); pos != "" {
+			leftParts = append(leftParts, pos)
 		}
 	}
 	if m.recording && !m.recordStartedAt.IsZero() {
@@ -1646,8 +1807,9 @@ func inspectorPanel(m Model, w, h int, theme ColorTheme) string {
 		styleHelpLine(theme, false, "Export", "[e] export drawer   [r] record   --out/--stems/--midi available"),
 	}
 	if m.playlist != nil && m.playlistIdx < len(m.playlist.Tracks) {
+		positionLabel := playlistPositionLabel(&m)
 		details = append(details, styleHelpLine(theme, false, "Playlist",
-			fmt.Sprintf("%s · %d/%d · next %s", m.playlist.Name, m.playlistIdx+1, len(m.playlist.Tracks), shortDuration(time.Until(m.nextTrackAt)))))
+			fmt.Sprintf("%s · %s · next %s", m.playlist.Name, positionLabel, shortDuration(time.Until(m.nextTrackAt)))))
 	}
 	panel := lipgloss.NewStyle().
 		Width(bodyW).

@@ -58,11 +58,19 @@ sections:
 	if got, want := compiled.Playlist.ListenMode, gen.ListeningModeAlbumSide; got != want {
 		t.Fatalf("listen mode = %q, want %q", got, want)
 	}
-	if got, want := len(compiled.Playlist.Tracks), 2; got != want {
+	// SP17: a .tm now compiles to a single seamless Track whose Sections
+	// schedule lists each authored section.
+	if got, want := len(compiled.Playlist.Tracks), 1; got != want {
 		t.Fatalf("track count = %d, want %d", got, want)
 	}
-	if compiled.Playlist.Tracks[0].Title != "curbside intro" {
+	if compiled.Playlist.Tracks[0].Title != "Soft Tape / Rain Bus" {
 		t.Fatalf("track title = %q", compiled.Playlist.Tracks[0].Title)
+	}
+	if got, want := len(compiled.Playlist.Tracks[0].Sections), 2; got != want {
+		t.Fatalf("section count = %d, want %d", got, want)
+	}
+	if compiled.Playlist.Tracks[0].Sections[0].Title != "curbside intro" {
+		t.Fatalf("section[0] title = %q", compiled.Playlist.Tracks[0].Sections[0].Title)
 	}
 	if len(compiled.Plans) != 2 {
 		t.Fatalf("plan count = %d, want 2", len(compiled.Plans))
@@ -554,8 +562,12 @@ sections:
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
-	if len(compiled.Playlist.Tracks) != 2 {
-		t.Fatalf("compiled tracks = %d, want 2", len(compiled.Playlist.Tracks))
+	// SP17: 2 sections compile to a single Track containing 2 SectionStops.
+	if len(compiled.Playlist.Tracks) != 1 {
+		t.Fatalf("compiled tracks = %d, want 1", len(compiled.Playlist.Tracks))
+	}
+	if len(compiled.Playlist.Tracks[0].Sections) != 2 {
+		t.Fatalf("compiled sections = %d, want 2", len(compiled.Playlist.Tracks[0].Sections))
 	}
 	var secondPlan gen.AuthoredTrackPlan
 	found := false

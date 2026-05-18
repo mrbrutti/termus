@@ -2,7 +2,7 @@ title: Midnight Ballad Slow
 description: Slow ballad with dense piano lead, walking bass on every quarter, brushes texture, strings halo, tritone subs.
 style: jazz
 mix_bus: jazz
-listen_mode: album-side
+listen_mode: hour-stream
 seed: 62738
 tags: [jazz, ballad, slow, piano, brushes, walking, strings]
 key: Dbmaj

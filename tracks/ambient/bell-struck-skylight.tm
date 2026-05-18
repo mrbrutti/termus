@@ -2,7 +2,7 @@ title: Bell-Struck Skylight
 description: Layered bell motifs over dual sustained pads, strings halo, and slow choir swell — no drums.
 style: ambient
 mix_bus: ambient
-listen_mode: album-side
+listen_mode: hour-stream
 seed: 24567
 tags: [ambient, bells, sparse, high, crystalline, pad, strings]
 key: Cmaj

@@ -2,7 +2,7 @@ title: Half-Time Brushwork
 description: Half-time brushed chill with dense electric piano comping, syncopated bass, pad sustain, guitar texture, and sax lead.
 style: chill
 mix_bus: chill
-listen_mode: album-side
+listen_mode: hour-stream
 seed: 27845
 tags: [chill, halftime, brushes, swing, moody, pad, sax]
 key: Emin

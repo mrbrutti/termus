@@ -2,7 +2,7 @@ title: Deep Pad Breath
 description: Deep pad wash with sustained strings, choir halo, bell texture, and a slow brass lead — no drums.
 style: ambient
 mix_bus: ambient
-listen_mode: album-side
+listen_mode: hour-stream
 seed: 38901
 tags: [ambient, pad, brass, breath, deep, strings, choir]
 key: Dmin

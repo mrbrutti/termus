@@ -175,3 +175,83 @@ func maxInt(a, b int) int {
 	}
 	return b
 }
+
+// SectionStop describes one entry in a multi-section offline render. Each
+// stop owns its own pre-built algorithm and the number of frames it should
+// render before the next stop's algorithm takes over (no crossfade is
+// applied; the swap is sample-aligned and seamless).
+type SectionStop struct {
+	Algo   gen.Algorithm
+	Frames int
+}
+
+// RenderSectionsToWAV renders a multi-section seamless composition to a WAV
+// file. Stops are rendered back-to-back; at each boundary the active
+// algorithm is replaced with the next stop's algorithm and rendering
+// continues into the same WAV stream. After all stops, a short tail fade is
+// applied.
+func RenderSectionsToWAV(path string, stops []SectionStop, volume int) (written int, err error) {
+	if len(stops) == 0 {
+		return 0, fmt.Errorf("no section stops")
+	}
+	totalFrames := 0
+	for _, s := range stops {
+		if s.Algo == nil {
+			return 0, fmt.Errorf("section stop has nil algo")
+		}
+		if s.Frames <= 0 {
+			return 0, fmt.Errorf("section stop has non-positive frame count")
+		}
+		totalFrames += s.Frames
+	}
+	fadeFrames := int(renderOutroSeconds * float64(synth.SampleRate))
+	dir := filepath.Dir(path)
+	if dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return 0, err
+		}
+	}
+	w, err := NewWAVWriter(path, synth.SampleRate, 2)
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		if closeErr := w.Close(); err == nil && closeErr != nil {
+			err = closeErr
+		}
+	}()
+	plan := RenderPlan{
+		RequestedFrames: totalFrames,
+		FadeStartFrame:  totalFrames,
+		FadeFrames:      fadeFrames,
+		TotalFrames:     totalFrames + fadeFrames,
+	}
+	chunk := 4410
+	frames := make([][2]float64, chunk)
+	for idx, stop := range stops {
+		root := NewRoot(stop.Algo, scope.NewRing(64))
+		root.SetVolume(volume)
+		remaining := stop.Frames
+		// On the last stop, render through to the end of the fade tail too
+		// so the outro is included.
+		if idx == len(stops)-1 {
+			remaining += fadeFrames
+		}
+		for remaining > 0 {
+			n := chunk
+			if remaining < n {
+				n = remaining
+			}
+			if _, ok := root.Stream(frames[:n]); !ok {
+				return written, fmt.Errorf("audio stream ended after %d frames", written)
+			}
+			applyOutroFade(frames[:n], written, plan)
+			if err := w.Write(frames[:n]); err != nil {
+				return written, err
+			}
+			written += n
+			remaining -= n
+		}
+	}
+	return written, nil
+}

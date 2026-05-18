@@ -2,7 +2,7 @@ title: Bookstore After Rain
 description: Felt-piano lofi in Dmin — intent-driven rhodes and walking bass, Dilla kit with ghost snares. SP16 reference.
 style: lofi
 substyle: piano-ballad
-listen_mode: album-side
+listen_mode: hour-stream
 seed: 28011
 tags: [lofi, piano, rain, dilla, sp16]
 key: Dmin

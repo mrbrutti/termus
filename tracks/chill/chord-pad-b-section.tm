@@ -2,7 +2,7 @@ title: Chord Pad B Section
 description: Ambient-pop chord pad cycle with layered choir, syncopated bass, hat groove, vibes sparkle, and a reed lead.
 style: chill
 mix_bus: chill
-listen_mode: album-side
+listen_mode: hour-stream
 seed: 33710
 tags: [chill, pad, chords, ambient-pop, choir, vibes]
 key: Abmaj

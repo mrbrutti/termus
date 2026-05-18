@@ -151,14 +151,62 @@ func renderTrack(entry track.Entry, wavPath string, seconds float64, sf2Preset, 
 		return result{genre: genre, name: name, path: wavPath, err: fmt.Errorf("playlist is empty")}
 	}
 
-	// Use the first playlist item (longest section, typically the "verse")
-	// but render all sections concatenated by picking the full playlist
-	// duration or the requested seconds, whichever is shorter.
+	// SP17: render through the full section schedule of the single
+	// compiled Track. We render up to `seconds` worth of audio,
+	// allocating frames to each section in proportion to its authored
+	// duration (clipping the last section if necessary). Algorithms swap
+	// at sample-aligned boundaries with no crossfade.
 	item := compiled.Playlist.Tracks[0]
-	algo := sfCache.buildAlgo(compiled, item.Spec, item.Seed, sf2Strategy, sf2Preset)
-	plan := audio.PlanRender(algo, seconds)
+	totalRequested := int(seconds * 44100.0)
+	if totalRequested < 1 {
+		totalRequested = int(item.Duration.Seconds() * 44100.0)
+	}
+	var stops []audio.SectionStop
+	if len(item.Sections) == 0 {
+		algo := sfCache.buildAlgo(compiled, item.Spec, item.Seed, sf2Strategy, sf2Preset)
+		stops = []audio.SectionStop{{Algo: algo, Frames: totalRequested}}
+	} else {
+		// Compute frame allocations per section, clipping to the
+		// requested total. Sections beyond the requested duration are
+		// skipped.
+		remaining := totalRequested
+		stops = make([]audio.SectionStop, 0, len(item.Sections))
+		for _, stop := range item.Sections {
+			if remaining <= 0 {
+				break
+			}
+			frames := int(stop.Duration.Seconds() * 44100.0)
+			if frames > remaining {
+				frames = remaining
+			}
+			seed := stop.Seed
+			algo := sfCache.buildAlgo(compiled, item.Spec, seed, sf2Strategy, sf2Preset)
+			stops = append(stops, audio.SectionStop{Algo: algo, Frames: frames})
+			remaining -= frames
+		}
+		// If we have leftover requested time after walking all sections,
+		// loop back through them so the full duration is rendered. Each
+		// loop iteration offsets the algorithm seed to vary the rendered
+		// events while still using the same authored plan.
+		loopIter := 1
+		for remaining > 0 && loopIter < 16 {
+			for _, stop := range item.Sections {
+				if remaining <= 0 {
+					break
+				}
+				frames := int(stop.Duration.Seconds() * 44100.0)
+				if frames > remaining {
+					frames = remaining
+				}
+				algo := sfCache.buildAlgoWithBaseSeed(compiled, item.Spec, stop.Seed, stop.Seed+int64(loopIter)*1009, sf2Strategy, sf2Preset)
+				stops = append(stops, audio.SectionStop{Algo: algo, Frames: frames})
+				remaining -= frames
+			}
+			loopIter++
+		}
+	}
 
-	frames, err := audio.RenderToWAVWithPlan(wavPath, algo, plan, volume)
+	frames, err := audio.RenderSectionsToWAV(wavPath, stops, volume)
 	if err != nil {
 		return result{genre: genre, name: name, path: wavPath, err: fmt.Errorf("render: %w", err)}
 	}
@@ -361,11 +409,19 @@ func (c *sfontCache) mustLoad(preset string) *meltysynth.SoundFont {
 }
 
 func (c *sfontCache) buildAlgo(compiled *track.Compiled, spec gen.AlgoSpec, seed int64, strategy, fallbackPreset string) gen.Algorithm {
-	key := fmt.Sprintf("%s:%d", spec.Name, seed)
+	return c.buildAlgoWithBaseSeed(compiled, spec, seed, seed, strategy, fallbackPreset)
+}
+
+// buildAlgoWithBaseSeed builds an authored algorithm where the plan/profile
+// is looked up by planSeed but the runtime algorithm is reseeded with
+// algoSeed. Used by SP17 long-form evolution so iterating loops can pick up
+// the authored composition with varying RNG state.
+func (c *sfontCache) buildAlgoWithBaseSeed(compiled *track.Compiled, spec gen.AlgoSpec, planSeed, algoSeed int64, strategy, fallbackPreset string) gen.Algorithm {
+	key := fmt.Sprintf("%s:%d", spec.Name, planSeed)
 	plan, ok := compiled.Plans[key]
 	if !ok {
 		algo := spec.Build(nil)
-		algo.Seed(seed)
+		algo.Seed(algoSeed)
 		return algo
 	}
 	profile := gen.DefaultControlProfile()
@@ -396,6 +452,6 @@ func (c *sfontCache) buildAlgo(compiled *track.Compiled, spec gen.AlgoSpec, seed
 	}
 	algo := gen.NewAuthoredTrack(spec, primary, resolvedPlan)
 	algo = gen.ConfigureControlProfile(algo, profile)
-	algo.Seed(seed)
+	algo.Seed(algoSeed)
 	return algo
 }

@@ -2,7 +2,7 @@ title: Bossa Nova Rooftop
 description: Bossa jazz trio with dense guitar comping, quarter walking bass, ride pattern, samba kick, and flute lead.
 style: jazz
 mix_bus: jazz
-listen_mode: album-side
+listen_mode: hour-stream
 seed: 44190
 tags: [jazz, bossa, guitar, rooftop, trio, walking, ride]
 key: Gmaj
