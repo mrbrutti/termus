@@ -232,10 +232,10 @@ func lintFile(file *File, tracks []gen.Track) []Warning {
 	cadenceFound := false
 	for idx, section := range file.Sections {
 		roles := resolvedSectionRoles(file, section)
-		if sectionRoleDensity(roles) > 22 {
+		if sectionRoleDensity(roles) > 80 {
 			warnings = append(warnings, Warning{Path: fmt.Sprintf("sections[%d].roles", idx), Message: "section writing is dense across too many active roles; consider thinning or alternating ownership"})
 		}
-		if brightAttackCount(roles) > 3 {
+		if brightAttackCount(roles) > 6 {
 			warnings = append(warnings, Warning{Path: fmt.Sprintf("sections[%d].roles", idx), Message: "too many simultaneous bright attack roles; soften or stagger the ensemble"})
 		}
 		if strings.Contains(strings.ToLower(section.Scene+" "+section.Variation), "cadence") || strings.Contains(strings.ToLower(section.Scene+" "+section.Variation), "outro") {

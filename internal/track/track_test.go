@@ -1263,6 +1263,26 @@ roles:
     tone: [sparkle, bright]
     articulation: echo
     pattern: "x....... | ....x..."
+  chime:
+    family: bells
+    tone: [glass, bright]
+    articulation: echo
+    pattern: "x....... | ....x..."
+  triangle:
+    family: mallet
+    tone: [sparkle, bright]
+    articulation: echo
+    pattern: "x....... | ....x..."
+  vibes_top:
+    family: mallet
+    tone: [glass, luminous]
+    articulation: echo
+    pattern: "x....... | ....x..."
+  bell_top:
+    family: bells
+    tone: [sparkle, bright]
+    articulation: echo
+    pattern: "x....... | ....x..."
 sections:
   - id: a
     duration: 16s
