@@ -93,6 +93,46 @@ type Section struct {
 	Orchestration Orchestration   `yaml:"orchestration,omitempty"`
 	Arrangement   Arrangement     `yaml:"arrangement,omitempty"`
 	Events        []Event         `yaml:"events,omitempty"`
+	// RoleEvents (SP14) is a per-section explicit event list keyed by role
+	// name. When set, completely replaces both the role's default Events and
+	// the algorithm's pattern logic for that role in this section.
+	// Resolution precedence: section.RoleEvents[role] > role.Events > algorithm fallback.
+	RoleEvents map[string][]NoteEvent `yaml:"role_events,omitempty"`
+}
+
+// NoteEvent is one explicit note in a role's event list (SP14).
+// All fields are optional except Beat. When present, the role's per-section
+// pattern/motif/algorithm logic is bypassed for that role; the engine plays
+// these events verbatim.
+type NoteEvent struct {
+	// Beat is the position within the section, in beats. 1.0 = first beat.
+	// Sub-beat resolution: 1.5 = "1 and", 1.25 = first 16th of beat 1, etc.
+	Beat float64 `yaml:"beat"`
+
+	// Pitch can be:
+	//   - a MIDI note name like "C4", "F#3", "Bb5"
+	//   - a scale degree relative to the section's key: "1", "b3", "#5", "7"
+	//     (octave shifts: ">" raises an octave, "<" lowers an octave)
+	//   - a chord-relative degree: "R" (root), "3", "5", "7", "9", "11", "13"
+	//   - empty string for drums (the role's family determines the hit kind)
+	Pitch string `yaml:"pitch"`
+
+	// Dur is duration in beats. 1.0 = quarter note in 4/4. Defaults to 0.5
+	// when omitted (an eighth-note-ish duration; the engine gates this to
+	// leave breath between consecutive notes).
+	Dur float64 `yaml:"dur"`
+
+	// Vel is MIDI velocity 1..127. Defaults to 80.
+	Vel int `yaml:"vel"`
+
+	// Art is the articulation hint:
+	//   - "ghost"    — very low velocity, abbreviated duration
+	//   - "accent"   — bump velocity by +15
+	//   - "staccato" — gate duration to 25%
+	//   - "tenuto"   — gate duration to 100% (full hold)
+	//   - "legato"   — overlap into next note slightly
+	// Empty = normal.
+	Art string `yaml:"art"`
 }
 
 // AutomationLane describes a per-section breakpoint curve for a named
@@ -176,6 +216,11 @@ type Role struct {
 	// When present the role's generator draws from these scale degrees
 	// according to their relative weights.
 	Notes         *NotePool `yaml:"notes,omitempty"`
+	// Events (SP14) is the role's default explicit event list. When non-empty
+	// it overrides the role's pattern/motif logic for any section that does
+	// not have its own per-section RoleEvents entry for this role. The engine
+	// repeats the event sequence across the section.
+	Events        []NoteEvent `yaml:"events,omitempty"`
 }
 
 type PhraseBlock struct {

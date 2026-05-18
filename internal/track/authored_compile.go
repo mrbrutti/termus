@@ -114,13 +114,29 @@ func buildAuthoredPlan(spec gen.AlgoSpec, file *File, section Section, roles map
 		Groove:      groove,
 		Automation:  compiledAutomation,
 	}
+	// SP14: ensure roles referenced only by section.RoleEvents (with no
+	// declared Role entry at file or section level) still get a track. We
+	// inject a default Role using the role's name as a hint for template
+	// resolution.
+	if len(section.RoleEvents) > 0 {
+		if roles == nil {
+			roles = map[string]Role{}
+		}
+		for name := range section.RoleEvents {
+			if _, exists := roles[name]; !exists {
+				roles[name] = Role{}
+			}
+		}
+	}
+
 	roleNames := make([]string, 0, len(roles))
 	for name, role := range roles {
 		active := role.Active == nil || *role.Active
 		if !active {
 			continue
 		}
-		if strings.TrimSpace(role.Family) == "" && strings.TrimSpace(role.Pattern) == "" && strings.TrimSpace(role.Motif) == "" {
+		hasEvents := len(role.Events) > 0 || (section.RoleEvents != nil && len(section.RoleEvents[name]) > 0)
+		if strings.TrimSpace(role.Family) == "" && strings.TrimSpace(role.Pattern) == "" && strings.TrimSpace(role.Motif) == "" && !hasEvents {
 			continue
 		}
 		roleNames = append(roleNames, name)
@@ -133,7 +149,23 @@ func buildAuthoredPlan(spec gen.AlgoSpec, file *File, section Section, roles map
 		plan.RoleReverb = roleReverb
 	}
 
+	// SP14: roles whose events list is non-empty get an event-driven
+	// AuthoredRenderTrack instead of the algorithm-derived one. The
+	// per-section RoleEvents override the role-default Events.
+	eventDrivenRoles := map[string]bool{}
 	for _, roleName := range roleNames {
+		role := roles[roleName]
+		if events := roleEventList(roleName, role, section); len(events) > 0 {
+			if rendered, ok := compileRoleEventTrack(ctx, roleName, role, events, harmonyBars, section, bpm); ok {
+				plan.Tracks = append(plan.Tracks, rendered)
+				eventDrivenRoles[roleName] = true
+			}
+		}
+	}
+	for _, roleName := range roleNames {
+		if eventDrivenRoles[roleName] {
+			continue
+		}
 		role := roles[roleName]
 		rendered, err := compileRoleTracks(ctx, roleName, role, harmonyBars, targetBars, phraseSpans)
 		if err != nil {
@@ -141,8 +173,8 @@ func buildAuthoredPlan(spec gen.AlgoSpec, file *File, section Section, roles map
 		}
 		plan.Tracks = append(plan.Tracks, rendered...)
 	}
-	applyPhraseDynamics(ctx, &plan)
-	applySectionEvents(ctx, sectionEvents(section), harmonyBars, &plan)
+	applyPhraseDynamicsExcept(ctx, &plan, eventDrivenRoles)
+	applySectionEventsExcept(ctx, sectionEvents(section), harmonyBars, &plan, eventDrivenRoles)
 	if len(plan.Tracks) == 0 {
 		return gen.AuthoredTrackPlan{}, fmt.Errorf("no active authored role tracks compiled")
 	}
@@ -604,11 +636,21 @@ func phraseSlotRange(span gen.AuthoredPhraseSpan) (int, int) {
 }
 
 func applyPhraseDynamics(ctx authoredSectionContext, plan *gen.AuthoredTrackPlan) {
+	applyPhraseDynamicsExcept(ctx, plan, nil)
+}
+
+// applyPhraseDynamicsExcept applies phrase dynamics across plan tracks but
+// skips any track whose Name is in the skip set (SP14: event-driven tracks
+// are emitted verbatim — phrase dynamics would muddy the authored shape).
+func applyPhraseDynamicsExcept(ctx authoredSectionContext, plan *gen.AuthoredTrackPlan, skip map[string]bool) {
 	if plan == nil || len(plan.PhraseSpans) == 0 {
 		return
 	}
 	for idx := range plan.Tracks {
 		track := &plan.Tracks[idx]
+		if skip[track.Name] {
+			continue
+		}
 		role := Role{
 			Family:       track.Family,
 			Articulation: track.Articulation,
@@ -758,6 +800,35 @@ func defaultPickupMotif(role string) string {
 
 func trackCenterFromRenderTrack(track gen.AuthoredRenderTrack, style string) int {
 	return roleRegisterCenter(track.Register, style, baseRoleName(track.Name))
+}
+
+// applySectionEventsExcept runs applySectionEvents but with any tracks whose
+// names appear in `skip` temporarily removed (SP14: event-driven tracks are
+// emitted verbatim and should not be reshaped by section-level arrangement
+// events like drop / fill / pickup). The original Tracks slice is restored
+// — except that any new tracks emitted by applySectionEvents (e.g. "double")
+// are appended at the end.
+func applySectionEventsExcept(ctx authoredSectionContext, events []Event, bars []authoredHarmonyBar, plan *gen.AuthoredTrackPlan, skip map[string]bool) {
+	if plan == nil {
+		return
+	}
+	if len(skip) == 0 {
+		applySectionEvents(ctx, events, bars, plan)
+		return
+	}
+	// Partition: kept (eligible for arrangement events) vs reserved (event-driven).
+	var kept, reserved []gen.AuthoredRenderTrack
+	for _, t := range plan.Tracks {
+		if skip[t.Name] {
+			reserved = append(reserved, t)
+		} else {
+			kept = append(kept, t)
+		}
+	}
+	plan.Tracks = kept
+	applySectionEvents(ctx, events, bars, plan)
+	// Re-attach reserved tracks after any arrangement-event mutations / additions.
+	plan.Tracks = append(plan.Tracks, reserved...)
 }
 
 func applySectionEvents(ctx authoredSectionContext, events []Event, bars []authoredHarmonyBar, plan *gen.AuthoredTrackPlan) {
