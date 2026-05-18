@@ -6,7 +6,7 @@ listen_mode: album-side
 seed: 62738
 tags: [jazz, ballad, slow, piano, brushes, walking, strings]
 key: Dbmaj
-tempo: 58
+tempo: 78
 globals: {density: heavy, brightness: warm, motion: moving, phrase: long}
 roles:
   piano:
@@ -22,38 +22,32 @@ roles:
     articulation: walk
     register: low
     prominence: anchor
-    pattern: "x...x...x...x..."
   brushes:
     family: drums
     tone: [live, soft]
     articulation: swing
     prominence: support
-    pattern: "x.x.x.x. x.x.x.x."
   ride:
     family: drums
     tone: [live, soft]
     articulation: swing
     prominence: support
-    pattern: "x..xx..x x..xx..x"
   snare:
     family: drums
     tone: [live, soft]
     articulation: swing
     prominence: support
-    pattern: "..x...x. ..x...x."
   strings:
     family: strings
     tone: [soft, warm]
     register: mid-high
     prominence: air
-    pattern: "x..............."
   comp:
     family: acoustic_piano
     tone: [soft, warm]
     articulation: comp
     register: mid
     prominence: support
-    pattern: "x.....x. ..x....."
 sections:
   - id: intro
     title: late-hour hush

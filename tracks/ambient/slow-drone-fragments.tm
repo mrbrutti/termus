@@ -6,7 +6,7 @@ listen_mode: album-side
 seed: 11023
 tags: [ambient, drone, modal, slow, pad, strings, choir]
 key: Amin
-tempo: 52
+tempo: 65
 globals: {density: busy, brightness: warm, motion: slow, reverb: cathedral}
 roles:
   pad:
@@ -14,25 +14,21 @@ roles:
     tone: [soft, wide, deep]
     register: low
     prominence: anchor
-    pattern: "x..............."
   strings:
     family: strings
     tone: [soft, warm]
     register: mid
     prominence: support
-    pattern: "x..............."
   choir:
     family: choir
     tone: [soft, airy]
     register: high
     prominence: air
-    pattern: "x..............."
   texture:
     family: bells
     tone: [glass, sparkle]
     register: high
     prominence: air
-    pattern: "..x.....x..x...."
   lead:
     family: woodwind
     tone: [airy, soft]

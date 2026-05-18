@@ -6,7 +6,7 @@ listen_mode: album-side
 seed: 24567
 tags: [ambient, bells, sparse, high, crystalline, pad, strings]
 key: Cmaj
-tempo: 48
+tempo: 62
 globals: {density: busy, brightness: balanced, motion: slow, reverb: cathedral}
 roles:
   pad:
@@ -14,25 +14,21 @@ roles:
     tone: [soft, wide, dreamy]
     register: mid
     prominence: anchor
-    pattern: "x..............."
   strings:
     family: strings
     tone: [soft, warm]
     register: mid-high
     prominence: support
-    pattern: "x..............."
   choir:
     family: choir
     tone: [soft, airy]
     register: high
     prominence: air
-    pattern: "x..............."
   texture:
     family: bells
     tone: [glass, sparkle]
     register: high
     prominence: air
-    pattern: "..x.....x..x...."
   bells:
     family: bells
     tone: [glass, soft, luminous]
