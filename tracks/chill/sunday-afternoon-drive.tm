@@ -1,17 +1,25 @@
 title: Sunday Afternoon Drive
-description: C-major chill — intent-driven pad sustain, Rhodes comp, half-time kit. SP16 reference.
+description: SP18 form-driven chill journey — C major, chill_ababcb. Multi-section motif development, instrument curve, transitions.
 style: chill
 substyle: half-time-chill
 mix_bus: chill
 listen_mode: hour-stream
 seed: 19334
-tags: [chill, pad, halftime, sp16]
+tags: [chill, pad, halftime, sp18]
 key: Cmaj
-tempo: 100
+tempo: 92
 globals: {density: full, brightness: balanced, motion: moving, reverb: halo}
 
-# 4-bar harmonic loop, half-time feel. Pad and Rhodes are intent-driven;
-# drum kit explicit for groove precision.
+# SP18 form: chill_ababcb — emerge + verse B1 + verse A2 + verse B2 + bridge C + return B.
+# Total: 8 + 16 + 16 + 16 + 12 + 16 = 84 bars @ 92 BPM = ~3.7m per pass; hour-stream loops the pass.
+form: chill_ababcb
+total_duration: 7m
+
+motif_library:
+  drive_theme:
+    pattern: "3 . 5 3 | 1 . 3 5 | 7 . 5 3 | 1 . 3 1"
+    description: "main drifting melody — gentle arc"
+    bars: 4
 
 roles:
   pad:
@@ -23,8 +31,8 @@ roles:
     humanize: {timing_ms: 2, velocity: 4}
     chain: {reverb_send: 0.55, compress: glue}
 
-  rhodes:
-    family: electric_piano
+  keys:
+    family: piano
     voice: lofi_rhodes_warm
     auto_voice: rhodes_comp
     register: mid
@@ -62,7 +70,7 @@ roles:
       - {beat: 3.0,  pitch: "", dur: 0.3, vel: 96}
       - {beat: 7.0,  pitch: "", dur: 0.3, vel: 92}
 
-  hat_closed:
+  hat:
     family: drums
     prominence: support
     humanize: {timing_ms: 2, velocity: 4}
@@ -77,58 +85,3 @@ roles:
       - {beat: 3.50, pitch: "", dur: 0.05, vel: 50}
       - {beat: 4.00, pitch: "", dur: 0.05, vel: 60}
       - {beat: 4.50, pitch: "", dur: 0.05, vel: 50}
-
-  shaker:
-    family: drums
-    prominence: air
-    humanize: {timing_ms: 2, velocity: 3}
-    chain: {reverb_send: 0.15, compress: "off"}
-    loop_bars: 1
-    events:
-      - {beat: 1.0, pitch: "", dur: 0.1, vel: 56}
-      - {beat: 1.5, pitch: "", dur: 0.1, vel: 48}
-      - {beat: 2.0, pitch: "", dur: 0.1, vel: 52}
-      - {beat: 2.5, pitch: "", dur: 0.1, vel: 48}
-      - {beat: 3.0, pitch: "", dur: 0.1, vel: 56}
-      - {beat: 3.5, pitch: "", dur: 0.1, vel: 48}
-      - {beat: 4.0, pitch: "", dur: 0.1, vel: 52}
-      - {beat: 4.5, pitch: "", dur: 0.1, vel: 48}
-
-sections:
-  - id: intro
-    title: window-open
-    duration: 16s
-    harmony: "Cmaj7 G/B | Am7 F | Dm7 G7 | Cmaj7 Am7"
-    scene: "intro establish"
-    variation: "establish"
-    intensity: 0.4
-    automation:
-      - param: cutoff
-        breakpoints:
-          - {at: 0, value: 0.3}
-          - {at: 100, value: 0.6}
-
-  - id: a-section
-    title: lane glide
-    duration: 32s
-    harmony: "Cmaj7 G/B | Am7 F | Dm7 G7 | Cmaj7 Am7"
-    scene: "head glide"
-    variation: "statement"
-    intensity: 0.7
-
-  - id: b-section
-    title: bridge lift
-    duration: 16s
-    harmony: "Fmaj7 Em7 | Dm7 G7 | Cmaj7 Am7 | Dm7 G7"
-    scene: "bridge lift"
-    variation: "sequence-up"
-    intensity: 0.85
-
-  - id: a-out
-    title: cruise out
-    duration: 32s
-    harmony: "Cmaj7 G/B | Am7 F | Dm7 G7 | Cmaj7 Cmaj7"
-    scene: "outro cadence"
-    variation: "cadence"
-    intensity: 0.55
-    fill_at_end: true

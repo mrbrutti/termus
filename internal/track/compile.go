@@ -19,6 +19,17 @@ func Compile(file *File, defaultSeed int64, defaultListenMode gen.ListeningMode)
 	if strings.TrimSpace(file.Style) == "" {
 		return nil, fmt.Errorf("style is required")
 	}
+	// SP18: if Form is set and the authored file has no explicit sections,
+	// expand the form template into a default section list. Explicit sections
+	// always win.
+	if len(file.Sections) == 0 && strings.TrimSpace(file.Form) != "" {
+		template, ok := ResolveForm(file.Form)
+		if !ok {
+			return nil, fmt.Errorf("unknown form %q", file.Form)
+		}
+		bpm := resolveBPMHint(file.Tempo, template.DefaultBPM)
+		file.Sections = expandFormTemplate(template, bpm)
+	}
 	if len(file.Sections) == 0 {
 		return nil, fmt.Errorf("at least one section is required")
 	}

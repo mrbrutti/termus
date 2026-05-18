@@ -159,11 +159,19 @@ func buildAuthoredPlan(spec gen.AlgoSpec, file *File, section Section, roles map
 	// applied per-role on the final list before quantisation.
 	bassPresent := hasBassRole(roles)
 	eventDrivenRoles := map[string]bool{}
+	beatsPerSection := totalBeatsForSection(section, bpm)
+	// SP18: gather events per role first so cross-role transforms
+	// (arrangement gating, dynamic curve, transitions, motif treatment) can
+	// see the whole section before per-role compile.
+	eventsByRole := map[string][]NoteEvent{}
 	for _, roleName := range roleNames {
 		role := roles[roleName]
 		authored := roleEventList(roleName, role, section)
 		generated := generateIntentEvents(role, harmonyBars, section, bpm, bassPresent && !strings.EqualFold(strings.TrimSpace(role.Family), "bass") && !strings.Contains(strings.ToLower(roleName), "bass"))
-		finalEvents := mergeEvents(generated, authored)
+		// SP18: inject motif-derived melody events for melody-ish roles when
+		// the section references a motif from the file's MotifLibrary.
+		motifInjected := generateMotifEvents(file, section, role, roleName, harmonyBars, beatsPerSection)
+		finalEvents := mergeEvents(mergeEvents(generated, authored), motifInjected)
 		if len(finalEvents) == 0 {
 			continue
 		}
@@ -171,13 +179,25 @@ func buildAuthoredPlan(spec gen.AlgoSpec, file *File, section Section, roles map
 		spec := resolveHumanizeSpec(role, roleName)
 		// Seed for determinism: file seed xor a role-name hash.
 		seedRole := seed ^ int64(hashRoleName(roleName))
-		beatsPerSection := totalBeatsForSection(section, bpm)
 		finalEvents = HumanizeForRole(finalEvents, spec, seedRole, beatsPerSection, bpm, roleName)
-		if rendered, ok := compileRoleEventTrack(ctx, roleName, role, finalEvents, harmonyBars, section, bpm); ok {
+		eventsByRole[roleName] = finalEvents
+	}
+	// SP18: cross-role transforms.
+	applySP18SectionTransforms(file, section, eventsByRole, beatsPerSection)
+	// Now compile per-role event tracks.
+	for _, roleName := range roleNames {
+		evs, ok := eventsByRole[roleName]
+		if !ok || len(evs) == 0 {
+			continue
+		}
+		role := roles[roleName]
+		if rendered, ok := compileRoleEventTrack(ctx, roleName, role, evs, harmonyBars, section, bpm); ok {
 			plan.Tracks = append(plan.Tracks, rendered)
 			eventDrivenRoles[roleName] = true
 		}
 	}
+	// SP18: collect arrangement schedules for the algorithm-driven tracks too.
+	arrangementWindows := computeArrangementWindows(section, beatsPerSection)
 	for _, roleName := range roleNames {
 		if eventDrivenRoles[roleName] {
 			continue
@@ -186,6 +206,12 @@ func buildAuthoredPlan(spec gen.AlgoSpec, file *File, section Section, roles map
 		rendered, err := compileRoleTracks(ctx, roleName, role, harmonyBars, targetBars, phraseSpans)
 		if err != nil {
 			return gen.AuthoredTrackPlan{}, fmt.Errorf("%s: %w", roleName, err)
+		}
+		// SP18: apply arrangement gating to algorithm-driven tracks.
+		if win, ok := arrangementWindows[roleName]; ok {
+			for i := range rendered {
+				applyArrangementGatingToTrack(&rendered[i], win, targetBars)
+			}
 		}
 		plan.Tracks = append(plan.Tracks, rendered...)
 	}

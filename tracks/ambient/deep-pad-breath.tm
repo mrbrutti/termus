@@ -1,34 +1,63 @@
 title: Deep Pad Breath
-description: Deep pad wash with sustained strings, choir halo, bell texture, and a slow brass lead — no drums.
+description: SP18 form-driven ambient long-form — C major, ambient_emerge_drift_recede. 60+80+40 = 180 bars @ 60 BPM = ~12m per pass.
 style: ambient
 mix_bus: ambient
 listen_mode: hour-stream
 seed: 38901
-tags: [ambient, pad, brass, breath, deep, strings, choir]
-key: Dmin
+tags: [ambient, pad, brass, breath, deep, strings, choir, sp18]
+key: Cmaj
 tempo: 60
 globals: {density: busy, brightness: warm, motion: slow, reverb: cathedral}
+
+# SP18 form: ambient_emerge_drift_recede — three acts.
+# emerge (60 bars), drift (80 bars), recede (40 bars). 180 bars @ 60 BPM = 12 minutes per pass.
+form: ambient_emerge_drift_recede
+total_duration: 12m
+
+motif_library:
+  drone_theme:
+    pattern: "5 . . . . . . . | 7 . . . . . . . | 9 . . . . . . . | 5 . . . . . . ."
+    description: "very slow rising arpeggio — one note per bar"
+    bars: 4
+
 roles:
   pad:
     family: pad
     tone: [soft, wide, deep]
     register: low
     prominence: anchor
+
+  drone:
+    family: pad
+    voice: ambient_drone_deep
+    tone: [warm, deep]
+    register: low
+    prominence: anchor
+
   strings:
     family: strings
     tone: [soft, warm]
     register: mid
     prominence: support
+
   choir:
     family: choir
     tone: [soft, airy]
     register: high
     prominence: air
-  texture:
+
+  bell:
     family: bells
     tone: [glass, sparkle, soft]
     register: high
     prominence: air
+
+  bass:
+    family: bass
+    tone: [soft, deep]
+    register: low
+    prominence: anchor
+
   lead:
     family: brass
     tone: [soft, airy]
@@ -37,64 +66,3 @@ roles:
     personality: brass_breath
     room: cathedral_large
     reverb_send_db: -6
-    motif: "5 . . . . . 7 . | 9 . . . . . . ."
-sections:
-  - id: breath-in
-    title: first breath
-    duration: 20s
-    harmony: "Dm9 Dm9"
-    scene: "intro still"
-    variation: "establish"
-    automation:
-      - param: expression
-        breakpoints:
-          - {at: 0, value: 0.15}
-          - {at: 100, value: 0.55}
-  - id: swell
-    title: ascending tide
-    duration: 30s
-    harmony: "Dm9 Bbmaj9 | Fmaj9 C6"
-    scene: "head drift"
-    variation: "statement"
-    substitutions:
-      - {rule: tritone_sub, apply_to: V, probability: 0.5}
-    automation:
-      - param: expression
-        breakpoints:
-          - {at: 0, value: 0.55}
-          - {at: 60, value: 0.92}
-          - {at: 100, value: 0.78}
-  - id: hold
-    title: sustained presence
-    duration: 28s
-    harmony: "Gm9 Fmaj9 | Dm9 Bbmaj9"
-    scene: "bridge still"
-    variation: "open-register"
-    automation:
-      - param: cutoff
-        breakpoints:
-          - {at: 0, value: 0.55}
-          - {at: 100, value: 0.78}
-  - id: peak
-    title: full resonance
-    duration: 22s
-    harmony: "Bbmaj9 Am7 | Gm9 Fmaj9"
-    scene: "bridge lift"
-    variation: "sequence-up"
-    automation:
-      - param: expression
-        breakpoints:
-          - {at: 0, value: 0.8}
-          - {at: 60, value: 1.0}
-          - {at: 100, value: 0.88}
-  - id: release
-    title: breath out
-    duration: 20s
-    harmony: "Dm9 Dm9"
-    scene: "outro still"
-    variation: "cadence"
-    automation:
-      - param: expression
-        breakpoints:
-          - {at: 0, value: 0.78}
-          - {at: 100, value: 0.1}
