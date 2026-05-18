@@ -105,9 +105,9 @@ func lofiProfile() MixBusProfile {
 			FlutterDepthCents: 3,
 		},
 		Vinyl: &synth.VinylConfig{
-			NoiseLevelDB: -27,
-			PopRateHz:    6,
-			PopAmpLinear: 0.1,
+			NoiseLevelDB: -38,
+			PopRateHz:    1.5,
+			PopAmpLinear: 0.06,
 		},
 		SidechainDuck: &DuckConfig{
 			DepthDB:   -4,
