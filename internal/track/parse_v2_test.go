@@ -234,6 +234,186 @@ sections:
 	}
 }
 
+// ---------------------------------------------------------------------------
+// SP7 parse tests
+// ---------------------------------------------------------------------------
+
+// TestParseMotifs verifies that the top-level motifs block parses correctly.
+func TestParseMotifs(t *testing.T) {
+	const src = `
+title: Motif Track
+style: lofi
+motifs:
+  - name: core
+    pattern: "5 . . 7 | 9 . 7 5"
+  - name: shifted
+    based_on: core
+    transpose: 2
+    retrograde: true
+sections:
+  - id: a
+    duration: 30s
+    harmony: "Cmaj7"
+`
+	file, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(file.Motifs) != 2 {
+		t.Fatalf("Motifs len = %d, want 2", len(file.Motifs))
+	}
+	if file.Motifs[0].Name != "core" {
+		t.Fatalf("Motifs[0].Name = %q, want %q", file.Motifs[0].Name, "core")
+	}
+	if file.Motifs[0].Pattern != "5 . . 7 | 9 . 7 5" {
+		t.Fatalf("Motifs[0].Pattern = %q, want %q", file.Motifs[0].Pattern, "5 . . 7 | 9 . 7 5")
+	}
+	if file.Motifs[1].BasedOn != "core" {
+		t.Fatalf("Motifs[1].BasedOn = %q, want %q", file.Motifs[1].BasedOn, "core")
+	}
+	if file.Motifs[1].Transpose != 2 {
+		t.Fatalf("Motifs[1].Transpose = %d, want 2", file.Motifs[1].Transpose)
+	}
+	if !file.Motifs[1].Retrograde {
+		t.Fatal("Motifs[1].Retrograde should be true")
+	}
+}
+
+// TestParseAutomationLane verifies that a section's automation block parses.
+func TestParseAutomationLane(t *testing.T) {
+	const src = `
+title: Automation Track
+style: lofi
+sections:
+  - id: a
+    duration: 30s
+    harmony: "Cmaj7"
+    automation:
+      - param: cutoff
+        breakpoints:
+          - {at: 0, value: 0.2}
+          - {at: 50, value: 0.8}
+          - {at: 100, value: 0.3}
+      - param: pan
+        breakpoints:
+          - {at: 0, value: -0.5}
+          - {at: 100, value: 0.5}
+`
+	file, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(file.Sections) == 0 {
+		t.Fatal("expected sections")
+	}
+	sec := file.Sections[0]
+	if len(sec.Automation) != 2 {
+		t.Fatalf("Automation len = %d, want 2", len(sec.Automation))
+	}
+	lane0 := sec.Automation[0]
+	if lane0.Param != "cutoff" {
+		t.Fatalf("Automation[0].Param = %q, want %q", lane0.Param, "cutoff")
+	}
+	if len(lane0.Breakpoints) != 3 {
+		t.Fatalf("Automation[0].Breakpoints len = %d, want 3", len(lane0.Breakpoints))
+	}
+	if lane0.Breakpoints[1].AtPercent != 50 {
+		t.Fatalf("Breakpoints[1].AtPercent = %v, want 50", lane0.Breakpoints[1].AtPercent)
+	}
+	if lane0.Breakpoints[1].Value != 0.8 {
+		t.Fatalf("Breakpoints[1].Value = %v, want 0.8", lane0.Breakpoints[1].Value)
+	}
+}
+
+// TestParseSubstitutions verifies that section substitutions block parses.
+func TestParseSubstitutions(t *testing.T) {
+	const src = `
+title: Substitution Track
+style: lofi
+sections:
+  - id: a
+    duration: 30s
+    harmony: "G7 Cmaj7"
+    substitutions:
+      - rule: tritone_sub
+        probability: 0.5
+      - rule: ii_V_chain
+        before: Cmaj7
+        probability: 1.0
+      - rule: secondary_dominant
+        of: ii
+        probability: 0.8
+      - rule: deceptive
+        apply_to: V
+        probability: 0.3
+`
+	file, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	sec := file.Sections[0]
+	if len(sec.Substitutions) != 4 {
+		t.Fatalf("Substitutions len = %d, want 4", len(sec.Substitutions))
+	}
+	s0 := sec.Substitutions[0]
+	if s0.Rule != "tritone_sub" {
+		t.Fatalf("Substitutions[0].Rule = %q, want %q", s0.Rule, "tritone_sub")
+	}
+	if s0.Probability != 0.5 {
+		t.Fatalf("Substitutions[0].Probability = %v, want 0.5", s0.Probability)
+	}
+	s1 := sec.Substitutions[1]
+	if s1.Before != "Cmaj7" {
+		t.Fatalf("Substitutions[1].Before = %q, want %q", s1.Before, "Cmaj7")
+	}
+	s2 := sec.Substitutions[2]
+	if s2.Of != "ii" {
+		t.Fatalf("Substitutions[2].Of = %q, want %q", s2.Of, "ii")
+	}
+	s3 := sec.Substitutions[3]
+	if s3.ApplyTo != "V" {
+		t.Fatalf("Substitutions[3].ApplyTo = %q, want %q", s3.ApplyTo, "V")
+	}
+}
+
+// TestParseNotePool verifies that a role's notes.choices block parses.
+func TestParseNotePool(t *testing.T) {
+	const src = `
+title: Note Pool Track
+style: lofi
+roles:
+  melody:
+    family: piano
+    notes:
+      choices:
+        "1": 0.4
+        "3": 0.3
+        "5": 0.2
+        "7": 0.1
+sections:
+  - id: a
+    duration: 30s
+    harmony: "Cmaj7"
+`
+	file, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	melody, ok := file.Roles["melody"]
+	if !ok {
+		t.Fatal("expected 'melody' role")
+	}
+	if melody.Notes == nil {
+		t.Fatal("Notes is nil, want non-nil NotePool")
+	}
+	if len(melody.Notes.Choices) != 4 {
+		t.Fatalf("Notes.Choices len = %d, want 4", len(melody.Notes.Choices))
+	}
+	if melody.Notes.Choices["1"] != 0.4 {
+		t.Fatalf(`Notes.Choices["1"] = %v, want 0.4`, melody.Notes.Choices["1"])
+	}
+}
+
 // TestExistingTracksParseUnchanged confirms that pre-existing .tm files still
 // parse without errors (backwards compatibility gate).
 func TestExistingTracksParseUnchanged(t *testing.T) {
@@ -263,12 +443,26 @@ func TestExistingTracksParseUnchanged(t *testing.T) {
 		if file.MixBus != "" {
 			t.Fatalf("%s: expected empty MixBus for existing track, got %q", path, file.MixBus)
 		}
+		// SP7 file-level fields must be absent.
+		if len(file.Motifs) != 0 {
+			t.Fatalf("%s: expected no Motifs for existing track, got %d", path, len(file.Motifs))
+		}
+		if file.ChordMarkov != nil {
+			t.Fatalf("%s: expected nil ChordMarkov for existing track", path)
+		}
 		for sIdx, section := range file.Sections {
 			if section.Groove != "" {
 				t.Fatalf("%s sections[%d]: expected empty Groove, got %q", path, sIdx, section.Groove)
 			}
 			if len(section.HarmonyChords) != 0 {
 				t.Fatalf("%s sections[%d]: expected no HarmonyChords for existing track", path, sIdx)
+			}
+			// SP7 section-level fields must be absent.
+			if len(section.Automation) != 0 {
+				t.Fatalf("%s sections[%d]: expected no Automation for existing track", path, sIdx)
+			}
+			if len(section.Substitutions) != 0 {
+				t.Fatalf("%s sections[%d]: expected no Substitutions for existing track", path, sIdx)
 			}
 		}
 	}
