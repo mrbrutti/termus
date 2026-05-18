@@ -6,7 +6,7 @@ listen_mode: album-side
 seed: 44190
 tags: [jazz, bossa, guitar, rooftop, trio, walking, ride]
 key: Gmaj
-tempo: 104
+tempo: 124
 globals: {density: full, brightness: balanced, motion: restless, phrase: long}
 roles:
   guitar:
@@ -15,39 +15,33 @@ roles:
     articulation: comp
     register: mid
     prominence: support
-    pattern: ".x..x... x.x..x.."
   piano:
     family: acoustic_piano
     tone: [clear, warm]
     articulation: comp
     register: mid
     prominence: support
-    pattern: "x.....x. ..x....."
   bass:
     family: bass
     tone: [woody, round]
     articulation: walk
     register: low
     prominence: anchor
-    pattern: "x...x...x...x..."
   ride:
     family: drums
     tone: [live, bright]
     articulation: swing
     prominence: support
-    pattern: "x..xx..xx..xx..x"
   kick:
     family: drums
     tone: [live, soft]
     articulation: swing
     prominence: anchor
-    pattern: "x....... x....x.."
   snare:
     family: drums
     tone: [live, soft]
     articulation: swing
     prominence: support
-    pattern: ".x...x.. ..x..x.."
   flute:
     family: woodwind
     tone: [airy, soft]

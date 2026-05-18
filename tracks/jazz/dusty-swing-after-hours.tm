@@ -6,7 +6,7 @@ listen_mode: album-side
 seed: 31440
 tags: [jazz, swing, bop, tenor, trio, walking, ride]
 key: Bbmaj
-tempo: 122
+tempo: 138
 globals: {density: full, brightness: bright, motion: restless, phrase: long}
 roles:
   piano:
@@ -15,32 +15,27 @@ roles:
     articulation: comp
     register: mid
     prominence: support
-    pattern: "x.....x. ..x.x..."
   bass:
     family: bass
     tone: [woody, round]
     articulation: walk
     register: low
     prominence: anchor
-    pattern: "x...x...x...x..."
   ride:
     family: drums
     tone: [live, bright]
     articulation: swing
     prominence: support
-    pattern: "x..xx..xx..xx..x"
   kick:
     family: drums
     tone: [live, soft]
     articulation: swing
     prominence: anchor
-    pattern: "x....... x......."
   snare:
     family: drums
     tone: [live, soft]
     articulation: swing
     prominence: support
-    pattern: ".x...x.. ..x.x..."
   tenor:
     family: reed_lead
     tone: [present, round]
@@ -53,7 +48,6 @@ roles:
     tone: [glass, warm]
     register: mid-high
     prominence: air
-    pattern: "..x. .... ..x. ...."
 sections:
   - id: head-a1
     title: first chorus

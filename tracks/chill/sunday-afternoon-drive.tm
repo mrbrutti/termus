@@ -6,7 +6,7 @@ listen_mode: album-side
 seed: 19334
 tags: [chill, pop, pad, afternoon, drive, halftime, choir]
 key: Amin
-tempo: 88
+tempo: 100
 globals: {density: full, brightness: balanced, motion: moving, reverb: halo}
 roles:
   keys:
@@ -14,45 +14,37 @@ roles:
     tone: [warm, soft]
     register: mid
     prominence: support
-    pattern: "x.x..x.. x.x..x.."
   pad:
     family: pad
     tone: [soft, wide]
     register: mid
     prominence: air
-    pattern: "x..............."
   choir:
     family: choir
     tone: [soft, airy]
     register: high
     prominence: air
-    pattern: "x..............."
   bass:
     family: synth_bass
     tone: [round, soft]
     register: low
     prominence: anchor
-    pattern: "x..x x..x x.x. x..."
   kick:
     family: drums
     tone: [soft, deep]
     prominence: anchor
-    pattern: "x.......x......."
   snare:
     family: drums
     tone: [soft]
     prominence: support
-    pattern: "....x.......x..."
   hat:
     family: drums
     tone: [dry, tight]
     prominence: support
-    pattern: "x.x.x.x.x.x.x.x."
   ride:
     family: drums
     tone: [live, soft]
     prominence: support
-    pattern: "....x.......x..."
   lead:
     family: guitar
     tone: [warm, soft]

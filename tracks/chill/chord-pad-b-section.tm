@@ -6,7 +6,7 @@ listen_mode: album-side
 seed: 33710
 tags: [chill, pad, chords, ambient-pop, choir, vibes]
 key: Abmaj
-tempo: 80
+tempo: 96
 globals: {density: full, brightness: balanced, motion: moving, reverb: halo}
 roles:
   pad:
@@ -14,46 +14,38 @@ roles:
     tone: [soft, wide]
     register: mid
     prominence: air
-    pattern: "x..............."
   choir:
     family: choir
     tone: [soft, airy]
     register: high
     prominence: air
-    pattern: "x..............."
   keys:
     family: electric_piano
     tone: [warm, soft]
     register: mid
     prominence: support
-    pattern: "x.x..x.. ..x.x..."
   vibes:
     family: mallet
     tone: [glass, warm]
     register: mid-high
     prominence: support
-    pattern: "..x. .... ..x. ...."
   bass:
     family: synth_bass
     tone: [round, soft]
     register: low
     prominence: anchor
-    pattern: "x..x x..x x.x. x..."
   kick:
     family: drums
     tone: [soft, deep]
     prominence: anchor
-    pattern: "x.......x......."
   snare:
     family: drums
     tone: [soft]
     prominence: support
-    pattern: "....x.......x..."
   hat:
     family: drums
     tone: [dry, tight]
     prominence: support
-    pattern: "x.x.x.x.x.x.x.x."
   lead:
     family: reed_lead
     tone: [airy, soft]

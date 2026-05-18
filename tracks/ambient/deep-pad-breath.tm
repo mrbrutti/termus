@@ -6,7 +6,7 @@ listen_mode: album-side
 seed: 38901
 tags: [ambient, pad, brass, breath, deep, strings, choir]
 key: Dmin
-tempo: 44
+tempo: 60
 globals: {density: busy, brightness: warm, motion: slow, reverb: cathedral}
 roles:
   pad:
@@ -14,25 +14,21 @@ roles:
     tone: [soft, wide, deep]
     register: low
     prominence: anchor
-    pattern: "x..............."
   strings:
     family: strings
     tone: [soft, warm]
     register: mid
     prominence: support
-    pattern: "x..............."
   choir:
     family: choir
     tone: [soft, airy]
     register: high
     prominence: air
-    pattern: "x..............."
   texture:
     family: bells
     tone: [glass, sparkle, soft]
     register: high
     prominence: air
-    pattern: "....x.......x..."
   lead:
     family: brass
     tone: [soft, airy]

@@ -6,7 +6,7 @@ listen_mode: album-side
 seed: 51908
 tags: [lofi, harbor, cassette, rhodes, tape, sub, vibes]
 key: Emin
-tempo: 76
+tempo: 85
 globals: {density: full, brightness: warm, motion: moving, reverb: halo}
 roles:
   keys:
@@ -17,45 +17,37 @@ roles:
     personality: piano_felt
     room: bedroom_small
     reverb_send_db: -14
-    pattern: "x.x..x.. x.x..x.."
   bass:
     family: bass
     tone: [round, woody]
     register: low
     prominence: anchor
-    pattern: "x..x x..x x..x x.x."
   sub:
     family: synth_bass
     tone: [deep, round]
     register: low
     prominence: anchor
-    pattern: "x... x... x... .x.."
   kick:
     family: drums
     tone: [dusty, soft]
     prominence: anchor
-    pattern: "x..x ...x x..x ...."
   snare:
     family: drums
     tone: [dusty]
     prominence: support
-    pattern: "....x...x..xx..."
   hat:
     family: drums
     tone: [dry, tight]
     prominence: support
-    pattern: "x.x.x.x.x.x.x.x."
   ride:
     family: drums
     tone: [live, soft]
     prominence: support
-    pattern: "....x.......x..."
   vibes:
     family: mallet
     tone: [glass, soft, warm]
     register: mid-high
     prominence: air
-    pattern: "..x. .... ..x. ...."
   lead:
     family: reed_lead
     tone: [breathy, intimate]
@@ -67,7 +59,6 @@ roles:
     tone: [soft, wide]
     register: mid
     prominence: air
-    pattern: "x..............."
 sections:
   - id: intro
     title: tide-on-tape

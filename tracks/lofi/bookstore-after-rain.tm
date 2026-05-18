@@ -6,7 +6,7 @@ listen_mode: album-side
 seed: 28011
 tags: [lofi, piano, rain, neon, boom-bap, ghost]
 key: Dmin
-tempo: 81
+tempo: 88
 globals: {density: full, brightness: warm, motion: moving, reverb: halo}
 roles:
   keys:
@@ -17,39 +17,32 @@ roles:
     personality: piano_felt
     room: bedroom_small
     reverb_send_db: -12
-    pattern: "x.x..x.x x.x..x.x"
   bass:
     family: bass
     tone: [round, woody]
     register: low
     prominence: anchor
-    pattern: "x..x x..x x..x x.x."
   sub:
     family: synth_bass
     tone: [deep, round]
     register: low
     prominence: anchor
-    pattern: "x... x... x... x..."
   kick:
     family: drums
     tone: [dusty, deep]
     prominence: anchor
-    pattern: "x..x ..x. x..x ...."
   snare:
     family: drums
     tone: [dusty, soft]
     prominence: support
-    pattern: "....x...x..xx..."
   hat:
     family: drums
     tone: [dry, tight]
     prominence: support
-    pattern: "x.x.x.x.x.x.x.x."
   ride:
     family: drums
     tone: [live, soft]
     prominence: support
-    pattern: "....x.......x..."
   lead:
     family: reed_lead
     tone: [breathy, intimate]
@@ -61,7 +54,6 @@ roles:
     tone: [soft, wide]
     register: mid
     prominence: air
-    pattern: "x..............."
 sections:
   - id: intro
     title: rain-on-glass

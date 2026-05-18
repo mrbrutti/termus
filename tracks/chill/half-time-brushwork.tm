@@ -6,7 +6,7 @@ listen_mode: album-side
 seed: 27845
 tags: [chill, halftime, brushes, swing, moody, pad, sax]
 key: Emin
-tempo: 72
+tempo: 75
 globals: {density: full, brightness: warm, motion: moving, reverb: halo}
 roles:
   keys:
@@ -14,45 +14,37 @@ roles:
     tone: [warm, dusty]
     register: mid
     prominence: support
-    pattern: "x.x..x.. x.x..x.."
   pad:
     family: pad
     tone: [soft, wide]
     register: mid
     prominence: air
-    pattern: "x..............."
   bass:
     family: bass
     tone: [round, woody]
     register: low
     prominence: anchor
-    pattern: "x..x x..x x.x. x..."
   kick:
     family: drums
     tone: [soft, dusty]
     prominence: anchor
-    pattern: "x.......x......."
   snare:
     family: drums
     tone: [soft]
     prominence: support
-    pattern: "....x.......x..."
   hat:
     family: drums
     tone: [dry, tight]
     prominence: support
-    pattern: "x.x.x.x.x.x.x.x."
   ride:
     family: drums
     tone: [live, soft]
     prominence: support
-    pattern: "....x.......x..."
   guitar:
     family: guitar
     tone: [warm, soft]
     register: mid
     prominence: support
-    pattern: "..x. .... ..x. ...."
   lead:
     family: reed_lead
     tone: [breathy, intimate]
