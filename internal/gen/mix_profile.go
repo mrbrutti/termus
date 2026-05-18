@@ -89,15 +89,15 @@ func defaultOutputTrim(name string) float64 {
 	case "bells":
 		return 1.15
 	case "glass-fm":
-		return 0.55
+		return 0.85
 	case "lullaby":
 		return 1.00
 	case "pentatonic-walk":
-		return 0.50
+		return 0.80
 	case "classical":
 		return 0.95
 	case "markov-melody":
-		return 0.55
+		return 0.80
 	case "phase":
 		return 1.15
 	case "chill":

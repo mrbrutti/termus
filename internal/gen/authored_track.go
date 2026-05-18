@@ -519,23 +519,23 @@ func authoredFireProbability(base float64, profile ControlProfile) float64 {
 func authoredMasterGain(style string) float64 {
 	switch style {
 	case "jazz":
-		return 2.1
+		return 2.7
 	case "lofi":
-		return 2.5
+		return 2.8
 	case "bells":
-		return 3.0
+		return 3.4
 	case "ambient":
-		return 2.8
+		return 3.5
 	case "drone":
-		return 3.0
+		return 3.4
 	case "classical":
-		return 2.4
-	case "phase":
 		return 2.6
-	case "lullaby":
+	case "phase":
 		return 2.8
+	case "lullaby":
+		return 3.0
 	default:
-		return 2.4
+		return 2.6
 	}
 }
 

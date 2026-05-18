@@ -19,7 +19,7 @@ func (a mixStubAlgo) SectionGain() float64 { return a.sectionGain }
 func TestEffectiveOutputGainUsesStaticTrimAndSectionGain(t *testing.T) {
 	algo := mixStubAlgo{name: "glass-fm", sectionGain: 1.1}
 	got := EffectiveOutputGain(algo)
-	want := 0.55 * 1.1
+	want := 0.85 * 1.1
 	if math.Abs(got-want) > 1e-9 {
 		t.Fatalf("EffectiveOutputGain = %v, want %v", got, want)
 	}

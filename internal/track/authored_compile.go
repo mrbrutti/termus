@@ -1349,23 +1349,23 @@ func authoredTemplateFor(style, name string, role Role) authoredRoleTemplate {
 		base.Swing = 0
 		switch lowerName {
 		case "pad":
-			apply(0, 89, 56, 64, 92, 0, 76, 1.25)
+			apply(0, 89, 70, 64, 92, 0, 76, 1.25)
 			base.Legato, base.TieRepeats = true, true
 		case "choir":
-			apply(1, 52, 54, 76, 98, 0, 74, 1.20)
+			apply(1, 52, 68, 76, 98, 0, 74, 1.20)
 			base.Legato, base.TieRepeats = true, true
 		case "texture", "bells", "sparkle":
-			apply(2, 14, 50, 88, 104, 0, 88, 0.92)
+			apply(2, 14, 68, 88, 104, 0, 88, 0.92)
 		case "lead", "flute", "woodwind":
-			apply(3, 73, 64, 40, 82, 0, 82, 0.96)
+			apply(3, 73, 76, 40, 82, 0, 82, 0.96)
 			base.Legato, base.TieRepeats = true, true
 		case "bass":
-			apply(4, 39, 66, 64, 28, 0, 60, 1.18)
+			apply(4, 39, 74, 64, 28, 0, 60, 1.18)
 		case "strings":
-			apply(5, 48, 52, 52, 82, 0, 74, 1.16)
+			apply(5, 48, 66, 52, 82, 0, 74, 1.16)
 			base.Legato, base.TieRepeats = true, true
 		case "shimmer":
-			apply(6, 88, 48, 94, 102, 0, 90, 0.88)
+			apply(6, 88, 62, 94, 102, 0, 90, 0.88)
 		}
 	case "drone":
 		base.Swing = 0
@@ -1531,17 +1531,17 @@ func authoredTemplateFor(style, name string, role Role) authoredRoleTemplate {
 		case "mallet":
 			apply(2, 11, 66, 84, 72, 0, 86, 0.78)
 		case "bells":
-			apply(0, 14, 68, 64, 92, 0, 98, 0.80)
+			apply(0, 14, 78, 64, 92, 0, 98, 0.80)
 		case "music_box":
-			apply(3, 10, 62, 82, 92, 0, 90, 0.80)
+			apply(3, 10, 72, 82, 92, 0, 90, 0.80)
 		case "pad":
-			apply(4, 89, 54, 64, 86, 0, 74, 1.18)
+			apply(4, 89, 68, 64, 86, 0, 74, 1.18)
 			base.Legato, base.TieRepeats = true, true
 		case "choir":
-			apply(5, 52, 54, 56, 92, 0, 76, 1.16)
+			apply(5, 52, 66, 56, 92, 0, 76, 1.16)
 			base.Legato, base.TieRepeats = true, true
 		case "strings":
-			apply(6, 48, 60, 72, 76, 0, 80, 1.12)
+			apply(6, 48, 70, 72, 76, 0, 80, 1.12)
 			base.Legato, base.TieRepeats = true, true
 		case "woodwind":
 			apply(2, 73, 70, 44, 58, 0, 84, 0.90)
@@ -1602,17 +1602,17 @@ func applyRoleCharacter(base authoredRoleTemplate, role Role) authoredRoleTempla
 	}
 	switch strings.ToLower(strings.TrimSpace(role.Prominence)) {
 	case "air":
-		base.Velocity -= 10
+		base.Velocity -= 4
 		base.Reverb += 12
 	case "lead":
-		base.Velocity += 6
+		base.Velocity += 8
 		base.Brightness += 4
 	case "support":
-		base.Velocity -= 4
+		base.Velocity -= 2
 	case "anchor":
 		base.Pan = 64
 	}
-	base.Velocity = clampInt32(base.Velocity, 28, 118)
+	base.Velocity = clampInt32(base.Velocity, 36, 118)
 	base.Brightness = clampInt32(base.Brightness, 34, 118)
 	base.Reverb = clampInt32(base.Reverb, 0, 118)
 	base.Chorus = clampInt32(base.Chorus, 0, 118)
