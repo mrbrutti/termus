@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/mrbrutti/termus/internal/gen"
+	"github.com/mrbrutti/termus/internal/synth"
 )
 
 // eventSlotsPerBeat is the grid resolution we use for explicit NoteEvent
@@ -64,6 +65,15 @@ func compileRoleEventTrack(ctx authoredSectionContext, name string, role Role, e
 		return gen.AuthoredRenderTrack{}, false
 	}
 	template := authoredTemplateFor(ctx.style, name, role)
+	// SP16: voice + chain wiring. Voice may override Program + Brightness;
+	// Chain controls Reverb + Pan offsets.
+	if voiceName := strings.TrimSpace(role.Voice); voiceName != "" {
+		if preset := synth.VoiceByName(voiceName); preset != nil {
+			template = applyVoicePreset(template, preset)
+		}
+	}
+	chain := resolveMixChain(role, name)
+	template = applyChainSpec(template, chain)
 	beatsPerSection := totalBeatsForSection(section, bpm)
 	if beatsPerSection <= 0 {
 		// Without a positive duration we can't lay out events deterministically.

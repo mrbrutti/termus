@@ -152,14 +152,30 @@ func buildAuthoredPlan(spec gen.AlgoSpec, file *File, section Section, roles map
 	// SP14: roles whose events list is non-empty get an event-driven
 	// AuthoredRenderTrack instead of the algorithm-derived one. The
 	// per-section RoleEvents override the role-default Events.
+	//
+	// SP16: roles with AutoVoice or AutoPhrase set ALSO go through this
+	// path; the engine generates events from the section's harmony and
+	// then merges them with any author-supplied events. Humanization is
+	// applied per-role on the final list before quantisation.
+	bassPresent := hasBassRole(roles)
 	eventDrivenRoles := map[string]bool{}
 	for _, roleName := range roleNames {
 		role := roles[roleName]
-		if events := roleEventList(roleName, role, section); len(events) > 0 {
-			if rendered, ok := compileRoleEventTrack(ctx, roleName, role, events, harmonyBars, section, bpm); ok {
-				plan.Tracks = append(plan.Tracks, rendered)
-				eventDrivenRoles[roleName] = true
-			}
+		authored := roleEventList(roleName, role, section)
+		generated := generateIntentEvents(role, harmonyBars, section, bpm, bassPresent && !strings.EqualFold(strings.TrimSpace(role.Family), "bass") && !strings.Contains(strings.ToLower(roleName), "bass"))
+		finalEvents := mergeEvents(generated, authored)
+		if len(finalEvents) == 0 {
+			continue
+		}
+		// SP16: apply humanization to the merged event list.
+		spec := resolveHumanizeSpec(role, roleName)
+		// Seed for determinism: file seed xor a role-name hash.
+		seedRole := seed ^ int64(hashRoleName(roleName))
+		beatsPerSection := totalBeatsForSection(section, bpm)
+		finalEvents = HumanizeForRole(finalEvents, spec, seedRole, beatsPerSection, bpm, roleName)
+		if rendered, ok := compileRoleEventTrack(ctx, roleName, role, finalEvents, harmonyBars, section, bpm); ok {
+			plan.Tracks = append(plan.Tracks, rendered)
+			eventDrivenRoles[roleName] = true
 		}
 	}
 	for _, roleName := range roleNames {
