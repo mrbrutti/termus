@@ -208,6 +208,166 @@ sections:
 	}
 }
 
+// TestEvents_AutoLoop verifies SP15: an 8-beat event list placed in a 24-beat
+// section produces notes that repeat across the section (3 loop cycles).
+// Before SP15 the events fired once and the remaining 16 beats were silence.
+func TestEvents_AutoLoop(t *testing.T) {
+	// 24 beats = 6s at 240 BPM (so the section duration is clean).
+	const src = `
+title: Auto Loop Test
+style: lofi
+key: Cmaj
+tempo: "240"
+roles:
+  piano:
+    family: piano
+    events:
+      - {beat: 1.0, pitch: C4, dur: 0.5, vel: 80}
+      - {beat: 3.0, pitch: E4, dur: 0.5, vel: 80}
+      - {beat: 5.0, pitch: G4, dur: 0.5, vel: 80}
+      - {beat: 7.0, pitch: B4, dur: 0.5, vel: 80}
+sections:
+  - id: test
+    duration: 6s
+    harmony: "Cmaj7"
+`
+	file, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	compiled, err := Compile(file, 1, gen.ListeningModeEndless)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	var plan gen.AuthoredTrackPlan
+	for _, p := range compiled.Plans {
+		plan = p
+	}
+	var piano *gen.AuthoredRenderTrack
+	for i := range plan.Tracks {
+		if plan.Tracks[i].Name == "piano" {
+			piano = &plan.Tracks[i]
+			break
+		}
+	}
+	if piano == nil {
+		t.Fatal("piano track not found")
+	}
+	// Loop = 8 beats (auto-detected: max event beat = 7 + dur 0.5 = 7.5 → ceil(7.5/4) = 2 bars = 8 beats).
+	// Section = 24 beats → 3 loop cycles.
+	// Each cycle has 4 events; expect 12 notes total.
+	const slotsPerBeat = eventSlotsPerBeat
+	expectedNoteSlots := []int{
+		// cycle 0 (beats 1, 3, 5, 7)
+		0 * slotsPerBeat, 2 * slotsPerBeat, 4 * slotsPerBeat, 6 * slotsPerBeat,
+		// cycle 1 (beats 9, 11, 13, 15)
+		8 * slotsPerBeat, 10 * slotsPerBeat, 12 * slotsPerBeat, 14 * slotsPerBeat,
+		// cycle 2 (beats 17, 19, 21, 23)
+		16 * slotsPerBeat, 18 * slotsPerBeat, 20 * slotsPerBeat, 22 * slotsPerBeat,
+	}
+	hitCount := 0
+	for _, n := range piano.Notes {
+		if n >= 0 {
+			hitCount++
+		}
+	}
+	if hitCount != len(expectedNoteSlots) {
+		t.Errorf("expected %d note slots (3 loop cycles x 4 events), got %d",
+			len(expectedNoteSlots), hitCount)
+	}
+	for _, s := range expectedNoteSlots {
+		if s >= len(piano.Notes) {
+			t.Errorf("slot %d out of range (len=%d)", s, len(piano.Notes))
+			continue
+		}
+		if piano.Notes[s] < 0 {
+			t.Errorf("slot %d (beat %.1f) is rest, want note", s, 1.0+float64(s)/float64(slotsPerBeat))
+		}
+	}
+}
+
+// TestEvents_LoopBarsOverride verifies SP15: an explicit loop_bars: 2 on a
+// section forces a 2-bar (8-beat) loop in a 16-beat section even when the
+// authored events would auto-detect to a different length.
+func TestEvents_LoopBarsOverride(t *testing.T) {
+	// 16 beats = 4s at 240 BPM.
+	const src = `
+title: Loop Bars Override Test
+style: lofi
+key: Cmaj
+tempo: "240"
+roles:
+  piano:
+    family: piano
+    events:
+      # Events span only beats 1..3.5 — auto-detect would give a 4-beat (1-bar)
+      # loop. The section-level loop_bars: 2 forces an 8-beat loop instead.
+      - {beat: 1.0, pitch: C4, dur: 0.5, vel: 80}
+      - {beat: 2.0, pitch: E4, dur: 0.5, vel: 80}
+      - {beat: 3.0, pitch: G4, dur: 0.5, vel: 80}
+sections:
+  - id: test
+    duration: 4s
+    harmony: "Cmaj7"
+    loop_bars: 2
+`
+	file, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	compiled, err := Compile(file, 1, gen.ListeningModeEndless)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	var plan gen.AuthoredTrackPlan
+	for _, p := range compiled.Plans {
+		plan = p
+	}
+	var piano *gen.AuthoredRenderTrack
+	for i := range plan.Tracks {
+		if plan.Tracks[i].Name == "piano" {
+			piano = &plan.Tracks[i]
+			break
+		}
+	}
+	if piano == nil {
+		t.Fatal("piano track not found")
+	}
+	// loop_bars: 2 → 8-beat loop. Section = 16 beats → 2 cycles.
+	// 3 events per cycle → 6 notes total.
+	const slotsPerBeat = eventSlotsPerBeat
+	expectedSlots := []int{
+		// cycle 0
+		0, 1 * slotsPerBeat, 2 * slotsPerBeat,
+		// cycle 1 (offset +8 beats)
+		8 * slotsPerBeat, 9 * slotsPerBeat, 10 * slotsPerBeat,
+	}
+	hitCount := 0
+	for _, n := range piano.Notes {
+		if n >= 0 {
+			hitCount++
+		}
+	}
+	if hitCount != len(expectedSlots) {
+		t.Errorf("expected %d notes (2 cycles x 3 events), got %d", len(expectedSlots), hitCount)
+	}
+	for _, s := range expectedSlots {
+		if s >= len(piano.Notes) {
+			t.Errorf("slot %d out of range (len=%d)", s, len(piano.Notes))
+			continue
+		}
+		if piano.Notes[s] < 0 {
+			t.Errorf("slot %d expected note, got rest", s)
+		}
+	}
+	// Slot at beat 5 (slotsPerBeat*4 = 64) MUST be a rest — that's within the
+	// loop's "between cycle 0 (1-3) and cycle 1 (9-11)" silent zone.
+	mid := 4 * slotsPerBeat
+	if piano.Notes[mid] >= 0 {
+		t.Errorf("slot %d (beat 5.0) expected rest, got note %d", mid, piano.Notes[mid])
+	}
+}
+
 // TestNoteEvent_SectionRoleEventsYAML verifies that the section-level
 // role_events YAML field deserialises correctly.
 func TestNoteEvent_SectionRoleEventsYAML(t *testing.T) {

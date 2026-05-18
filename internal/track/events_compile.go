@@ -50,6 +50,14 @@ func roleEventList(roleName string, role Role, section Section) []NoteEvent {
 // duration; the engine cycles the Notes array once per section so the
 // rhythm repeats predictably across section boundaries.
 //
+// SP15: Events are automatically looped across the entire section. The
+// loop length is determined as follows (highest precedence wins):
+//
+//	section.RoleLoopBars[name] > section.LoopBars > role.LoopBars > auto-detect
+//
+// Auto-detect rounds the maximum event beat up to the nearest bar (4 beats),
+// so a list of events spanning beats 1.0..8.5 becomes a 2-bar loop (8 beats).
+//
 // When the events list is empty this returns the zero track and ok=false.
 func compileRoleEventTrack(ctx authoredSectionContext, name string, role Role, events []NoteEvent, harmonyBars []authoredHarmonyBar, section Section, bpm float64) (gen.AuthoredRenderTrack, bool) {
 	if len(events) == 0 {
@@ -65,6 +73,10 @@ func compileRoleEventTrack(ctx authoredSectionContext, name string, role Role, e
 	if totalSlots < 1 {
 		totalSlots = 1
 	}
+
+	// Determine loop length (in beats). Precedence:
+	//   section.RoleLoopBars[name] > section.LoopBars > role.LoopBars > auto-detect
+	loopBeats := resolveLoopBeats(name, role, section, events)
 
 	notes := make([]int, totalSlots)
 	velPattern := make([]int32, totalSlots)
@@ -87,24 +99,19 @@ func compileRoleEventTrack(ctx authoredSectionContext, name string, role Role, e
 	kind := authoredRoleKind(name, role)
 	isDrum := kind == "drum"
 
-	for _, ev := range events {
-		// Place beat → slot (rounded).
-		beat := ev.Beat
+	placeEvent := func(ev NoteEvent, beat float64) {
 		if beat < 1.0 {
-			// Treat <1 as starting position from beat 1.
 			beat = 1.0
 		}
 		// 0-based position within the section, in slots.
 		pos := (beat - 1.0) * float64(eventSlotsPerBeat)
 		slot := int(math.Round(pos))
 		if slot < 0 || slot >= totalSlots {
-			continue
+			return
 		}
 		// Sub-slot offset (in seconds) so the event fires at the exact
 		// requested beat even if it doesn't land on the grid.
 		residual := pos - float64(slot)
-		timingOff[slot] = residual * slotSec
-
 		// Pitch.
 		var midi int
 		if isDrum {
@@ -113,12 +120,19 @@ func compileRoleEventTrack(ctx authoredSectionContext, name string, role Role, e
 			chord := chordForEventBeat(harmonyBars, beat, bpm, beatsPerSection)
 			midi = ResolvePitch(ev.Pitch, keyStr, chord, role.Register)
 			if midi < 0 {
-				// Fallback: middle C with a deterministic register shift so the
-				// event remains audible but obviously off-spec for debugging.
+				// Fallback: middle C so the event remains audible but obviously
+				// off-spec for debugging.
 				midi = 60
 			}
 		}
+		// When two simultaneous events land on the same slot (chord stabs),
+		// the latest write wins on the scalar fields; the engine cannot play
+		// multiple pitches on one channel anyway. The original code accepted
+		// this limitation; we preserve it here. (Multi-pitch chord stabs are
+		// authored as multiple events on different scale-degree pitches that
+		// SHOULD be split across channels — out of scope for SP15.)
 		notes[slot] = midi
+		timingOff[slot] = residual * slotSec
 
 		// Velocity + articulation.
 		vel := ev.Vel
@@ -152,12 +166,40 @@ func compileRoleEventTrack(ctx authoredSectionContext, name string, role Role, e
 		holdSec := dur * 60.0 / bpm
 		// Apply articulation gate as a multiplier on top.
 		holdSec *= gate
-		gatePattern[slot] = holdSec / slotSec
-		if gatePattern[slot] < 0.05 {
-			gatePattern[slot] = 0.05
+		g := holdSec / slotSec
+		if g < 0.05 {
+			g = 0.05
 		}
-		if gatePattern[slot] > 32.0 {
-			gatePattern[slot] = 32.0
+		// SP15: raise the cap so long sustains (e.g. a 16-beat ambient drone)
+		// hold for their full authored duration. The engine multiplies gate
+		// by slot length in samples; at typical 60–180 BPM and 16 slots/beat
+		// a gate of 4096 still produces only a few seconds of note hold, well
+		// within safe playback bounds.
+		if g > 8192.0 {
+			g = 8192.0
+		}
+		gatePattern[slot] = g
+	}
+
+	// Place events for the first loop cycle, then repeat across the section.
+	// If loopBeats <= 0 (no valid loop), place events once at their authored
+	// beats; the original SP14 behavior is preserved as a fallback.
+	if loopBeats <= 0 {
+		for _, ev := range events {
+			placeEvent(ev, ev.Beat)
+		}
+	} else {
+		// Iterate loop cycles. Each cycle offsets all events by k*loopBeats.
+		// Stop when the cycle's earliest beat is past the section.
+		for cycle := 0; ; cycle++ {
+			cycleOffset := float64(cycle) * loopBeats
+			// Earliest beat in this cycle = 1.0 + cycleOffset.
+			if 1.0+cycleOffset >= 1.0+beatsPerSection {
+				break
+			}
+			for _, ev := range events {
+				placeEvent(ev, ev.Beat+cycleOffset)
+			}
 		}
 	}
 
@@ -187,6 +229,64 @@ func compileRoleEventTrack(ctx authoredSectionContext, name string, role Role, e
 		FireProbability: 1,
 	}
 	return out, true
+}
+
+// resolveLoopBeats returns the event-loop length in beats for a role within a
+// section (SP15). Precedence (highest first):
+//
+//	section.RoleLoopBars[name] > section.LoopBars > role.LoopBars > auto-detect
+//
+// Auto-detect: the maximum event beat-end, rounded up to the nearest 4-beat bar.
+// Returns 0 if the events list is empty (auto-detect cannot apply).
+//
+// A non-positive override (LoopBars <= 0) is treated as "not set" so the next
+// fallback applies; this keeps "no override" semantics consistent with YAML
+// zero values.
+func resolveLoopBeats(roleName string, role Role, section Section, events []NoteEvent) float64 {
+	const beatsPerBar = 4.0
+	if section.RoleLoopBars != nil {
+		if b, ok := section.RoleLoopBars[roleName]; ok && b > 0 {
+			return float64(b) * beatsPerBar
+		}
+	}
+	if section.LoopBars > 0 {
+		return float64(section.LoopBars) * beatsPerBar
+	}
+	if role.LoopBars > 0 {
+		return float64(role.LoopBars) * beatsPerBar
+	}
+	if len(events) == 0 {
+		return 0
+	}
+	// Auto-detect: find the highest beat used by any event (taking duration
+	// into account so a note that begins on beat 7.5 and lasts 1.0 beats
+	// requires at least 8.5 beats of room). Round the result up to the
+	// nearest bar so the loop stays musically grid-aligned.
+	maxEnd := 0.0
+	for _, ev := range events {
+		beat := ev.Beat
+		if beat < 1.0 {
+			beat = 1.0
+		}
+		dur := ev.Dur
+		if dur < 0 {
+			dur = 0
+		}
+		// We count beats from 1.0, so the highest occupied beat position
+		// (0-indexed from 1) is (beat - 1) + dur.
+		end := (beat - 1.0) + dur
+		if end > maxEnd {
+			maxEnd = end
+		}
+	}
+	if maxEnd <= 0 {
+		return 0
+	}
+	bars := math.Ceil(maxEnd / beatsPerBar)
+	if bars < 1 {
+		bars = 1
+	}
+	return bars * beatsPerBar
 }
 
 // totalBeatsForSection computes the total number of beats in a section
