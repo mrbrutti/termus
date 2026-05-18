@@ -9,6 +9,87 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// arrangementYAML is the shape used to decode `arrangement:` on a Section.
+// The field accepts two forms:
+//   - events-list (legacy):     arrangement: { events: [...] }
+//   - role-schedule map (SP18): arrangement: { rhodes: { enter_bar: 1 }, ... }
+// We use this private struct to peek and then route accordingly.
+type arrangementYAML struct {
+	// Events is the legacy SP1-SP16 events list.
+	Events []Event `yaml:"events"`
+}
+
+// UnmarshalYAML on Section accepts the dual-shape arrangement field and any
+// other SP18 fields. We use a private alias struct + explicit decode of the
+// arrangement node to keep both code paths working.
+func (s *Section) UnmarshalYAML(node *yaml.Node) error {
+	type sectionAlias Section
+	var alias sectionAlias
+	if err := node.Decode(&alias); err != nil {
+		return err
+	}
+	*s = Section(alias)
+	// Walk the node's mapping to find the "arrangement" key, then decode it
+	// once in each shape to pick the right one.
+	if node.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		k := node.Content[i]
+		v := node.Content[i+1]
+		if k.Value != "arrangement" {
+			continue
+		}
+		if v.Kind != yaml.MappingNode {
+			continue
+		}
+		// Detect by scanning the inner keys: if any inner value is a mapping
+		// (e.g. `rhodes: { enter_bar: 1 }`) and not "events", treat as SP18
+		// role-schedule. Otherwise, if there is an "events" key, leave the
+		// legacy parse alone.
+		eventsKeyPresent := false
+		sp18Like := false
+		for j := 0; j+1 < len(v.Content); j += 2 {
+			ik := v.Content[j]
+			iv := v.Content[j+1]
+			if ik.Value == "events" {
+				eventsKeyPresent = true
+				continue
+			}
+			if iv.Kind == yaml.MappingNode {
+				sp18Like = true
+			}
+		}
+		if eventsKeyPresent && !sp18Like {
+			// Legacy: already decoded into s.Arrangement.Events via alias.
+			break
+		}
+		// SP18 role-schedule form (possibly mixed with events).
+		schedules := map[string]RoleSchedule{}
+		// Decode role-by-role to avoid clobbering Events parsing.
+		for j := 0; j+1 < len(v.Content); j += 2 {
+			ik := v.Content[j]
+			iv := v.Content[j+1]
+			if ik.Value == "events" {
+				continue
+			}
+			if iv.Kind != yaml.MappingNode {
+				continue
+			}
+			var rs RoleSchedule
+			if err := iv.Decode(&rs); err != nil {
+				return fmt.Errorf("section arrangement role %q: %w", ik.Value, err)
+			}
+			schedules[ik.Value] = rs
+		}
+		if len(schedules) > 0 {
+			s.Arrangement18 = schedules
+		}
+		break
+	}
+	return nil
+}
+
 // UnmarshalYAML allows ChordSpec to be authored as either a plain string
 // (symbol only) or as a full mapping with optional voice-leading directives.
 //

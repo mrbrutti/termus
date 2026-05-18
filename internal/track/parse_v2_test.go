@@ -438,8 +438,15 @@ func TestV2TracksParseAndHaveV2Fields(t *testing.T) {
 		if file.Style == "" {
 			t.Fatalf("%s: parsed file has empty style", path)
 		}
-		if len(file.Sections) == 0 {
-			t.Fatalf("%s: parsed file has no sections", path)
+		// SP18: tracks may carry a Form template name instead of an
+		// explicit Sections list; Compile() expands the form into sections.
+		if len(file.Sections) == 0 && file.Form == "" {
+			t.Fatalf("%s: parsed file has no sections and no form", path)
+		}
+		if file.Form != "" {
+			if _, ok := ResolveForm(file.Form); !ok {
+				t.Fatalf("%s: unknown form %q", path, file.Form)
+			}
 		}
 		// v2 corpus tracks must carry mix_bus.
 		if file.MixBus == "" {

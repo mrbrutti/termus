@@ -1,121 +1,88 @@
 title: Midnight Ballad Slow
-description: Slow ballad with dense piano lead, walking bass on every quarter, brushes texture, strings halo, tritone subs.
+description: SP18 form-driven jazz ballad — AABA 32-bar with bridge, two solos and head out. ~5-6 minutes per pass.
 style: jazz
 mix_bus: jazz
 listen_mode: hour-stream
 seed: 62738
-tags: [jazz, ballad, slow, piano, brushes, walking, strings]
-key: Dbmaj
-tempo: 78
+tags: [jazz, ballad, slow, piano, brushes, walking, sp18]
+key: Cmaj
+tempo: 96
 globals: {density: heavy, brightness: warm, motion: moving, phrase: long}
+
+# SP18 form: jazz_aaba_32bar — intro + 2 head choruses (AABA) + bridge + 2 solo choruses + head out + outro.
+# Total: 8 + 8*4 + 8*2 + 8 + 8 = 72 bars @ 96 BPM = ~3m per pass; hour-stream repeats.
+form: jazz_aaba_32bar
+total_duration: 6m
+
+motif_library:
+  ballad_theme:
+    pattern: "5 . 7 5 | 3 . 5 3 | 7 . >2 7 | 5 . 3 1"
+    description: "main ballad melody — slow falling contour"
+    bars: 4
+  bridge_motif:
+    pattern: "1 . 3 5 | 7 . 5 3"
+    description: "bridge contrast — rising answer"
+    bars: 2
+
 roles:
   piano:
-    family: acoustic_piano
-    tone: [clear, warm]
-    articulation: lyrical
+    family: piano
+    voice: jazz_piano_warm
+    auto_voice: rhodes_comp
     register: mid
     prominence: lead
-    motif: "9 . 7 . 5 . 3 . | 1 . . . . . . ."
+    humanize: {timing_ms: 8, velocity: 8}
+    chain: {reverb_send: 0.30, compress: gentle}
+
   bass:
     family: bass
-    tone: [woody, round]
-    articulation: walk
+    voice: jazz_upright_bass
+    auto_voice: walking_bass
     register: low
     prominence: anchor
-  brushes:
+    humanize: {timing_ms: 5, velocity: 6}
+    chain: {reverb_send: 0.18, compress: gentle, pan_offset: -0.08}
+
+  kick:
     family: drums
-    tone: [live, soft]
-    articulation: swing
+    voice: jazz_kit_kick
     prominence: support
-  ride:
-    family: drums
-    tone: [live, soft]
-    articulation: swing
-    prominence: support
+    humanize: {timing_ms: 4, velocity: 6}
+    chain: {reverb_send: 0.15, compress: gentle}
+    loop_bars: 2
+    events:
+      - {beat: 1.00, pitch: "", dur: 0.25, vel: 60}
+      - {beat: 3.00, pitch: "", dur: 0.25, vel: 56}
+      - {beat: 5.00, pitch: "", dur: 0.25, vel: 60}
+      - {beat: 7.00, pitch: "", dur: 0.25, vel: 56}
+
   snare:
     family: drums
-    tone: [live, soft]
-    articulation: swing
+    voice: jazz_kit_snare
     prominence: support
-  strings:
-    family: strings
-    tone: [soft, warm]
-    register: mid-high
-    prominence: air
-  comp:
-    family: acoustic_piano
-    tone: [soft, warm]
-    articulation: comp
+    humanize: {timing_ms: 4, velocity: 6}
+    chain: {reverb_send: 0.30, compress: gentle}
+    loop_bars: 2
+    events:
+      - {beat: 2.50, pitch: "", dur: 0.2, vel: 36, art: ghost}
+      - {beat: 4.50, pitch: "", dur: 0.2, vel: 36, art: ghost}
+      - {beat: 6.50, pitch: "", dur: 0.2, vel: 36, art: ghost}
+      - {beat: 8.50, pitch: "", dur: 0.2, vel: 36, art: ghost}
+
+  hat:
+    family: drums
+    voice: jazz_kit_hat
+    prominence: support
+    humanize: {timing_ms: 3, velocity: 4}
+    chain: {reverb_send: 0.20, compress: "off"}
+    loop_bars: 1
+    events:
+      - {beat: 2.0, pitch: "", dur: 0.1, vel: 64}
+      - {beat: 4.0, pitch: "", dur: 0.1, vel: 64}
+
+  pad:
+    family: pad
+    voice: jazz_string_pad
     register: mid
-    prominence: support
-sections:
-  - id: intro
-    title: late-hour hush
-    duration: 14s
-    harmony: "Dbmaj9 Bbm11 | Ebm9 Ab9sus4"
-    scene: "intro hush"
-    variation: "establish"
-    groove: straight
-    automation:
-      - param: expression
-        breakpoints:
-          - {at: 0, value: 0.35}
-          - {at: 100, value: 0.65}
-  - id: head
-    title: slow confession
-    duration: 32s
-    harmony: "Dbmaj9 Bbm11 | Ebm9 Ab9sus4 | Dbmaj9 Bbm11 | Ebm9 Ab9sus4"
-    scene: "head lyrical"
-    variation: "statement"
-    groove: straight
-    substitutions:
-      - {rule: tritone_sub, apply_to: V, probability: 0.8}
-    automation:
-      - param: expression
-        breakpoints:
-          - {at: 0, value: 0.65}
-          - {at: 50, value: 0.95}
-          - {at: 100, value: 0.8}
-  - id: bridge
-    title: tender pivot
-    duration: 24s
-    harmony: "Gbmaj9 F9 | Bbm11 Eb9sus4 | Ebm9 Ab9sus4 | Dbmaj9 Bbm11"
-    scene: "bridge lift"
-    variation: "open-register"
-    groove: straight
-    substitutions:
-      - {rule: tritone_sub, apply_to: V, probability: 1.0}
-    automation:
-      - param: expression
-        breakpoints:
-          - {at: 0, value: 0.8}
-          - {at: 60, value: 1.0}
-          - {at: 100, value: 0.85}
-  - id: head2
-    title: recapitulation
-    duration: 24s
-    harmony: "Dbmaj9 Bbm11 | Ebm9 Ab9sus4 | Dbmaj9 Bbm11 | Ebm9 Ab9sus4"
-    scene: "head lyrical"
-    variation: "sequence-up"
-    groove: straight
-    substitutions:
-      - {rule: ii_V_chain, apply_to: I, probability: 0.9}
-    automation:
-      - param: expression
-        breakpoints:
-          - {at: 0, value: 0.85}
-          - {at: 100, value: 0.8}
-  - id: outro
-    title: last note rings
-    duration: 18s
-    harmony: "Ebm9 Ab9sus4 | Dbmaj9 Dbmaj9"
-    scene: "outro cadence"
-    variation: "cadence"
-    groove: straight
-    substitutions:
-      - {rule: deceptive, apply_to: V, probability: 1.0}
-    automation:
-      - param: expression
-        breakpoints:
-          - {at: 0, value: 0.8}
-          - {at: 100, value: 0.2}
+    humanize: {timing_ms: 0, velocity: 0}
+    chain: {reverb_send: 0.55, compress: "off"}

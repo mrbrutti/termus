@@ -10,6 +10,23 @@ func resolveSections(file *File) ([]Section, error) {
 	if file == nil {
 		return nil, fmt.Errorf("track is nil")
 	}
+	// SP18: resolve Section.Bars → Section.Duration via tempo when Duration
+	// is empty. This runs before derive merging so derived sections inherit
+	// the resolved duration if they don't override.
+	fileBPM := resolveBPMHint(file.Tempo, 0)
+	for i := range file.Sections {
+		if strings.TrimSpace(file.Sections[i].Duration) != "" {
+			continue
+		}
+		if file.Sections[i].Bars <= 0 {
+			continue
+		}
+		bpm := resolveBPMHint(file.Sections[i].Tempo, fileBPM)
+		if bpm <= 0 {
+			bpm = 90
+		}
+		file.Sections[i].Duration = barsToDurationString(file.Sections[i].Bars, bpm)
+	}
 	resolved := make([]Section, 0, len(file.Sections))
 	index := map[string]Section{}
 	for i, section := range file.Sections {
@@ -30,6 +47,25 @@ func resolveSections(file *File) ([]Section, error) {
 		}
 	}
 	return resolved, nil
+}
+
+// resolveBPMHint parses a tempo string like "84" or "84 bpm" → a numeric BPM.
+// Returns fallback when parsing fails or input is empty.
+func resolveBPMHint(raw string, fallback float64) float64 {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return fallback
+	}
+	// Strip non-numeric trailing words.
+	parts := strings.Fields(s)
+	for _, p := range parts {
+		var n float64
+		_, err := fmt.Sscanf(p, "%f", &n)
+		if err == nil && n > 0 {
+			return n
+		}
+	}
+	return fallback
 }
 
 func mergeSection(base, override Section) Section {

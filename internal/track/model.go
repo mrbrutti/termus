@@ -16,6 +16,25 @@ type File struct {
 	Tags            []string        `yaml:"tags,omitempty"`
 	Key             string          `yaml:"key,omitempty"`
 	Tempo           string          `yaml:"tempo,omitempty"`
+	// Form (SP18) names a built-in form template. When set, the form library
+	// expands the template into a default Sections list; if Sections is non-empty
+	// the explicit list wins (override). Form templates also seed sensible
+	// defaults for arrangement, harmony, and motif treatment.
+	// Known templates: jazz_aaba_32bar, jazz_blues_12bar, jazz_head_solo_head,
+	// lofi_loop_form, chill_ababcb, chill_journey, ambient_emerge_drift_recede,
+	// ambient_palindrome.
+	Form           string          `yaml:"form,omitempty"`
+	// TotalDuration (SP18) is the explicit total composition length (e.g. "5m",
+	// "12m30s"). When the form template defines section bar counts, the engine
+	// uses tempo to satisfy this duration by scaling section lengths.
+	// Currently advisory — used by form expansion for sizing only when sections
+	// are not explicit.
+	TotalDuration  string          `yaml:"total_duration,omitempty"`
+	// MotifLibrary (SP18) is the SP18 motif library — distinct from the
+	// SP7 Motifs list (which carries textual transforms). Each entry is named
+	// and referenced by Section.Motif. The engine applies motif-treatment
+	// transformations per section via motif_engine.go.
+	MotifLibrary   map[string]MotifDef `yaml:"motif_library,omitempty"`
 	// MixBus is an optional top-level mix-bus profile selector (SP6).
 	// One of: lofi, jazz, chill, ambient. Resolved via gen.MixBusByName.
 	// If absent, no profile is applied (behavior unchanged).
@@ -32,6 +51,17 @@ type File struct {
 	Globals         Profile         `yaml:"globals,omitempty"`
 	VariationBudget VariationBudget `yaml:"variation_budget,omitempty"`
 	Lint            LintControl     `yaml:"lint,omitempty"`
+}
+
+// MotifDef (SP18) is one entry in the file-level MotifLibrary.
+// Pattern uses the same scale-degree notation as authored melody patterns
+// ("5 . 3 5 | 7 . 5 3"). Bars indicates the natural length of the motif in
+// 4/4 bars (4 beats each); used by the motif engine when fitting the motif
+// to section harmony spans.
+type MotifDef struct {
+	Pattern     string `yaml:"pattern"`
+	Description string `yaml:"description,omitempty"`
+	Bars        int    `yaml:"bars,omitempty"`
 }
 
 // MotifEntry defines a named motif with optional transforms (SP7).
@@ -117,6 +147,66 @@ type Section struct {
 	// FillAtEnd (SP16) hints to the renderer that a fill should be appended
 	// in the last bar of the section (drum fills, melody pickup, etc.).
 	FillAtEnd bool `yaml:"fill_at_end,omitempty"`
+
+	// SP18 multi-scale form fields. All optional, backwards compatible.
+
+	// Role (SP18) is the semantic role within the form (vs. just a label).
+	// Known values: head_statement, head_variation, head_return, solo, climax,
+	// contrast, bridge, intro, emerge, drift, recede, outro, etc. The form
+	// library uses Role when expanding templates.
+	Role string `yaml:"role,omitempty"`
+
+	// Bars (SP18) is an alternative to Duration. When > 0 and Duration is
+	// empty, the engine resolves bars × (4 / (BPM/60)) → duration string at
+	// section-resolution time. 4/4 assumed.
+	Bars int `yaml:"bars,omitempty"`
+
+	// PhraseStructure (SP18) describes internal section organisation, e.g.
+	// "aaba", "aabb", "abab", "throughcomposed". The phrase_structure module
+	// uses this to drive sub-section motif treatment per phrase.
+	PhraseStructure string `yaml:"phrase_structure,omitempty"`
+
+	// Motif (SP18) references an entry in File.MotifLibrary. The motif
+	// engine expands the named motif into events according to MotifTreatment.
+	Motif string `yaml:"motif,omitempty"`
+
+	// MotifTreatment (SP18) tells the motif engine how to transform the
+	// referenced motif for this section. Known values: introduce, vary,
+	// develop, fragment, return, hint.
+	MotifTreatment string `yaml:"motif_treatment,omitempty"`
+
+	// Arrangement18 (SP18) is a per-role entry/exit schedule for the section.
+	// Map key is the role name. When a role's enter_bar > 1 (or exit_bar > 0
+	// and ≤ Bars) the engine gates events outside that window. Fade bars
+	// produce velocity ramps. Field name is "arrangement" in YAML — coexists
+	// with the legacy Arrangement.Events struct via UnmarshalYAML.
+	Arrangement18 map[string]RoleSchedule `yaml:"-"`
+
+	// DynamicCurve (SP18) is a per-section velocity envelope. Known shapes:
+	// arc, crescendo, decrescendo, wave, steady. The dynamic_curve module
+	// scales velocities by ±20% across the section based on the curve.
+	DynamicCurve string `yaml:"dynamic_curve,omitempty"`
+
+	// TransitionToNext (SP18) is the explicit connection style at the end of
+	// this section. Known values: turnaround, pickup, fill, breakdown, swell.
+	// The transition engine inserts transition material in the last 1-4 bars.
+	TransitionToNext string `yaml:"transition_to_next,omitempty"`
+}
+
+// RoleSchedule (SP18) is one role's arrangement entry/exit schedule within a
+// section. All fields optional. Bar numbers are 1-indexed.
+//
+//	enter_bar: 1     # role plays from bar 1
+//	exit_bar: 9      # role stops at bar 9 (last active bar is 8)
+//	fade_in_bars: 4  # ramp velocity 0→100% over the first 4 bars after enter
+//	fade_out_bars: 2 # ramp velocity 100→0% over the last 2 bars before exit
+//	prominent: true  # mix/voicing hint — role is featured in this section
+type RoleSchedule struct {
+	EnterBar    int  `yaml:"enter_bar,omitempty"`
+	ExitBar     int  `yaml:"exit_bar,omitempty"`
+	FadeInBars  int  `yaml:"fade_in_bars,omitempty"`
+	FadeOutBars int  `yaml:"fade_out_bars,omitempty"`
+	Prominent   bool `yaml:"prominent,omitempty"`
 }
 
 // NoteEvent is one explicit note in a role's event list (SP14).

@@ -1,18 +1,26 @@
 title: Bookstore After Rain
-description: Felt-piano lofi in Dmin — intent-driven rhodes and walking bass, Dilla kit with ghost snares. SP16 reference.
+description: SP18 form-driven lofi — D minor, lofi_loop_form. Multi-section motif development, instrument arrangement arc, explicit section transitions.
 style: lofi
 substyle: piano-ballad
 listen_mode: hour-stream
 seed: 28011
-tags: [lofi, piano, rain, dilla, sp16]
+tags: [lofi, piano, rain, dilla, sp18]
 key: Dmin
-tempo: 86
+tempo: 84
 mix_bus: lofi
 globals: {density: full, brightness: warm, motion: gentle, reverb: warm}
 
-# SP16 intent-driven authoring: the engine generates idiomatic rhodes
-# voicings and walking bass from the harmony; explicit drum events keep
-# rhythmic clarity. Humanization applies to all events.
+# SP18 multi-scale form: lofi_loop_form expands into intro/loop_a/loop_b/bridge/loop_c/outro.
+# Total: 8 + 16 + 16 + 8 + 16 + 8 = 72 bars @ 84 BPM = ~3.4m per pass; hour-stream loops the
+# pass to fill the hour.
+form: lofi_loop_form
+total_duration: 6m
+
+motif_library:
+  rhodes_theme:
+    pattern: "5 . 7 5 | 3 . 5 3 | 7 . >2 7 | 5 . 3 1"
+    description: "main 4-bar Rhodes motif — sigh-fall contour"
+    bars: 4
 
 roles:
   rhodes:
@@ -65,7 +73,7 @@ roles:
       - {beat: 7.50, pitch: "", dur: 0.25, vel: 40, art: ghost}
       - {beat: 8.00, pitch: "", dur: 0.25, vel: 100}
 
-  hat_closed:
+  hat:
     family: drums
     prominence: support
     humanize: {timing_ms: 2, velocity: 4}
@@ -81,53 +89,9 @@ roles:
       - {beat: 4.0, pitch: "", dur: 0.1, vel: 72}
       - {beat: 4.5, pitch: "", dur: 0.1, vel: 78, art: accent}
 
-sections:
-  - id: intro
-    title: rain-on-glass
-    duration: 12s
-    harmony: "Dm9 Gm7 | Bb6 A7"
-    scene: "intro hush"
-    variation: "establish"
-    groove: dilla_late
-    intensity: 0.4
-    automation:
-      - param: cutoff
-        breakpoints:
-          - {at: 0, value: 0.25}
-          - {at: 100, value: 0.55}
-
-  - id: verse
-    title: paperback turn
-    duration: 32s
-    harmony: "Dm9 Gm7 | Bb6 A7"
-    scene: "head glide"
-    variation: "statement"
-    groove: dilla_late
-    intensity: 0.7
-    automation:
-      - param: cutoff
-        breakpoints:
-          - {at: 0, value: 0.55}
-          - {at: 50, value: 0.85}
-          - {at: 100, value: 0.65}
-
-  - id: bridge
-    title: light through curtain
-    duration: 18s
-    harmony: "Bb6 A7 | Dm9 Gm7"
-    scene: "bridge lift"
-    variation: "open-register"
-    groove: dilla_late
-    intensity: 0.8
-
-  - id: outro
-    title: shelf-closing
-    duration: 20s
-    harmony: "Dm9 Gm7 | Bb6 A7"
-    scene: "outro hush"
-    variation: "cadence"
-    groove: dilla_late
-    intensity: 0.5
-    fill_at_end: true
-    substitutions:
-      - {rule: deceptive, apply_to: V, probability: 1.0}
+  pad:
+    family: pad
+    voice: lofi_pad_warm
+    register: mid
+    humanize: {timing_ms: 0, velocity: 0}
+    chain: {reverb_send: 0.45, compress: "off"}

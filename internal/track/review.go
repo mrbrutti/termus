@@ -171,9 +171,13 @@ func cadenceSectionPosition(sections []Section) float64 {
 }
 
 func sectionLooksCadential(section Section) bool {
-	text := strings.ToLower(strings.TrimSpace(strings.Join([]string{section.ID, section.Title, section.Scene, section.Variation}, " ")))
-	if strings.Contains(text, "cadence") || strings.Contains(text, "outro") || strings.Contains(text, "release") {
-		return true
+	text := strings.ToLower(strings.TrimSpace(strings.Join([]string{section.ID, section.Title, section.Scene, section.Variation, section.Role}, " ")))
+	// SP18: recognise the form-template role labels for outros and recedes.
+	cadenceWords := []string{"cadence", "outro", "release", "recede", "head_return", "head_out", "ending"}
+	for _, w := range cadenceWords {
+		if strings.Contains(text, w) {
+			return true
+		}
 	}
 	for _, event := range sectionEvents(section) {
 		switch strings.ToLower(strings.TrimSpace(event.Kind)) {
