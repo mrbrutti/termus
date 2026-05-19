@@ -214,6 +214,8 @@ class RenderRequest(BaseModel):
     harmony_chain: str = Field("", description="Chord sequence across all sections, joined.")
     motif: str = Field("", description="Natural-language motif description.")
     inference_steps: int = Field(8, description="Diffusion steps. 8 is turbo-default.")
+    lyrics: str = Field("", description="Lyrics with ACE-Step section tags ([Verse], [Chorus], ...). Empty = pure instrumental.")
+    voice: str = Field("", description="Optional vocal-character hint when lyrics are set, e.g. 'raspy male tenor'.")
 
 
 class HealthResponse(BaseModel):
@@ -298,6 +300,8 @@ async def render(req: RenderRequest, http_request: Request) -> Response:
         harmony_chain=req.harmony_chain,
         motif=req.motif,
         inference_steps=req.inference_steps,
+        lyrics=req.lyrics,
+        voice=req.voice,
     )
 
     t0 = time.time()

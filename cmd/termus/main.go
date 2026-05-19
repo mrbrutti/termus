@@ -114,7 +114,7 @@ func main() {
 	acestepServiceURL := flag.String("acestep-service-url", "",
 		"connect to an externally-managed ACE-Step daemon at this URL instead of spawning one")
 	acestepCrossfade := flag.Float64("acestep-crossfade", 3.0, "crossfade seconds between ACE-Step renders")
-	acestepQueueDepth := flag.Int("acestep-queue-depth", 2, "look-ahead queue depth for ACE-Step streaming")
+	acestepQueueDepth := flag.Int("acestep-queue-depth", 1, "look-ahead queue depth for ACE-Step streaming (default 1: generate next while current plays, no extra concurrent loads)")
 	acestepMaxTracks := flag.Int("acestep-max-tracks", 0, "stop after N ACE-Step renders (0 = infinite)")
 	acestepOutputDir := flag.String("acestep-output-dir", "", "also save each ACE-Step render to this directory")
 	acestepRenderTimeout := flag.Duration("acestep-render-timeout", 5*time.Minute, "per-render HTTP timeout")

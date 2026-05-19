@@ -70,6 +70,23 @@ type AcestepSpec struct {
 	// InferenceSteps is the diffusion step count override. 0 = use the
 	// turbo default (8). Higher values trade speed for quality.
 	InferenceSteps int `yaml:"inference_steps,omitempty"`
+
+	// Lyrics, if non-empty, instructs ACE-Step to generate vocals using these
+	// lyrics over the instrumentation described in Style/Tags. Use ACE-Step's
+	// section tag convention to control phrasing, e.g.
+	//
+	//   [Verse]
+	//   ...
+	//   [Chorus]
+	//   ...
+	//
+	// Empty Lyrics = pure instrumental (the previous default).
+	Lyrics string `yaml:"lyrics,omitempty"`
+
+	// Voice is a natural-language vocal-character hint that prepends the
+	// caption when Lyrics is set, e.g. "raspy male tenor, intimate delivery"
+	// or "smoky female alto with vibrato". Ignored when Lyrics is empty.
+	Voice string `yaml:"voice,omitempty"`
 }
 
 // AcestepSection is one v3 section entry.

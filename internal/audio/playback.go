@@ -613,8 +613,15 @@ func (p *Playback) SwitchToACEStep(ctx context.Context, opts ACEStepSwitchOption
 	p.activeBackend = nil
 	p.root = nil
 	p.mu.Unlock()
+	// Tear down the SF2 backend SYNCHRONOUSLY. Doing this in a goroutine
+	// (the previous behavior) leaked into the next engine's setup: the
+	// streamer's speakerSink would call speaker.Init while the SF2 audio
+	// loop was still pushing samples, which on macOS oto/CoreAudio races
+	// the device handle and silently produces no audio. Waiting here adds
+	// at most a few hundred ms; the user is already on a multi-second
+	// loader so this is invisible.
 	if oldBackend != nil {
-		go oldBackend.Close()
+		oldBackend.Close()
 	}
 	p.speaker.Clear()
 

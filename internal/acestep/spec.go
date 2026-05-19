@@ -58,4 +58,13 @@ type RenderSpec struct {
 
 	// InferenceSteps is the diffusion step count. 8 is the turbo default.
 	InferenceSteps int `json:"inference_steps,omitempty"`
+
+	// Lyrics, when non-empty, switches the daemon out of instrumental mode
+	// and asks the model to generate vocals using these lyrics. Use ACE-Step
+	// section tags (e.g. [Verse], [Chorus], [Bridge]) to shape phrasing.
+	Lyrics string `json:"lyrics,omitempty"`
+
+	// Voice is an optional vocal-character hint that gets prepended to the
+	// caption when Lyrics is set, e.g. "raspy male tenor, intimate".
+	Voice string `json:"voice,omitempty"`
 }

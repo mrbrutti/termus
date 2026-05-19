@@ -38,6 +38,8 @@ class RenderSpec:
     harmony_chain: str = ""
     motif: str = ""
     inference_steps: int = 8
+    lyrics: str = ""
+    voice: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -121,11 +123,20 @@ def compile_spec_to_params(spec: RenderSpec) -> Any:
     timesig = time_signature_to_int(spec.time_signature)
     timesig_str = str(timesig) if timesig else ""
 
+    # Vocals path: when the caller supplied lyrics, switch out of instrumental
+    # mode. Optionally prepend a vocal-character hint to the caption — ACE-Step
+    # weighs the first part of the caption heaviest, so voice descriptors land
+    # better up front.
+    lyrics_text = (spec.lyrics or "").strip()
+    has_vocals = bool(lyrics_text)
+    if has_vocals and spec.voice:
+        caption = f"{spec.voice.strip()}, {caption}"
+
     return GenerationParams(
         task_type="text2music",
         caption=caption,
-        lyrics="[Instrumental]",
-        instrumental=True,
+        lyrics=lyrics_text if has_vocals else "[Instrumental]",
+        instrumental=not has_vocals,
         bpm=bpm,
         keyscale=spec.key or "",
         timesignature=timesig_str,
@@ -137,5 +148,7 @@ def compile_spec_to_params(spec: RenderSpec) -> Any:
         thinking=True,
         use_cot_caption=True,
         use_cot_metas=(bpm is None or not spec.key),
-        use_cot_language=False,  # instrumental
+        # When there are lyrics, the LM can also enhance the lyric-language
+        # routing; for pure instrumentals there's nothing to route.
+        use_cot_language=has_vocals,
     )

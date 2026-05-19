@@ -141,6 +141,8 @@ func CompileV3(file *track.File) (RenderSpec, error) {
 		HarmonyChain:        harmonyChain,
 		Motif:               strings.TrimSpace(spec.Motif),
 		InferenceSteps:      spec.InferenceSteps,
+		Lyrics:              strings.TrimSpace(spec.Lyrics),
+		Voice:               strings.TrimSpace(spec.Voice),
 	}
 	// ReferenceAudio on the .tm side is a path; the wire side is a base64
 	// blob. The CLI is responsible for the file → b64 read step; the
