@@ -719,6 +719,44 @@ func main() {
 			if err != nil {
 				return tui.TrackEngineSwitchMsg{EntryID: entryID, EntryTitle: entryTitle, Engine: engine, Err: err}
 			}
+			// Compositional context overlay: surface what the AI is
+			// about to render (style paragraph + tags) inside the
+			// loader so the wait feels informative. The AcestepSpec
+			// holds the prompt-shaped Style/Tags; File-level fields
+			// are the fallback when the v3 block is absent.
+			trackCtx := tui.ACEStepTrackContextMsg{Title: entryTitle, Genre: file.Style}
+			if file.Acestep != nil {
+				if file.Acestep.Style != "" {
+					trackCtx.Style = file.Acestep.Style
+				}
+				if len(file.Acestep.Tags) > 0 {
+					trackCtx.Tags = append([]string(nil), file.Acestep.Tags...)
+				}
+			}
+			if trackCtx.Style == "" {
+				trackCtx.Style = file.Description
+			}
+			if len(trackCtx.Tags) == 0 && len(file.Tags) > 0 {
+				trackCtx.Tags = append([]string(nil), file.Tags...)
+			}
+			p.Send(trackCtx)
+			// SF2->ACE-Step pre-roll bridge: build a genre-matched SF2
+			// algorithm so the running Root keeps making music through
+			// the ~30-45s diffusion render. Skipped silently when no SF2
+			// is loaded or the genre directory isn't in our mapping
+			// table — caller treats nil BridgeAlgo as "no bridge".
+			var bridgeAlgo gen.Algorithm
+			if bridgeName := audio.SF2AlgoForACEStepPath(path); bridgeName != "" {
+				if bridgeSpec, ok := gen.Resolve(bridgeName); ok {
+					sfMu.Lock()
+					sfLocal := sf
+					sfMu.Unlock()
+					if !bridgeSpec.RequiresSF2 || sfLocal != nil {
+						bridgeAlgo = bridgeSpec.Build(sfLocal)
+						bridgeAlgo.Seed(*seed)
+					}
+				}
+			}
 			producerFn := buildACEStepProducerFactory(file, path, aceOpts.outputDir)
 			ctx := context.Background()
 			err = playback.SwitchToACEStep(ctx, audio.ACEStepSwitchOptions{
@@ -727,6 +765,7 @@ func main() {
 				MaxTracks:    aceOpts.maxTracks,
 				ProducerFn:   producerFn,
 				Title:        entryTitle,
+				BridgeAlgo:   bridgeAlgo,
 			})
 			return tui.TrackEngineSwitchMsg{EntryID: entryID, EntryTitle: entryTitle, Engine: engine, Err: err}
 		}

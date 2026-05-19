@@ -147,6 +147,13 @@ type StreamerConfig struct {
 	// 0 = infinite. Useful for tests and for the --max-tracks CLI flag.
 	MaxTracks int
 
+	// FirstTrackFadeInFrames, when > 0, ramps seq=0's gain from 0 to 1 over
+	// that many frames at the source rate. Used by the SF2->ACE-Step
+	// pre-roll bridge so ACE-Step doesn't punch in at full volume while
+	// SF2 is fading out. Subsequent tracks use the existing equal-power
+	// crossfade in playOne and are not affected.
+	FirstTrackFadeInFrames int
+
 	// Logger receives one human-readable line per state change. nil =
 	// io.Discard.
 	Logger io.Writer
@@ -472,6 +479,14 @@ func (s *Streamer) playOne(ctx context.Context, current *playableTrack, next *pl
 	// Skip support: wrap toPlay in a stopper.
 	stopCh := make(chan struct{})
 	var src beep.Streamer = toPlay
+	// First-track fade-in: applies only to seq=0 and only when the bridge
+	// has requested a non-zero fade. Wrapping here (innermost, before
+	// pause/scope/record) means the fade ramp is what reaches the
+	// recorder/scope too, which is consistent — the user hears it, the
+	// visualizer reflects it, the WAV captures it.
+	if current.Seq == 0 && s.cfg.FirstTrackFadeInFrames > 0 {
+		src = &fadeInStreamer{src: src, fadeFrames: s.cfg.FirstTrackFadeInFrames}
+	}
 	// Pause wrapper goes innermost so when paused: (a) the underlying
 	// source does not advance (resume picks up where pause hit) and (b)
 	// scope and recorder downstream see silence — matching SF2's pause
@@ -609,6 +624,34 @@ func (p *pauseableStreamer) Stream(samples [][2]float64) (n int, ok bool) {
 
 func (p *pauseableStreamer) Err() error {
 	return p.src.Err()
+}
+
+// fadeInStreamer wraps a source with a linear gain ramp from 0 to 1 over
+// the first fadeFrames samples, then becomes a transparent passthrough.
+// One-shot — does not reset. Used for the seq=0 ramp during the SF2
+// pre-roll bridge.
+type fadeInStreamer struct {
+	src        beep.Streamer
+	fadeFrames int
+	pos        int
+}
+
+func (f *fadeInStreamer) Stream(samples [][2]float64) (n int, ok bool) {
+	n, ok = f.src.Stream(samples)
+	if n == 0 || f.pos >= f.fadeFrames {
+		return
+	}
+	for i := 0; i < n && f.pos < f.fadeFrames; i++ {
+		gain := float64(f.pos) / float64(f.fadeFrames)
+		samples[i][0] *= gain
+		samples[i][1] *= gain
+		f.pos++
+	}
+	return
+}
+
+func (f *fadeInStreamer) Err() error {
+	return f.src.Err()
 }
 
 // skippableStreamer wraps a beep.Streamer with a "stop" signal that causes

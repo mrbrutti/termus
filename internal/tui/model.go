@@ -130,6 +130,17 @@ type ACEStepReadyMsg struct {
 	Detail string
 }
 
+// ACEStepTrackContextMsg surfaces the .tm file's authoring metadata in the
+// loader so the wait feels like a creative system at work rather than a
+// blank progress bar. Sent once at the start of a SwitchToACEStep cycle;
+// the loader displays Style / Tags until ACEStepReadyMsg clears it.
+type ACEStepTrackContextMsg struct {
+	Title string
+	Genre string
+	Style string
+	Tags  []string
+}
+
 type TrackLoadResultMsg struct {
 	EntryID    string
 	EntryTitle string
@@ -174,6 +185,14 @@ type Model struct {
 	startupTitle       string
 	startupDetail      string
 	startupPercent     float64
+
+	// SP30C: compositional context shown beneath the loader bar so the
+	// ~30-45s ACE-Step render feels informative. Set by
+	// ACEStepTrackContextMsg at switch start; cleared by ACEStepReadyMsg.
+	aceContextTitle string
+	aceContextGenre string
+	aceContextStyle string
+	aceContextTags  []string
 
 	// SP23 ACE-Step background rendering indicator. Drives the small
 	// "generating next track…" badge that appears in the playback bar while
@@ -1098,6 +1117,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ACEStepReadyMsg:
 		m.applyACEStepReady(msg)
 		return m, nil
+	case ACEStepTrackContextMsg:
+		m.aceContextTitle = msg.Title
+		m.aceContextGenre = msg.Genre
+		m.aceContextStyle = msg.Style
+		m.aceContextTags = msg.Tags
+		return m, nil
 	case TrackEngineSwitchMsg:
 		if msg.Err != nil {
 			m.startupLoading = false
@@ -1602,6 +1627,10 @@ func (m *Model) applyACEStepRendering(msg ACEStepRenderingMsg) {
 func (m *Model) applyACEStepReady(msg ACEStepReadyMsg) {
 	m.startupLoading = false
 	m.splashVisible = false
+	m.aceContextTitle = ""
+	m.aceContextGenre = ""
+	m.aceContextStyle = ""
+	m.aceContextTags = nil
 	if msg.Detail != "" {
 		m.flashStatus(msg.Detail, 3*time.Second)
 	}
@@ -1957,16 +1986,52 @@ func startupLoadingView(m Model, w, h int, theme ColorTheme, now time.Time) stri
 	if m.startupDetail != "" {
 		detail = lipgloss.NewStyle().Foreground(theme.BarFg).Faint(true).Render(m.startupDetail)
 	}
-	content := lipgloss.JoinVertical(
-		lipgloss.Center,
-		titleLine,
-		"",
-		bar,
-		pct,
-		"",
-		detail,
-	)
+	parts := []string{titleLine, "", bar, pct, "", detail}
+	if ctx := composingContextBlock(m, barW, theme); ctx != "" {
+		parts = append(parts, "", ctx)
+	}
+	content := lipgloss.JoinVertical(lipgloss.Center, parts...)
 	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, content)
+}
+
+// composingContextBlock renders the .tm track's compositional metadata
+// (track title · genre, then style paragraph, then tags) beneath the
+// loader so the wait for ACE-Step's first render feels informative. Empty
+// when no context is set (e.g. pure SF2 startup).
+func composingContextBlock(m Model, maxW int, theme ColorTheme) string {
+	if m.aceContextStyle == "" && len(m.aceContextTags) == 0 &&
+		m.aceContextTitle == "" && m.aceContextGenre == "" {
+		return ""
+	}
+	header := ""
+	switch {
+	case m.aceContextTitle != "" && m.aceContextGenre != "":
+		header = fmt.Sprintf("Composing · %s · %s", m.aceContextTitle, m.aceContextGenre)
+	case m.aceContextTitle != "":
+		header = "Composing · " + m.aceContextTitle
+	case m.aceContextGenre != "":
+		header = "Composing · " + m.aceContextGenre
+	}
+	headStyle := lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true)
+	bodyStyle := lipgloss.NewStyle().Foreground(theme.BarFg).Faint(true).Width(maxW - 4).Align(lipgloss.Center)
+	tagStyle := lipgloss.NewStyle().Foreground(theme.BarHi).Faint(true)
+	lines := make([]string, 0, 4)
+	if header != "" {
+		lines = append(lines, headStyle.Render(header))
+	}
+	if m.aceContextStyle != "" {
+		lines = append(lines, bodyStyle.Render(m.aceContextStyle))
+	}
+	if len(m.aceContextTags) > 0 {
+		const maxTags = 6
+		shown := m.aceContextTags
+		if len(shown) > maxTags {
+			shown = shown[:maxTags]
+		}
+		tagLine := strings.Join(shown, " · ")
+		lines = append(lines, tagStyle.Render(tagLine))
+	}
+	return lipgloss.JoinVertical(lipgloss.Center, lines...)
 }
 
 func renderStartupBrailleBar(wCells, hCells int, progress, phase float64, theme ColorTheme) string {

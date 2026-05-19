@@ -187,6 +187,13 @@ type ACEStepSwitchOptions struct {
 	MaxTracks    int
 	ProducerFn   ACEStepProducerFactory
 	Title        string
+
+	// BridgeAlgo, when non-nil and an SF2 Root is currently driving the
+	// speaker, is hot-swapped into the running Root so SF2 keeps playing a
+	// genre-matched algorithm while ACE-Step renders seq=0. The SF2 Root
+	// is faded to silence and torn down when OnFirstReady fires. Pass nil
+	// to skip the bridge (immediate SF2 teardown, silent loader).
+	BridgeAlgo gen.Algorithm
 }
 
 // Playback is the TUI-friendly audio facade. It owns:
@@ -242,6 +249,13 @@ type Playback struct {
 	// lives across hot-switches so press-r works regardless of which track
 	// is currently playing. SF2 uses its own Root-internal WAV tap.
 	aceRecorder *Recorder
+
+	// bridgeBackend, when non-nil, is the SF2 LiveBackend kept alive
+	// through an SF2->ACE-Step switch as a pre-roll while ACE-Step
+	// renders seq=0. OnFirstReady fades it to silence and Closes it. nil
+	// outside of an active bridge.
+	bridgeBackend *LiveBackend
+	bridgeRoot    *Root
 }
 
 // NewPlayback constructs a Playback. speaker may be nil (DefaultSpeaker is
@@ -648,24 +662,40 @@ func (p *Playback) SwitchToACEStep(ctx context.Context, opts ACEStepSwitchOption
 		}
 	}
 
-	// Tear down the SF2 backend first (release the speaker) so the streamer
-	// has a clean device.
+	// SF2 backend handling. Two paths:
+	//
+	//   1. opts.BridgeAlgo != nil and SF2 is running: keep SF2 playing as
+	//      a pre-roll through the speaker mixer while ACE-Step renders
+	//      seq=0. Hot-swap to the genre-matched algo if it differs. The
+	//      teardown (fade-to-silence + Close) happens in OnFirstReady.
+	//
+	//   2. No bridge (or SF2 wasn't running): tear SF2 down synchronously
+	//      so the streamer hands clean samples to the (shared) speaker.
+	//
+	// SP27 removed the single-Init race that previously forced
+	// synchronous teardown in all cases, so concurrent SF2 + ACE-Step
+	// playback through the mixer is now safe.
 	p.mu.Lock()
 	oldBackend := p.activeBackend
-	p.activeBackend = nil
-	p.root = nil
-	p.mu.Unlock()
-	// Tear down the SF2 backend SYNCHRONOUSLY. Doing this in a goroutine
-	// (the previous behavior) leaked into the next engine's setup: the
-	// streamer's speakerSink would call speaker.Init while the SF2 audio
-	// loop was still pushing samples, which on macOS oto/CoreAudio races
-	// the device handle and silently produces no audio. Waiting here adds
-	// at most a few hundred ms; the user is already on a multi-second
-	// loader so this is invisible.
-	if oldBackend != nil {
-		oldBackend.Close()
+	oldRoot := p.root
+	bridgeOn := opts.BridgeAlgo != nil && oldRoot != nil && oldBackend != nil
+	if bridgeOn {
+		p.bridgeBackend = oldBackend
+		p.bridgeRoot = oldRoot
+		// Hot-swap the running Root to the genre-matched algo with the
+		// default ~200ms fade so the transition isn't a click.
+		oldRoot.SwapAlgorithm(opts.BridgeAlgo)
+	} else {
+		p.activeBackend = nil
+		p.root = nil
 	}
-	p.speaker.Clear()
+	p.mu.Unlock()
+	if !bridgeOn {
+		if oldBackend != nil {
+			oldBackend.Close()
+		}
+		p.speaker.Clear()
+	}
 
 	renderSink := &playbackRenderSink{p: p}
 	prod := opts.ProducerFn(client, renderSink)
@@ -690,6 +720,15 @@ func (p *Playback) SwitchToACEStep(ctx context.Context, opts ACEStepSwitchOption
 	}
 	if p.aceRecorder != nil {
 		streamCfg.RecordSink = p.aceRecorder
+	}
+	// Pre-roll bridge: ramp seq=0 in from 0 over ~1.5s so it doesn't
+	// punch in over the SF2 tail. Mirrored on the SF2 side by the
+	// SwapAlgorithm to silence inside OnFirstReady.
+	p.mu.Lock()
+	bridgeActive := p.bridgeBackend != nil
+	p.mu.Unlock()
+	if bridgeActive {
+		streamCfg.FirstTrackFadeInFrames = synth.SampleRate * 3 / 2
 	}
 	// The streamer's producer fires off an HTTP /render call on its first
 	// loop iteration; on M-series that takes anywhere from ~15s (warm) to
@@ -875,10 +914,20 @@ func (s *playbackRenderSink) OnRendering(seq int, detail string, done bool, err 
 }
 
 func (s *playbackRenderSink) OnFirstReady(detail string) {
-	// Stop the progress ticker started in SwitchToACEStep.
+	// Stop the progress ticker started in SwitchToACEStep and capture
+	// the pre-roll bridge handles so we can fade SF2 out now that
+	// ACE-Step is taking the speaker.
 	s.p.mu.Lock()
 	ch := s.p.firstReadyCh
 	s.p.firstReadyCh = nil
+	bridgeBackend := s.p.bridgeBackend
+	bridgeRoot := s.p.bridgeRoot
+	s.p.bridgeBackend = nil
+	s.p.bridgeRoot = nil
+	// Drop the SF2 refs now so any concurrent Commander call routes to
+	// ACE-Step instead of the soon-to-be-closed SF2.
+	s.p.activeBackend = nil
+	s.p.root = nil
 	s.p.mu.Unlock()
 	if ch != nil {
 		// close-once: another caller may race; recover from a double-close
@@ -888,6 +937,25 @@ func (s *playbackRenderSink) OnFirstReady(detail string) {
 		close(ch)
 	}
 	s.p.currentBus().sendACEReady(detail)
+
+	// Bridge teardown: fade SF2 to silence over ~1.5s (matching
+	// streamCfg.FirstTrackFadeInFrames so the crossfade is symmetric),
+	// then close the SF2 LiveBackend. Running in a goroutine so
+	// OnFirstReady returns immediately and the producer keeps streaming.
+	if bridgeBackend != nil {
+		fadeFrames := synth.SampleRate * 3 / 2
+		if bridgeRoot != nil {
+			bridgeRoot.SwapAlgorithmFade(gen.NewSilence(), fadeFrames)
+		}
+		go func() {
+			// Wait for the fade-out half plus a small safety margin. The
+			// SF2 Root's swap machinery runs fadeOut for fadeFrames then
+			// switches to silence, so by 1.5s + ~50ms we're fully on
+			// silence and safe to close.
+			time.Sleep(time.Second*3/2 + 100*time.Millisecond)
+			bridgeBackend.Close()
+		}()
+	}
 }
 
 // Compile-time assertion: Playback satisfies Commander so callers can pass
