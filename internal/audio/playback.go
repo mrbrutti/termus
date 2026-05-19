@@ -230,6 +230,11 @@ type Playback struct {
 	// caller threading a beep.SampleRate through every call site. Set by
 	// StartSF2 / SetDefaultSampleRate.
 	defaultSampleRate beep.SampleRate
+
+	// firstReadyCh is closed when the ACE-Step producer's first render
+	// completes, signaling the loader's progress ticker to exit. Set per
+	// SwitchToACEStep call; nil between switches.
+	firstReadyCh chan struct{}
 }
 
 // NewPlayback constructs a Playback. speaker may be nil (DefaultSpeaker is
@@ -609,14 +614,15 @@ func (p *Playback) SwitchToACEStep(ctx context.Context, opts ACEStepSwitchOption
 		streamCfg.ScopeSink = p.scopeRing
 	}
 	// The streamer's producer fires off an HTTP /render call on its first
-	// loop iteration; on M-series that takes ~10–30s for a 3-minute track.
-	// Surface that as a status event so the loader doesn't sit silently
-	// on "found existing daemon" the whole time. ACEReady will dismiss
-	// the loader entirely when the first WAV lands.
+	// loop iteration; on M-series that takes anywhere from ~15s (warm) to
+	// 60-90s (cold or complex prompts). Surface a continuously-updating
+	// status with elapsed time so the loader shows real progress instead
+	// of sitting silently. ACEReady (from the producer's first successful
+	// render) dismisses the loader entirely.
 	statusSink.OnStatus(
 		"generating-first-track",
 		"Generating Music",
-		"composing first track (~15s on M-series)…",
+		"composing first track…",
 		0.5,
 		nil,
 	)
@@ -629,11 +635,45 @@ func (p *Playback) SwitchToACEStep(ctx context.Context, opts ACEStepSwitchOption
 		return fmt.Errorf("playback: session switch: %w", err)
 	}
 
+	// Spawn a goroutine that ticks the loader detail with elapsed time
+	// every 2 seconds while the first render is in flight. It exits when
+	// the producer's onFirstReady fires (signaled via firstReadyCh) or
+	// when ctx is cancelled.
+	firstReadyCh := make(chan struct{})
+	p.mu.Lock()
+	p.firstReadyCh = firstReadyCh
+	p.mu.Unlock()
+	go func() {
+		start := time.Now()
+		tick := time.NewTicker(2 * time.Second)
+		defer tick.Stop()
+		for {
+			select {
+			case <-firstReadyCh:
+				return
+			case <-ctx.Done():
+				return
+			case <-tick.C:
+				elapsed := time.Since(start)
+				detail := fmt.Sprintf("composing first track… %s elapsed (warm renders take 15-30s; cold can take 60-90s)", formatElapsed(elapsed))
+				// Hold percent at 0.5; we genuinely don't know how far along we are.
+				statusSink.OnStatus("generating-first-track", "Generating Music", detail, 0.5, nil)
+			}
+		}
+	}()
+
 	p.mu.Lock()
 	p.currentEngine = EngineACEStep
 	p.launched = true
 	p.mu.Unlock()
 	return nil
+}
+
+// formatElapsed renders an elapsed Duration as "M:SS" — the same format the
+// progress ticker uses to update the AI-engine loader.
+func formatElapsed(d time.Duration) string {
+	secs := int(d.Seconds())
+	return fmt.Sprintf("%d:%02d", secs/60, secs%60)
 }
 
 // acquireClient runs the manager bootstrap (or reuses a warm manager) outside
@@ -711,6 +751,18 @@ func (s *playbackRenderSink) OnRendering(seq int, detail string, done bool, err 
 }
 
 func (s *playbackRenderSink) OnFirstReady(detail string) {
+	// Stop the progress ticker started in SwitchToACEStep.
+	s.p.mu.Lock()
+	ch := s.p.firstReadyCh
+	s.p.firstReadyCh = nil
+	s.p.mu.Unlock()
+	if ch != nil {
+		// close-once: another caller may race; recover from a double-close
+		// panic (cheap and only ever triggers if there are concurrent first
+		// renders, which shouldn't happen but Playback is shared mutable).
+		defer func() { _ = recover() }()
+		close(ch)
+	}
 	s.p.currentBus().sendACEReady(detail)
 }
 
