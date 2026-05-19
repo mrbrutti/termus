@@ -608,6 +608,18 @@ func (p *Playback) SwitchToACEStep(ctx context.Context, opts ACEStepSwitchOption
 	if p.scopeRing != nil {
 		streamCfg.ScopeSink = p.scopeRing
 	}
+	// The streamer's producer fires off an HTTP /render call on its first
+	// loop iteration; on M-series that takes ~10–30s for a 3-minute track.
+	// Surface that as a status event so the loader doesn't sit silently
+	// on "found existing daemon" the whole time. ACEReady will dismiss
+	// the loader entirely when the first WAV lands.
+	statusSink.OnStatus(
+		"generating-first-track",
+		"Generating Music",
+		"composing first track (~15s on M-series)…",
+		0.5,
+		nil,
+	)
 	if err := p.session.Switch(ctx, SwitchRequest{
 		Engine:    EngineACEStep,
 		Manager:   manager,
