@@ -35,6 +35,18 @@ type AudioSink interface {
 	Play(ctx context.Context, s beep.Streamer, format beep.Format) error
 }
 
+// ScopeSink receives mono samples drawn from whatever the streamer is
+// currently playing, so the TUI visualizer (which reads from scope.Ring) can
+// move while ACE-Step audio plays. The streamer calls Write on every frame it
+// hands to the AudioSink. A nil ScopeSink is fine — it disables the tap.
+//
+// The concrete production implementation is *scope.Ring, whose Write takes
+// mono samples; we deliberately keep this as a minimal interface so the
+// audio package doesn't depend on internal/scope.
+type ScopeSink interface {
+	Write(samples []float64)
+}
+
 // StreamerConfig controls the streaming behaviour.
 type StreamerConfig struct {
 	// Producer is the source of audio. Required.
@@ -43,6 +55,13 @@ type StreamerConfig struct {
 	// Sink is the destination. When nil, NewStreamer fills in a speaker-backed
 	// sink that initialises the OS audio device on first Play.
 	Sink AudioSink
+
+	// ScopeSink, when non-nil, receives a mono mix of every frame the
+	// streamer pushes to the AudioSink. This is how the ACE-Step playback
+	// path feeds the TUI scope visualizer; the SF2 path wires its own
+	// scope.Ring inside audio.Root.Stream. Leave nil for headless mode
+	// (or tests) to disable the tap.
+	ScopeSink ScopeSink
 
 	// QueueDepth is the look-ahead depth. Default 2 means: while track N
 	// plays, tracks N+1 and N+2 may already be generated and waiting.
@@ -343,7 +362,16 @@ func (s *Streamer) playOne(ctx context.Context, current *playableTrack, next *pl
 
 	// Skip support: wrap toPlay in a stopper.
 	stopCh := make(chan struct{})
-	wrap := &skippableStreamer{src: toPlay, stop: stopCh}
+	var src beep.Streamer = toPlay
+	// Scope tap: if the config has a ScopeSink, wrap the stream so every
+	// frame the speaker consumes also flows into the TUI visualizer's ring
+	// buffer. Mirrors how audio.Root.Stream feeds scope in the SF2 path
+	// (see internal/audio/root.go). With no ScopeSink (headless mode or
+	// tests) this wrapper is skipped entirely.
+	if s.cfg.ScopeSink != nil {
+		src = &scopeTapStreamer{src: src, sink: s.cfg.ScopeSink}
+	}
+	wrap := &skippableStreamer{src: src, stop: stopCh}
 
 	playDone := make(chan error, 1)
 	go func() {
@@ -368,6 +396,36 @@ func (s *Streamer) playOne(ctx context.Context, current *playableTrack, next *pl
 			return
 		}
 	}
+}
+
+// scopeTapStreamer is a transparent passthrough that, after the underlying
+// streamer produces a chunk of samples, mixes them down to mono and pushes
+// them into a ScopeSink. The mono mix matches what audio.Root.Stream does for
+// the SF2 path — (L + R) * 0.5 — so the visualizer sees comparable amplitudes
+// regardless of which engine is feeding it.
+type scopeTapStreamer struct {
+	src  beep.Streamer
+	sink ScopeSink
+	mono []float64 // reused per Stream() call
+}
+
+func (t *scopeTapStreamer) Stream(samples [][2]float64) (n int, ok bool) {
+	n, ok = t.src.Stream(samples)
+	if n > 0 && t.sink != nil {
+		if cap(t.mono) < n {
+			t.mono = make([]float64, n)
+		}
+		mono := t.mono[:n]
+		for i := 0; i < n; i++ {
+			mono[i] = (samples[i][0] + samples[i][1]) * 0.5
+		}
+		t.sink.Write(mono)
+	}
+	return n, ok
+}
+
+func (t *scopeTapStreamer) Err() error {
+	return t.src.Err()
 }
 
 // skippableStreamer wraps a beep.Streamer with a "stop" signal that causes
