@@ -649,6 +649,15 @@ func (p *renderingProducer) Produce(ctx context.Context, seq int) ([]byte, error
 	if spec.Seed >= 0 {
 		spec.Seed += int64(seq)
 	}
+	// Fast-first-track: ACE-Step's generation time scales roughly linearly
+	// with the requested duration. For seq=0 we cap to 30s so the user hears
+	// audio within ~10-15s on M-series instead of waiting for a full 3-min
+	// render (~60-90s). Subsequent tracks use the authored duration. While
+	// the first short track plays (~30s) the streamer prefetches the next
+	// full-length track in the background, so playback stays continuous.
+	if seq == 0 && spec.DurationSeconds > 30 {
+		spec.DurationSeconds = 30
+	}
 	if p.sink != nil {
 		detail := "composing first track (~10s)…"
 		if seq > 0 {

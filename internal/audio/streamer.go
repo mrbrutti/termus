@@ -35,6 +35,59 @@ type AudioSink interface {
 	Play(ctx context.Context, s beep.Streamer, format beep.Format) error
 }
 
+// controllerSink is an AudioSink backed by an externally-owned
+// SpeakerController. Unlike speakerSink (which calls the beep global
+// directly), this respects whoever else is managing the device — typically
+// Playback, which is the single source of truth for speaker init/clear in
+// the merged termus binary.
+//
+// Using this from SwitchToACEStep eliminates the dual-owner race between
+// SF2's Playback.speaker and ACE-Step's freshly-constructed speakerSink
+// that previously caused "no audio after hot-switch" on macOS.
+type controllerSink struct {
+	ctrl SpeakerController
+
+	mu          sync.Mutex
+	initialised bool
+	sampleRate  beep.SampleRate
+}
+
+// NewControllerSink wraps a SpeakerController as an AudioSink so the
+// streamer can route its audio through whoever owns the global device.
+func NewControllerSink(ctrl SpeakerController) AudioSink {
+	return &controllerSink{ctrl: ctrl}
+}
+
+func (s *controllerSink) Play(ctx context.Context, stream beep.Streamer, format beep.Format) error {
+	if s.ctrl == nil {
+		return fmt.Errorf("controllerSink: nil SpeakerController")
+	}
+	s.mu.Lock()
+	if !s.initialised || format.SampleRate != s.sampleRate {
+		if s.initialised {
+			s.ctrl.Clear()
+		}
+		bufSize := format.SampleRate.N(100 * time.Millisecond)
+		if err := s.ctrl.Init(format.SampleRate, bufSize); err != nil {
+			s.mu.Unlock()
+			return fmt.Errorf("controllerSink: ctrl.Init: %w", err)
+		}
+		s.initialised = true
+		s.sampleRate = format.SampleRate
+	}
+	s.mu.Unlock()
+
+	done := make(chan struct{})
+	s.ctrl.Play(beep.Seq(stream, beep.Callback(func() { close(done) })))
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		s.ctrl.Clear()
+		return ctx.Err()
+	}
+}
+
 // ScopeSink receives mono samples drawn from whatever the streamer is
 // currently playing, so the TUI visualizer (which reads from scope.Ring) can
 // move while ACE-Step audio plays. The streamer calls Write on every frame it

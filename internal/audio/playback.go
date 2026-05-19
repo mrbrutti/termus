@@ -633,6 +633,11 @@ func (p *Playback) SwitchToACEStep(ctx context.Context, opts ACEStepSwitchOption
 		CrossfadeSec: opts.CrossfadeSec,
 		MaxTracks:    opts.MaxTracks,
 		Logger:       io.Discard,
+		// Route audio through Playback's SpeakerController so there is one
+		// owner of the global beep.speaker. The previous default (a fresh
+		// internal speakerSink) raced Playback's controller across the
+		// SF2→ACE-Step hot-switch on macOS.
+		Sink: NewControllerSink(p.speaker),
 	}
 	if p.scopeRing != nil {
 		streamCfg.ScopeSink = p.scopeRing
