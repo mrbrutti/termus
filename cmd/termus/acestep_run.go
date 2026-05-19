@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -236,11 +237,15 @@ func runACEStepWithTUI(ctx context.Context, opts acestepOptions) error {
 		if manager != nil {
 			managerHolder.Store(manager)
 		}
+		// "rendering" is the final pre-ready phase; place it close to (but
+		// not at) loadingCeiling so the bar visibly fills as the first track
+		// generates. ACEStepReadyMsg dismisses the overlay entirely once the
+		// first track is queued, so we never need to reach 1.0 here.
 		prog.Send(tui.ACEStepStatusMsg{
 			Phase:   "rendering",
 			Title:   "Generating Music",
 			Detail:  "composing first track (~10s)…",
-			Percent: 0.85,
+			Percent: loadingCeiling,
 		})
 		prod := newRenderingProducer(client, file, opts.trackPath, opts.outputDir, prog)
 		// Hook so the streamer marks "ready" as soon as the first track is
@@ -254,6 +259,10 @@ func runACEStepWithTUI(ctx context.Context, opts acestepOptions) error {
 			CrossfadeSec: opts.crossfadeSec,
 			MaxTracks:    opts.maxTracks,
 			Logger:       io.Discard,
+			// Feed the same scope.Ring the TUI visualizer reads from, so
+			// the waveform display actually moves while ACE-Step audio
+			// plays. The headless path passes nil (no ring needed there).
+			ScopeSink: ring,
 		})
 		if err := s.Start(streamCtx); err != nil {
 			prog.Send(tui.ACEStepStatusMsg{
@@ -355,6 +364,12 @@ func acquireACEStepClient(ctx context.Context, opts acestepOptions, sink message
 // in TUI mode or a stderrSink in headless mode.
 func ensureACEStepReady(ctx context.Context, opts acestepOptions, sink messageSink) (*acestep.Manager, *acestep.Client, error) {
 	installer := acestep.NewInstaller(opts.serviceDir, nil)
+	// Single shared progress tracker so install + status phases advance the
+	// same bar monotonically. Starts at 0 regardless of whether install runs
+	// (SP24 fix: previously the bar jumped to ~0.65 when no install was
+	// needed because each phase had a static target percent).
+	progress := newLoadingProgress()
+	var progressMu sync.Mutex
 	if !installer.IsInstalled() {
 		size := installer.EstimatedSize()
 		// In TUI mode the install prompt would race with the alt-screen; the
@@ -371,11 +386,14 @@ func ensureACEStepReady(ctx context.Context, opts acestepOptions, sink messageSi
 				return nil, nil, errors.New("ACE-Step install declined")
 			}
 		} else if sink != nil {
+			progressMu.Lock()
+			pct := progress.observe("install:prompt")
+			progressMu.Unlock()
 			sink.Send(tui.ACEStepInstallProgressMsg{
 				Phase:   "installing",
 				Title:   "Setting up AI engine",
 				Detail:  fmt.Sprintf("first run: downloading ~%s of model + deps…", humanBytes(size.Total())),
-				Percent: 0.02,
+				Percent: pct,
 			})
 		}
 	}
@@ -395,7 +413,9 @@ func ensureACEStepReady(ctx context.Context, opts acestepOptions, sink messageSi
 			if sink == nil {
 				continue
 			}
-			pct := installEventPercent(ev)
+			progressMu.Lock()
+			pct := progress.observe("install:" + ev.Phase)
+			progressMu.Unlock()
 			sink.Send(tui.ACEStepInstallProgressMsg{
 				Phase:   ev.Phase,
 				Title:   installPhaseTitle(ev.Phase),
@@ -411,7 +431,9 @@ func ensureACEStepReady(ctx context.Context, opts acestepOptions, sink messageSi
 			if sink == nil {
 				continue
 			}
-			pct := statusEventPercent(ev)
+			progressMu.Lock()
+			pct := progress.observe("status:" + ev.Phase)
+			progressMu.Unlock()
 			sink.Send(tui.ACEStepStatusMsg{
 				Phase:   ev.Phase,
 				Title:   statusPhaseTitle(ev.Phase),
@@ -464,37 +486,53 @@ func statusPhaseTitle(phase string) string {
 	}
 }
 
-// installEventPercent maps installer phases to a coarse loader percentage.
-// The installer doesn't yet expose precise progress so we approximate.
-func installEventPercent(ev acestep.InstallEvent) float64 {
-	switch ev.Phase {
-	case "install:python", "python":
-		return 0.10
-	case "install:deps", "deps", "pip":
-		return 0.30
-	case "install:model", "model":
-		return 0.55
-	case "install:done", "done":
-		return 0.65
-	}
-	return 0.05
+// loadingProgress is a stateful, monotonic loader-percent tracker. It exists
+// because the old static phase->percent maps assumed every cold-start phase
+// would fire; when the daemon was already installed the bar jumped straight
+// to ~0.65 on first paint (SP24 issue: "you start at 85%? the loading makes
+// no sense.").
+//
+// The fix is to start at 0 and nudge the percent forward each time a *new*
+// phase arrives, regardless of which phases the run hits. Each unique phase
+// advances by a fixed step (loadingStep), capped at loadingCeiling until the
+// final ACEStepReadyMsg lands and sets the bar to 1.0. Repeat events for the
+// same phase don't double-count.
+type loadingProgress struct {
+	seen map[string]struct{}
+	cur  float64
 }
 
-// statusEventPercent maps manager phases to a coarse loader percentage.
-func statusEventPercent(ev acestep.StatusEvent) float64 {
-	switch ev.Phase {
-	case "checking-install":
-		return 0.05
-	case "installing":
-		return 0.10
-	case "starting-daemon":
-		return 0.65
-	case "loading-model":
-		return 0.78
-	case "ready":
-		return 0.85
+// loadingStep is how much each newly-seen phase nudges the bar forward.
+// 0.15 lets a typical warm-start sequence (checking-install -> starting-daemon
+// -> loading-model -> ready) progress 0.15 -> 0.30 -> 0.45 -> 0.60 before the
+// first-render phase brings it the rest of the way. Cold starts hit more
+// phases and converge nicely toward the ceiling.
+const loadingStep = 0.15
+
+// loadingCeiling caps the percent until ACEStepReadyMsg explicitly lands it
+// at 1.0. Keeps the bar visibly short of "done" while the model loads /
+// first track renders.
+const loadingCeiling = 0.95
+
+func newLoadingProgress() *loadingProgress {
+	return &loadingProgress{seen: make(map[string]struct{})}
+}
+
+// observe nudges the percent forward when phase is new. Returns the current
+// percent so callers can stamp it onto the outgoing tea.Msg.
+func (p *loadingProgress) observe(phase string) float64 {
+	if phase == "" {
+		return p.cur
 	}
-	return 0.05
+	if _, ok := p.seen[phase]; ok {
+		return p.cur
+	}
+	p.seen[phase] = struct{}{}
+	p.cur += loadingStep
+	if p.cur > loadingCeiling {
+		p.cur = loadingCeiling
+	}
+	return p.cur
 }
 
 // confirmInstall prompts the user to confirm a ~11.5 GB download. Returns

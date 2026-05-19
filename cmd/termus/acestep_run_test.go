@@ -148,33 +148,69 @@ func TestStderrSinkSurfacesReadyMessage(t *testing.T) {
 	}
 }
 
-// TestInstallEventPercentMonotone ensures the install percentages we expose to
-// the loader never regress as the install proceeds. The exact numbers are
-// approximations; the property under test is monotonicity.
-func TestInstallEventPercentMonotone(t *testing.T) {
-	phases := []string{"python", "deps", "model", "done"}
+// TestLoadingProgressStartsAtZero is the SP24 regression check: the bar must
+// start at 0% rather than jumping to whatever the first phase's static target
+// percent used to be (~0.65 for "starting-daemon" on a warm boot).
+func TestLoadingProgressStartsAtZero(t *testing.T) {
+	p := newLoadingProgress()
+	if p.cur != 0 {
+		t.Fatalf("initial percent = %f, want 0", p.cur)
+	}
+}
+
+// TestLoadingProgressMonotone confirms that as new phases arrive the bar only
+// ever moves forward (or stays put when a phase repeats), and stays at or
+// below loadingCeiling.
+func TestLoadingProgressMonotone(t *testing.T) {
+	p := newLoadingProgress()
+	phases := []string{
+		"install:python",
+		"install:deps",
+		"install:model",
+		"install:done",
+		"status:starting-daemon",
+		"status:loading-model",
+		"status:ready",
+	}
 	last := -1.0
-	for _, p := range phases {
-		got := installEventPercent(acestep.InstallEvent{Phase: p})
+	for _, ph := range phases {
+		got := p.observe(ph)
 		if got < last {
-			t.Fatalf("percent regressed at phase %q: %f < %f", p, got, last)
+			t.Fatalf("percent regressed at phase %q: %f < %f", ph, got, last)
+		}
+		if got > loadingCeiling+1e-9 {
+			t.Fatalf("percent at phase %q = %f exceeded ceiling %f", ph, got, loadingCeiling)
 		}
 		last = got
 	}
 }
 
-// TestStatusEventPercentMonotone covers the daemon-lifecycle phases.
-func TestStatusEventPercentMonotone(t *testing.T) {
-	phases := []string{"checking-install", "installing", "starting-daemon", "loading-model", "ready"}
-	last := -1.0
-	for _, p := range phases {
-		got := statusEventPercent(acestep.StatusEvent{Phase: p})
-		if got < last {
-			t.Fatalf("percent regressed at phase %q: %f < %f", p, got, last)
-		}
-		last = got
+// TestLoadingProgressRepeatedPhaseDoesNotAdvance covers the case where the
+// installer or manager emits multiple events for the same phase: the bar
+// should advance once per unique phase, not per event.
+func TestLoadingProgressRepeatedPhaseDoesNotAdvance(t *testing.T) {
+	p := newLoadingProgress()
+	first := p.observe("install:deps")
+	again := p.observe("install:deps")
+	if first != again {
+		t.Fatalf("repeated phase advanced bar: %f -> %f", first, again)
 	}
 }
+
+// TestLoadingProgressWarmBootStartsLow is the explicit SP24 scenario: when no
+// install is needed, the first phase we see is something like
+// "status:starting-daemon". The bar should be a single step from 0, not the
+// old 0.65 target.
+func TestLoadingProgressWarmBootStartsLow(t *testing.T) {
+	p := newLoadingProgress()
+	got := p.observe("status:starting-daemon")
+	if got > 0.5 {
+		t.Fatalf("warm-boot first phase percent = %f; expected something well below the old 0.65 jump", got)
+	}
+}
+
+// Reference acestep so the import is still used by other tests in the file.
+var _ = acestep.InstallEvent{}
 
 // TestSinkInterfaceTeaProgramCompat is a compile-time check that *tea.Program
 // satisfies our messageSink interface.
