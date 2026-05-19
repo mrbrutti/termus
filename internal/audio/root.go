@@ -8,6 +8,7 @@ import (
 
 	"github.com/mrbrutti/termus/internal/gen"
 	"github.com/mrbrutti/termus/internal/scope"
+	"github.com/mrbrutti/termus/internal/synth"
 )
 
 // Compile-time assertion: Root must satisfy Commander.
@@ -290,7 +291,7 @@ func (r *Root) handleCommands() {
 					cmd.reply <- recordReply{err: err}
 					continue
 				}
-				w, err := NewWAVWriter(path, 44100, 2)
+				w, err := NewWAVWriter(path, synth.SampleRate, 2)
 				if err != nil {
 					cmd.reply <- recordReply{err: err}
 					continue

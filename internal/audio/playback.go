@@ -15,6 +15,7 @@ import (
 	"github.com/mrbrutti/termus/internal/acestep"
 	"github.com/mrbrutti/termus/internal/gen"
 	"github.com/mrbrutti/termus/internal/scope"
+	"github.com/mrbrutti/termus/internal/synth"
 )
 
 // ProgramSender is the minimal surface tea.Program exposes for asynchronous
@@ -236,6 +237,11 @@ type Playback struct {
 	// completes, signaling the loader's progress ticker to exit. Set per
 	// SwitchToACEStep call; nil between switches.
 	firstReadyCh chan struct{}
+
+	// aceRecorder is the shared WAV recorder for the ACE-Step engine. It
+	// lives across hot-switches so press-r works regardless of which track
+	// is currently playing. SF2 uses its own Root-internal WAV tap.
+	aceRecorder *Recorder
 }
 
 // NewPlayback constructs a Playback. speaker may be nil (DefaultSpeaker is
@@ -252,13 +258,14 @@ func NewPlayback(speakerCtrl SpeakerController, sender ProgramSender, bus *Messa
 		logger = io.Discard
 	}
 	return &Playback{
-		session:    NewPlaybackSession(logger),
-		speaker:    speakerCtrl,
-		bus:        bus,
-		sender:     sender,
-		logger:     logger,
-		aceFactory: factory,
-		initialVol: volumeOrDefault(initialVol),
+		session:     NewPlaybackSession(logger),
+		speaker:     speakerCtrl,
+		bus:         bus,
+		sender:      sender,
+		logger:      logger,
+		aceFactory:  factory,
+		initialVol:  volumeOrDefault(initialVol),
+		aceRecorder: NewRecorder(synth.SampleRate),
 	}
 }
 
@@ -366,15 +373,35 @@ func (p *Playback) TogglePause() {
 	fmt.Fprintln(p.logger, "playback: TogglePause: ignored — ACE-Step streamer has no pause path yet")
 }
 
-// ToggleRecord forwards to the SF2 Root. ACE-Step recording is out of scope.
+// ToggleRecord routes to whichever engine is currently driving the speaker.
+// SF2 uses Root's per-stream WAV tap (filename includes the seed). ACE-Step
+// uses the shared Recorder fed by the streamer's record tap (filename is
+// tagged "ace" so it's distinguishable from SF2 captures). Both produce
+// WAVs at synth.SampleRate stereo in the current working directory.
 func (p *Playback) ToggleRecord() (string, error) {
 	p.mu.Lock()
+	engine := p.currentEngine
 	root := p.root
+	rec := p.aceRecorder
 	p.mu.Unlock()
-	if root == nil {
-		return "", errors.New("playback: recording is only supported on the SF2 engine")
+	switch engine {
+	case EngineSF2:
+		if root == nil {
+			return "", errors.New("playback: SF2 engine not ready")
+		}
+		return root.ToggleRecord()
+	case EngineACEStep:
+		if rec == nil {
+			return "", errors.New("playback: ACE-Step recorder not initialised")
+		}
+		active, _ := rec.Active()
+		if active {
+			return "", rec.ToggleStop()
+		}
+		return rec.ToggleStart("ace")
+	default:
+		return "", errors.New("playback: no active engine")
 	}
-	return root.ToggleRecord()
 }
 
 // DebugStatus returns the SF2 Root's status when active; otherwise a zero
@@ -646,6 +673,9 @@ func (p *Playback) SwitchToACEStep(ctx context.Context, opts ACEStepSwitchOption
 	}
 	if p.scopeRing != nil {
 		streamCfg.ScopeSink = p.scopeRing
+	}
+	if p.aceRecorder != nil {
+		streamCfg.RecordSink = p.aceRecorder
 	}
 	// The streamer's producer fires off an HTTP /render call on its first
 	// loop iteration; on M-series that takes anywhere from ~15s (warm) to

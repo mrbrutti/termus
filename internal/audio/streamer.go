@@ -125,6 +125,15 @@ type StreamerConfig struct {
 	// (or tests) to disable the tap.
 	ScopeSink ScopeSink
 
+	// RecordSink, when non-nil, receives every stereo frame the streamer
+	// pushes to the speaker. Used by Playback to attach a *Recorder that
+	// toggles WAV capture on/off at runtime; the tap stays wired across
+	// tracks so the user can press-r mid-playlist. Mirror of SF2's
+	// per-Root wav tap.
+	RecordSink interface {
+		Write(frames [][2]float64)
+	}
+
 	// QueueDepth is the look-ahead depth. Default 2 means: while track N
 	// plays, tracks N+1 and N+2 may already be generated and waiting.
 	QueueDepth int
@@ -454,6 +463,14 @@ func (s *Streamer) playOne(ctx context.Context, current *playableTrack, next *pl
 	if s.cfg.ScopeSink != nil {
 		src = &scopeTapStreamer{src: src, sink: s.cfg.ScopeSink}
 	}
+	// Record tap: wrap after scope so the recorder sees the exact frames
+	// the speaker hears (post-crossfade, post-skip, post-scope). The tap
+	// is installed even when recording is currently off — the Recorder's
+	// Write is a fast no-op when idle, so this keeps press-r working
+	// mid-playlist without restarting the audio path.
+	if s.cfg.RecordSink != nil {
+		src = &recordTapStreamer{src: src, sink: s.cfg.RecordSink}
+	}
 	wrap := &skippableStreamer{src: src, stop: stopCh}
 
 	playDone := make(chan error, 1)
@@ -518,6 +535,30 @@ func (t *scopeTapStreamer) Stream(samples [][2]float64) (n int, ok bool) {
 }
 
 func (t *scopeTapStreamer) Err() error {
+	return t.src.Err()
+}
+
+// recordTapStreamer is a transparent passthrough that copies each produced
+// chunk of stereo frames into a RecordSink (typically a *Recorder). When
+// the recorder is idle the sink's Write is a no-op, so this tap can stay
+// installed across the streamer's whole lifetime — press-r toggles capture
+// without needing to rebuild the audio chain.
+type recordTapStreamer struct {
+	src  beep.Streamer
+	sink interface {
+		Write(frames [][2]float64)
+	}
+}
+
+func (t *recordTapStreamer) Stream(samples [][2]float64) (n int, ok bool) {
+	n, ok = t.src.Stream(samples)
+	if n > 0 && t.sink != nil {
+		t.sink.Write(samples[:n])
+	}
+	return n, ok
+}
+
+func (t *recordTapStreamer) Err() error {
 	return t.src.Err()
 }
 
