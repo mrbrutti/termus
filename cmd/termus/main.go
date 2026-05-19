@@ -742,19 +742,27 @@ func main() {
 			p.Send(trackCtx)
 			// SF2->ACE-Step pre-roll bridge: build a genre-matched SF2
 			// algorithm so the running Root keeps making music through
-			// the ~30-45s diffusion render. Skipped silently when no SF2
-			// is loaded or the genre directory isn't in our mapping
-			// table — caller treats nil BridgeAlgo as "no bridge".
+			// the ~30-45s diffusion render. Uses buildLiveAlgo so the
+			// SoundFont catalog handles preset loading on-demand (the
+			// default-browser path doesn't pre-populate a raw *sf2
+			// handle, so spec.Build(sf) used to receive nil and the
+			// bridge silently skipped). Skipped only when the genre
+			// directory isn't in our mapping table — caller treats nil
+			// BridgeAlgo as "no bridge".
 			var bridgeAlgo gen.Algorithm
 			if bridgeName := audio.SF2AlgoForACEStepPath(path); bridgeName != "" {
 				if bridgeSpec, ok := gen.Resolve(bridgeName); ok {
-					sfMu.Lock()
-					sfLocal := sf
-					sfMu.Unlock()
-					if !bridgeSpec.RequiresSF2 || sfLocal != nil {
-						bridgeAlgo = bridgeSpec.Build(sfLocal)
-						bridgeAlgo.Seed(*seed)
-					}
+					func() {
+						defer func() {
+							// buildLiveAlgo can panic when its
+							// catalog can't satisfy a required
+							// preset (rare, but possible on first
+							// run with empty cache + no network).
+							// Swallow and skip the bridge.
+							_ = recover()
+						}()
+						bridgeAlgo = buildLiveAlgo(bridgeSpec, *seed)
+					}()
 				}
 			}
 			producerFn := buildACEStepProducerFactory(file, path, aceOpts.outputDir)

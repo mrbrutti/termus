@@ -938,23 +938,17 @@ func (s *playbackRenderSink) OnFirstReady(detail string) {
 	}
 	s.p.currentBus().sendACEReady(detail)
 
-	// Bridge teardown: fade SF2 to silence over ~1.5s (matching
-	// streamCfg.FirstTrackFadeInFrames so the crossfade is symmetric),
-	// then close the SF2 LiveBackend. Running in a goroutine so
-	// OnFirstReady returns immediately and the producer keeps streaming.
-	if bridgeBackend != nil {
-		fadeFrames := synth.SampleRate * 3 / 2
-		if bridgeRoot != nil {
-			bridgeRoot.SwapAlgorithmFade(gen.NewSilence(), fadeFrames)
-		}
-		go func() {
-			// Wait for the fade-out half plus a small safety margin. The
-			// SF2 Root's swap machinery runs fadeOut for fadeFrames then
-			// switches to silence, so by 1.5s + ~50ms we're fully on
-			// silence and safe to close.
-			time.Sleep(time.Second*3/2 + 100*time.Millisecond)
-			bridgeBackend.Close()
-		}()
+	// Bridge teardown: fade SF2 to silence over ~1.5s (symmetric with
+	// the streamer's FirstTrackFadeInFrames). We deliberately do NOT
+	// call bridgeBackend.Close() — that calls speaker.Clear() which
+	// wipes every streamer from beep's global mixer, including the
+	// freshly-started ACE-Step stream. beep's mixer has no per-stream
+	// remove, so the SF2 Root just stays in the mixer emitting silence.
+	// CPU cost is negligible (a tight loop returning zeros). The next
+	// process startup re-Inits the speaker from scratch.
+	_ = bridgeBackend
+	if bridgeRoot != nil {
+		bridgeRoot.SwapAlgorithmFade(gen.NewSilence(), synth.SampleRate*3/2)
 	}
 }
 
