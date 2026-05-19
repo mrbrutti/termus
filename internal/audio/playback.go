@@ -946,8 +946,14 @@ func (s *playbackRenderSink) OnFirstReady(detail string) {
 	// remove, so the SF2 Root just stays in the mixer emitting silence.
 	// CPU cost is negligible (a tight loop returning zeros). The next
 	// process startup re-Inits the speaker from scratch.
+	//
+	// MuteScope is the critical bit: scope.Ring is single-writer, and
+	// without this the SF2 Root keeps racing the ACE-Step streamer's
+	// scope tap on the shared ring — visible as a frozen rectangular
+	// artifact in the centre of the TUI visualiser.
 	_ = bridgeBackend
 	if bridgeRoot != nil {
+		bridgeRoot.MuteScope()
 		bridgeRoot.SwapAlgorithmFade(gen.NewSilence(), synth.SampleRate*3/2)
 	}
 }

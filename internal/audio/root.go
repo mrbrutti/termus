@@ -26,6 +26,7 @@ type Root struct {
 	volume      atomic.Uint32 // 0..100
 	paused      atomic.Bool
 	streaming   atomic.Bool
+	scopeMuted  atomic.Bool // set true when this Root must stop feeding the shared scope.Ring
 	debugStatus atomic.Value
 
 	// command channels for non-hot-path events
@@ -137,6 +138,13 @@ func (r *Root) DebugStatus() gen.DebugStatus {
 	return gen.DebugStatus{}
 }
 
+// MuteScope tells the audio thread to stop writing samples to the shared
+// scope.Ring. Used by the SF2->ACE-Step pre-roll bridge: once ACE-Step's
+// streamer becomes the speaker's primary source, the SF2 Root must stop
+// racing it on the (single-writer) ring or the visualiser shows a frozen
+// artifact. Idempotent.
+func (r *Root) MuteScope() { r.scopeMuted.Store(true) }
+
 // ToggleRecord starts or stops recording. Filename pattern:
 // `termus-<seed>-<unix>.wav` in the current directory.
 func (r *Root) ToggleRecord() (string, error) {
@@ -181,11 +189,17 @@ func (r *Root) Stream(samples [][2]float64) (n int, ok bool) {
 	}
 
 	// Scope tap: mix L+R from the final output to mono and push.
-	mono := r.left // reuse left buffer for the mono mix
-	for i := range mono {
-		mono[i] = (samples[i][0] + samples[i][1]) * 0.5
+	// scope.Ring is single-writer; the SF2->ACE-Step bridge calls
+	// MuteScope on the outgoing Root so the ACE-Step streamer's scope
+	// tap becomes the only writer (concurrent writers produce a frozen
+	// artifact in the centre of the visualiser).
+	if !r.scopeMuted.Load() && r.scope != nil {
+		mono := r.left // reuse left buffer for the mono mix
+		for i := range mono {
+			mono[i] = (samples[i][0] + samples[i][1]) * 0.5
+		}
+		r.scope.Write(mono)
 	}
-	r.scope.Write(mono)
 
 	// WAV tap.
 	if r.wav != nil {
