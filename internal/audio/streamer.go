@@ -508,7 +508,17 @@ type speakerSink struct {
 
 func (s *speakerSink) Play(ctx context.Context, stream beep.Streamer, format beep.Format) error {
 	s.mu.Lock()
-	if !s.initialised {
+	// (Re-)initialise the speaker if this is the first track for this sink
+	// OR if the sample rate has changed since the last init. The latter
+	// happens routinely when termus hot-switches between SF2 (44.1k) and
+	// ACE-Step (48k); beep.speaker.Init is safe to call multiple times and
+	// switches the underlying device to the new rate.
+	if !s.initialised || format.SampleRate != s.sampleRate {
+		// Clear any queued audio before reinit so we don't carry over
+		// half-decoded buffers at the wrong rate.
+		if s.initialised {
+			speaker.Clear()
+		}
 		// 1/10s buffer is a reasonable starting point; small enough
 		// for crossfade transitions to feel snappy without underruns.
 		bufSize := format.SampleRate.N(100 * time.Millisecond)
@@ -518,12 +528,6 @@ func (s *speakerSink) Play(ctx context.Context, stream beep.Streamer, format bee
 		}
 		s.initialised = true
 		s.sampleRate = format.SampleRate
-	} else if format.SampleRate != s.sampleRate {
-		// We don't try to resample on the fly; mismatched-rate tracks
-		// are an error. ACE-Step produces a fixed sample rate per
-		// model, so this should never trip in practice.
-		s.mu.Unlock()
-		return fmt.Errorf("speakerSink: sample rate %d != initialised %d", format.SampleRate, s.sampleRate)
 	}
 	s.mu.Unlock()
 
