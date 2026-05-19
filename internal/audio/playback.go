@@ -698,6 +698,15 @@ func (p *Playback) SwitchToACEStep(ctx context.Context, opts ACEStepSwitchOption
 				pctx, pcancel := context.WithTimeout(context.Background(), 2*time.Second)
 				pr, err := client.Progress(pctx)
 				pcancel()
+				// Re-check firstReadyCh *after* the (potentially slow)
+				// Progress call so we don't emit a stale 50% status that
+				// arrives at the TUI after ACEStepReadyMsg and pins the
+				// loader open while audio is already playing.
+				select {
+				case <-firstReadyCh:
+					return
+				default:
+				}
 				elapsed := time.Since(start)
 				if err != nil || !pr.Active {
 					// Fall back to elapsed-time tick when /progress isn't

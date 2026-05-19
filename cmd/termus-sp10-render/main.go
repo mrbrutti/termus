@@ -70,6 +70,7 @@ func main() {
 		"chill/mountain-fog-drift":          true,
 		"chill/sunset-balcony-loop":         true,
 		"chill/midnight-pool-blue":          true,
+		"chill/slow-burn-sunday":            true,
 		"ambient/deep-sea-cathedral":        true,
 		"ambient/forest-after-rain":         true,
 		"ambient/glacial-slow-drift":        true,
