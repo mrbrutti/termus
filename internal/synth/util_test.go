@@ -6,8 +6,8 @@ import (
 )
 
 func TestSampleRate(t *testing.T) {
-	if SampleRate != 44100 {
-		t.Fatalf("SampleRate = %d, want 44100", SampleRate)
+	if SampleRate != 48000 {
+		t.Fatalf("SampleRate = %d, want 48000", SampleRate)
 	}
 }
 

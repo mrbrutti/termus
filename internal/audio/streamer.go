@@ -47,10 +47,6 @@ type AudioSink interface {
 // that previously caused "no audio after hot-switch" on macOS.
 type controllerSink struct {
 	ctrl SpeakerController
-
-	mu          sync.Mutex
-	initialised bool
-	sampleRate  beep.SampleRate
 }
 
 // NewControllerSink wraps a SpeakerController as an AudioSink so the
@@ -76,26 +72,12 @@ func (s *controllerSink) Play(ctx context.Context, stream beep.Streamer, format 
 		fmt.Fprintln(f)
 	}
 
-	s.mu.Lock()
-	logf("Play called: format.SampleRate=%d format.NumChannels=%d s.initialised=%v s.sampleRate=%d",
-		int(format.SampleRate), format.NumChannels, s.initialised, int(s.sampleRate))
-	if !s.initialised || format.SampleRate != s.sampleRate {
-		if s.initialised {
-			logf("clearing old rate before re-init")
-			s.ctrl.Clear()
-		}
-		bufSize := format.SampleRate.N(100 * time.Millisecond)
-		logf("calling ctrl.Init(sr=%d, bufSize=%d)", int(format.SampleRate), bufSize)
-		if err := s.ctrl.Init(format.SampleRate, bufSize); err != nil {
-			s.mu.Unlock()
-			logf("ctrl.Init FAILED: %v", err)
-			return fmt.Errorf("controllerSink: ctrl.Init: %w", err)
-		}
-		s.initialised = true
-		s.sampleRate = format.SampleRate
-		logf("ctrl.Init OK")
-	}
-	s.mu.Unlock()
+	logf("Play called: format.SampleRate=%d format.NumChannels=%d",
+		int(format.SampleRate), format.NumChannels)
+	// We deliberately do NOT call ctrl.Init here. beep v2's global speaker
+	// can only be Init'd once per process; Playback owns that single call
+	// at startup. The synth.SampleRate constant (48 kHz) governs both
+	// engines so there is no rate handoff to do here.
 
 	done := make(chan struct{})
 	logf("calling ctrl.Play(stream)")
