@@ -49,6 +49,44 @@ type HealthResponse struct {
 	LoadTimeSeconds   float64 `json:"load_time_seconds"`
 }
 
+// ProgressResponse mirrors the JSON shape of GET /progress. Active is true
+// between /render start and /render return; Percent is the model's reported
+// progress in [0, 1]; Detail is the current phase label.
+type ProgressResponse struct {
+	Active         bool    `json:"active"`
+	Percent        float64 `json:"percent"`
+	Detail         string  `json:"detail"`
+	ElapsedSeconds float64 `json:"elapsed_seconds"`
+	RequestSeq     int     `json:"request_seq"`
+}
+
+// Progress calls GET /progress. Returns the daemon's current generation
+// progress, regardless of who originated the /render call (this is the
+// only safe progress source when termus reuses an existing daemon).
+func (c *Client) Progress(ctx context.Context) (ProgressResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/progress", nil)
+	if err != nil {
+		return ProgressResponse{}, fmt.Errorf("acestep: build progress request: %w", err)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return ProgressResponse{}, fmt.Errorf("acestep: GET %s/progress: %w", c.baseURL, err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return ProgressResponse{}, fmt.Errorf("acestep: read progress body: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return ProgressResponse{}, fmt.Errorf("acestep: GET /progress: status=%d body=%s", resp.StatusCode, truncate(string(body), 200))
+	}
+	var p ProgressResponse
+	if err := json.Unmarshal(body, &p); err != nil {
+		return ProgressResponse{}, fmt.Errorf("acestep: parse progress JSON: %w (body=%s)", err, truncate(string(body), 200))
+	}
+	return p, nil
+}
+
 // Health calls GET /health. Returns the full response and a non-nil error
 // only on transport/parse failure - a service that responds with loaded=false
 // is reported as a non-error result with Loaded=false.

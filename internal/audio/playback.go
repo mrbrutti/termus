@@ -652,17 +652,19 @@ func (p *Playback) SwitchToACEStep(ctx context.Context, opts ACEStepSwitchOption
 		return fmt.Errorf("playback: session switch: %w", err)
 	}
 
-	// Spawn a goroutine that ticks the loader detail with elapsed time
-	// every 2 seconds while the first render is in flight. It exits when
-	// the producer's onFirstReady fires (signaled via firstReadyCh) or
-	// when ctx is cancelled.
+	// Poll the daemon's GET /progress endpoint while the first render is
+	// in flight. Maps the model's 0..1 onto our loader's 0.5..0.95 range
+	// so the bar visibly advances during diffusion + VAE decode. Exits
+	// when the producer's onFirstReady fires (firstReadyCh) or ctx
+	// cancels. Polling works for both daemons we spawned and pre-existing
+	// daemons — no stderr capture required.
 	firstReadyCh := make(chan struct{})
 	p.mu.Lock()
 	p.firstReadyCh = firstReadyCh
 	p.mu.Unlock()
 	go func() {
 		start := time.Now()
-		tick := time.NewTicker(2 * time.Second)
+		tick := time.NewTicker(750 * time.Millisecond)
 		defer tick.Stop()
 		for {
 			select {
@@ -671,10 +673,23 @@ func (p *Playback) SwitchToACEStep(ctx context.Context, opts ACEStepSwitchOption
 			case <-ctx.Done():
 				return
 			case <-tick.C:
+				pr, err := client.Progress(ctx)
 				elapsed := time.Since(start)
-				detail := fmt.Sprintf("composing first track… %s elapsed (warm renders take 15-30s; cold can take 60-90s)", formatElapsed(elapsed))
-				// Hold percent at 0.5; we genuinely don't know how far along we are.
-				statusSink.OnStatus("generating-first-track", "Generating Music", detail, 0.5, nil)
+				if err != nil || !pr.Active {
+					// Fall back to elapsed-time tick when /progress isn't
+					// reporting active (very early, very late, or older
+					// server.py without the endpoint).
+					detail := fmt.Sprintf("composing first track… %s elapsed", formatElapsed(elapsed))
+					statusSink.OnStatus("generating-first-track", "Generating Music", detail, 0.5, nil)
+					continue
+				}
+				mapped := 0.5 + pr.Percent*0.45
+				detail := pr.Detail
+				if detail == "" {
+					detail = "generating…"
+				}
+				detail = fmt.Sprintf("%s (%s elapsed)", detail, formatElapsed(elapsed))
+				statusSink.OnStatus("generating-first-track", "Generating Music", detail, mapped, nil)
 			}
 		}
 	}()

@@ -243,6 +243,42 @@ async def health() -> HealthResponse:
     )
 
 
+# Global render-progress state. Updated by the _progress callback inside
+# _generate(); read by clients via GET /progress so they can show a real
+# percentage in their UI during long-running renders. Active is true between
+# /render start and /render return.
+_PROGRESS_STATE: Dict[str, Any] = {
+    "active": False,
+    "percent": 0.0,
+    "detail": "idle",
+    "started_at": 0.0,
+    "updated_at": 0.0,
+    "request_seq": 0,  # increments per /render call so clients can detect resets
+}
+
+
+class ProgressResponse(BaseModel):
+    active: bool
+    percent: float
+    detail: str
+    elapsed_seconds: float
+    request_seq: int
+
+
+@app.get("/progress", response_model=ProgressResponse)
+async def progress() -> ProgressResponse:
+    now = time.time()
+    started = _PROGRESS_STATE.get("started_at", 0.0)
+    elapsed = max(0.0, now - started) if _PROGRESS_STATE.get("active") else 0.0
+    return ProgressResponse(
+        active=bool(_PROGRESS_STATE.get("active", False)),
+        percent=float(_PROGRESS_STATE.get("percent", 0.0)),
+        detail=str(_PROGRESS_STATE.get("detail", "")),
+        elapsed_seconds=float(elapsed),
+        request_seq=int(_PROGRESS_STATE.get("request_seq", 0)),
+    )
+
+
 @app.post("/render")
 async def render(req: RenderRequest, http_request: Request) -> Response:
     if not STATE.loaded:
@@ -321,43 +357,55 @@ def _generate(spec: RenderSpec) -> bytes:
     )
 
     # Progress callback: ACE-Step's generate_music accepts a Gradio-style
-    # progress(value: float, desc: str = "") callback. We re-emit each
-    # progress event as a structured stderr line that the Go-side Manager
-    # parses and forwards to the TUI. Format MUST stay stable; if you
-    # change it, update progress.go's pattern.
+    # progress(value: float, desc: str = "") callback. We update the global
+    # _PROGRESS_STATE so HTTP clients can poll GET /progress for real
+    # generation status. Works for both daemons we own and external ones.
+    _PROGRESS_STATE["active"] = True
+    _PROGRESS_STATE["percent"] = 0.0
+    _PROGRESS_STATE["detail"] = "starting"
+    _PROGRESS_STATE["started_at"] = time.time()
+    _PROGRESS_STATE["updated_at"] = time.time()
+    _PROGRESS_STATE["request_seq"] = int(_PROGRESS_STATE.get("request_seq", 0)) + 1
+
     def _progress(value: float, desc: str = ""):
-        # Clamp + sanitize so the printed line is single-line and
-        # bounded. Desc may contain commas etc., that's fine.
         v = max(0.0, min(1.0, float(value)))
         d = (desc or "").replace("\n", " ").strip()
-        print(f"RENDER_PROGRESS: {v:.3f} {d}", file=sys.stderr, flush=True)
+        _PROGRESS_STATE["percent"] = v
+        _PROGRESS_STATE["detail"] = d
+        _PROGRESS_STATE["updated_at"] = time.time()
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        result = generate_music(
-            dit_handler=STATE.dit_handler,
-            llm_handler=STATE.llm_handler,
-            params=params,
-            config=config,
-            save_dir=tmpdir,
-            progress=_progress,
-        )
-        if not result.success:
-            raise HTTPException(status_code=500, detail=f"generation failed: {result.error or 'unknown'}")
-        if not result.audios:
-            raise HTTPException(status_code=500, detail="generation succeeded but no audios returned")
-        # result.audios is List[Dict] - each dict contains at minimum a path.
-        # The exact key has shifted between forks; we accept several.
-        first: Dict[str, Any] = result.audios[0]
-        path = (
-            first.get("path")
-            or first.get("audio_path")
-            or first.get("filepath")
-            or first.get("file")
-        )
-        if not path or not os.path.exists(path):
-            raise HTTPException(status_code=500, detail=f"audio path missing in result: {first!r}")
-        with open(path, "rb") as f:
-            return f.read()
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = generate_music(
+                dit_handler=STATE.dit_handler,
+                llm_handler=STATE.llm_handler,
+                params=params,
+                config=config,
+                save_dir=tmpdir,
+                progress=_progress,
+            )
+            if not result.success:
+                raise HTTPException(status_code=500, detail=f"generation failed: {result.error or 'unknown'}")
+            if not result.audios:
+                raise HTTPException(status_code=500, detail="generation succeeded but no audios returned")
+            # result.audios is List[Dict] - each dict contains at minimum a path.
+            # The exact key has shifted between forks; we accept several.
+            first: Dict[str, Any] = result.audios[0]
+            path = (
+                first.get("path")
+                or first.get("audio_path")
+                or first.get("filepath")
+                or first.get("file")
+            )
+            if not path or not os.path.exists(path):
+                raise HTTPException(status_code=500, detail=f"audio path missing in result: {first!r}")
+            with open(path, "rb") as f:
+                return f.read()
+    finally:
+        _PROGRESS_STATE["active"] = False
+        _PROGRESS_STATE["percent"] = 1.0
+        _PROGRESS_STATE["detail"] = "done"
+        _PROGRESS_STATE["updated_at"] = time.time()
 
 
 def _mock_wav(spec: RenderSpec) -> bytes:
