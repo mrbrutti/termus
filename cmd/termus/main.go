@@ -550,7 +550,11 @@ func main() {
 	// ACE-Step Streamer, plus the speaker handoff between them. Until any
 	// engine is started it's inert; StartSF2 below brings up the SF2 path
 	// (default) and SwitchToACEStep handles in-TUI hot-switches.
-	playback := audio.NewPlayback(audio.DefaultSpeaker(), nil, nil, nil, os.Stderr, *initialVol)
+	// Engine-switch events flow to the TUI via the MessageBus, not stderr —
+	// passing os.Stderr here would smear log lines across the rendered TUI.
+	// Use io.Discard for the session logger; debug logging goes to a file
+	// if needed (future hook).
+	playback := audio.NewPlayback(audio.DefaultSpeaker(), nil, nil, nil, io.Discard, *initialVol)
 	playback.AttachScopeRing(ring)
 	buildFn := func(s gen.AlgoSpec, algoSeed int64) gen.Algorithm {
 		return gen.WrapDebugStatus(buildLiveAlgo(s, algoSeed), presetLabel(s))
