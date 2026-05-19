@@ -51,9 +51,36 @@ type TrackNavSection struct {
 
 type TrackLoader func(id string) (*gen.Playlist, string, error)
 
+// EngineSwitcher is called when the user picks a track from the browser whose
+// render_engine differs from the currently-active engine (or any AI track at
+// all). Implementations live in cmd/termus and dispatch to
+// audio.Playback.SwitchToACEStep / SwitchToSF2; they spin a goroutine and
+// stream progress to the TUI via the existing tea.Msg surface
+// (StartupLoadMsg, ACEStepStatusMsg, ACEStepReadyMsg, etc.).
+//
+// Returning a tea.Cmd lets the switcher own its own asynchronous lifecycle —
+// the model just dispatches and the switcher's goroutine sends messages back
+// via *tea.Program.Send (captured in main.go).
+//
+// engine is the entry's render_engine string ("sf2", "acestep", or "").
+// entryID and entryTitle are passed through for status text. The returned
+// tea.Cmd may be nil if the switcher handled everything synchronously.
+type EngineSwitcher func(entryID, entryTitle, engine string) tea.Cmd
+
 type AudioControl struct {
 	Retry      func()
 	RenderOnly func()
+}
+
+// TrackEngineSwitchMsg is sent back to the model once an engine-switch
+// initiated by EngineSwitcher has completed (or failed). The model uses it
+// to clear loader state and update activeTrackID. Engine-specific progress
+// continues to flow via ACEStepStatusMsg / ACEStepReadyMsg as before.
+type TrackEngineSwitchMsg struct {
+	EntryID    string
+	EntryTitle string
+	Engine     string // "sf2" | "acestep"
+	Err        error
 }
 
 type StartupLoadMsg struct {
@@ -169,6 +196,7 @@ type Model struct {
 	morphMode         int
 	audioControl      *AudioControl
 	trackLoader       TrackLoader
+	engineSwitcher    EngineSwitcher
 	tracks            []TrackNavEntry
 	trackIdx          int
 	trackStyleIdx     int
@@ -333,6 +361,14 @@ func (m Model) WithTrackBrowser(entries []TrackNavEntry, loader TrackLoader, vis
 	if m.trackIdx >= len(m.tracks) {
 		m.trackIdx = maxInt(0, len(m.tracks)-1)
 	}
+	return m
+}
+
+// WithEngineSwitcher wires the callback the model invokes when the user
+// selects an AI track from the browser. Without this, the model falls back to
+// the legacy "AI track — relaunch with --engine acestep" status flash.
+func (m Model) WithEngineSwitcher(switcher EngineSwitcher) Model {
+	m.engineSwitcher = switcher
 	return m
 }
 
@@ -708,15 +744,24 @@ func (m *Model) loadSelectedTrack() tea.Cmd {
 	if title == "" {
 		title = entry.ID
 	}
-	// SP25: ACE-Step tracks need the AI streaming engine; the running TUI
-	// session in this code path is SF2-backed. Until the unified
-	// PlaybackSession.Switch hot-switch is wired through the live audio
-	// backend, we flash a status message rather than crash with a confusing
-	// SF2 compile error. Users can still launch ACE-Step tracks directly
-	// via `termus --track <path> --engine acestep`.
+	// SP26: ACE-Step tracks route through the EngineSwitcher callback. If
+	// the host wired one (cmd/termus does), we kick off the hot-switch and
+	// rely on the switcher's goroutine to stream ACEStepStatusMsg /
+	// ACEStepReadyMsg back into the model. Without a switcher we keep the
+	// SP25 fallback so legacy callers still see something useful.
 	if strings.EqualFold(entry.Engine, "acestep") || strings.EqualFold(entry.Engine, "ace-step") || strings.EqualFold(entry.Engine, "ai") {
-		m.flashStatus("AI track — relaunch with --engine acestep", 4*time.Second)
-		return nil
+		if m.engineSwitcher == nil {
+			m.flashStatus("AI track — relaunch with --engine acestep", 4*time.Second)
+			return nil
+		}
+		m.startupLoading = true
+		m.startupTitle = "Setting up AI engine"
+		m.startupDetail = "switching engine..."
+		m.startupPercent = 0.05
+		m.splashVisible = true
+		m.activeTrackID = entry.ID
+		m.trackVisible = false
+		return m.engineSwitcher(entry.ID, title, entry.Engine)
 	}
 	m.startupLoading = true
 	m.startupTitle = title
@@ -1052,6 +1097,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case ACEStepReadyMsg:
 		m.applyACEStepReady(msg)
+		return m, nil
+	case TrackEngineSwitchMsg:
+		if msg.Err != nil {
+			m.startupLoading = false
+			m.splashVisible = false
+			m.flashStatus("engine switch failed: "+msg.Err.Error(), 4*time.Second)
+			return m, nil
+		}
+		// Successful engine switch. For ACE-Step the loader stays up until
+		// ACEStepReadyMsg arrives; for SF2 the speaker is already running.
+		if strings.EqualFold(msg.Engine, "sf2") {
+			m.startupLoading = false
+			m.splashVisible = false
+		}
+		m.algo = msg.EntryTitle
+		m.activeTrackID = msg.EntryID
+		m.flashStatus("track: "+msg.EntryTitle, 3*time.Second)
 		return m, nil
 	case TrackLoadResultMsg:
 		m.startupLoading = false
