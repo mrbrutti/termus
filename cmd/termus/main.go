@@ -594,6 +594,7 @@ func main() {
 			EventCount:   entry.EventCount,
 			Complexity:   entry.Complexity,
 			Structure:    structure,
+			Engine:       string(entry.RenderEngine),
 		})
 	}
 	openTrackBrowser := defaultTrackBrowse

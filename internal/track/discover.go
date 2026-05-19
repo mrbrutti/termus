@@ -98,6 +98,7 @@ func Resolve(entries []Entry, input string) (Entry, bool) {
 				EventCount:   eventCount,
 				Complexity:   complexity,
 				Structure:    structure,
+				RenderEngine: file.RenderEngine,
 			}, true
 		}
 	}
@@ -144,6 +145,7 @@ func loadEntry(root, path string) (Entry, error) {
 		EventCount:   eventCount,
 		Complexity:   complexity,
 		Structure:    structure,
+		RenderEngine: file.RenderEngine,
 	}, nil
 }
 
