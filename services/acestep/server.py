@@ -89,40 +89,66 @@ def _detect_backend() -> str:
 def _load_real_model() -> None:
     """Load the actual ACE-Step model. May take 30s+ and several GB of RAM/VRAM.
 
-    Import paths follow the Apple Silicon fork:
-      https://github.com/clockworksquirrel/ace-step-apple-silicon
-    The upstream repo (ace-step/ACE-Step-1.5) exposes the same module layout.
+    Vendored from the upstream ACE-Step repo (see services/acestep/vendor/).
+    The current vendor handler exposes:
+
+        AceStepHandler.initialize_service(project_root, config_path, device='auto', ...)
+        LLMHandler.initialize(checkpoint_dir, lm_model_path, backend='vllm', device='auto', ...)
+
+    `project_root` is auto-detected internally; `config_path` is the DiT
+    model variant directory under checkpoints/ (e.g. "acestep-v15-turbo").
+    `device='auto'` selects mps/cuda/xpu/cpu correctly.
+
+    A previous version of this server called `initialize_service` with
+    kwargs (`dit_model_name=`, `use_mlx=`) that no longer exist on the
+    vendored handler — that caused "TypeError" warmup failures.
     """
     # NOTE: these imports are inside the function so the server still starts
     # in mock mode if the acestep package is not installed.
     from acestep.handler import AceStepHandler           # type: ignore
     from acestep.llm_inference import LLMHandler         # type: ignore
+    from pathlib import Path as _Path
+    import os as _os
+    import traceback as _tb
 
     backend = _detect_backend()
     STATE.backend = backend
     logger.info(f"loading ACE-Step DiT model={STATE.model_name} backend={backend}")
     t0 = time.time()
 
+    # project_root is the directory the handler resolves checkpoints under;
+    # the vendored handler also auto-detects, but we pass an explicit path
+    # so this server stays predictable when launched outside the repo.
+    project_root = str(_Path(__file__).resolve().parent / "vendor" / "ace-step")
+    if not _os.path.isdir(project_root):
+        # Fall back to the handler's own auto-detect when the vendor dir
+        # isn't laid out as expected.
+        project_root = ""
+
     dit = AceStepHandler()
-    # The handler exposes initialize_service() in both forks. Argument names
-    # have shifted across versions; we pass model_name + checkpoint dir if
-    # supported, else fall back to the no-arg form.
     try:
         dit.initialize_service(
-            dit_model_name=STATE.model_name,
-            use_mlx=(backend == "mlx"),
+            project_root=project_root,
+            config_path=STATE.model_name,
+            device="auto",
         )
-    except TypeError:
-        dit.initialize_service()
+    except Exception as exc:
+        STATE.error = f"DiT init failed: {type(exc).__name__}: {exc}\n{_tb.format_exc()}"
+        logger.error(STATE.error)
+        raise
 
     llm = LLMHandler()
     try:
-        llm.initialize_lm_service(
-            lm_model_name=STATE.lm_model_name,
-            use_mlx=(backend == "mlx"),
+        checkpoint_dir = _os.path.join(project_root or ".", "checkpoints")
+        llm.initialize(
+            checkpoint_dir=checkpoint_dir,
+            lm_model_path=STATE.lm_model_name,
+            device="auto",
         )
-    except TypeError:
-        llm.initialize_lm_service()
+    except Exception as exc:
+        STATE.error = f"LLM init failed: {type(exc).__name__}: {exc}\n{_tb.format_exc()}"
+        logger.error(STATE.error)
+        raise
 
     STATE.dit_handler = dit
     STATE.llm_handler = llm
@@ -148,7 +174,12 @@ async def _lifespan(app: FastAPI):
         try:
             _load_real_model()
         except Exception as exc:  # pragma: no cover  -- real model only
-            STATE.error = f"{type(exc).__name__}: {exc}"
+            # _load_real_model() already records a detailed STATE.error with
+            # traceback when DiT or LLM init fails. Only set a generic one
+            # here if no detail was captured (e.g. import failure before
+            # either handler is instantiated).
+            if not STATE.error:
+                STATE.error = f"{type(exc).__name__}: {exc}"
             logger.error(f"failed to load model: {STATE.error}")
             # Continue anyway so /health can report the error.
     yield
