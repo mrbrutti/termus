@@ -654,10 +654,14 @@ func (p *Playback) SwitchToACEStep(ctx context.Context, opts ACEStepSwitchOption
 
 	// Poll the daemon's GET /progress endpoint while the first render is
 	// in flight. Maps the model's 0..1 onto our loader's 0.5..0.95 range
-	// so the bar visibly advances during diffusion + VAE decode. Exits
-	// when the producer's onFirstReady fires (firstReadyCh) or ctx
-	// cancels. Polling works for both daemons we spawned and pre-existing
-	// daemons — no stderr capture required.
+	// so the bar visibly advances during diffusion + VAE decode.
+	//
+	// IMPORTANT: this goroutine MUST NOT be tied to the caller's ctx,
+	// which is typically a per-Cmd context from bubbletea that cancels
+	// the moment SwitchToACEStep returns. Use a fresh background ctx
+	// that the firstReadyCh / Shutdown path can cancel. Each Progress()
+	// call gets its own short timeout so a slow daemon doesn't starve
+	// the tick rate.
 	firstReadyCh := make(chan struct{})
 	p.mu.Lock()
 	p.firstReadyCh = firstReadyCh
@@ -670,10 +674,13 @@ func (p *Playback) SwitchToACEStep(ctx context.Context, opts ACEStepSwitchOption
 			select {
 			case <-firstReadyCh:
 				return
-			case <-ctx.Done():
-				return
 			case <-tick.C:
-				pr, err := client.Progress(ctx)
+				// Per-call ctx with a short deadline. Background-rooted
+				// so an upstream cancel doesn't kill the poller; ours is
+				// firstReadyCh.
+				pctx, pcancel := context.WithTimeout(context.Background(), 2*time.Second)
+				pr, err := client.Progress(pctx)
+				pcancel()
 				elapsed := time.Since(start)
 				if err != nil || !pr.Active {
 					// Fall back to elapsed-time tick when /progress isn't
