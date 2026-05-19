@@ -36,6 +36,13 @@ type Manager struct {
 	Port      int
 	Logger    io.Writer
 
+	// OnProgress, if non-nil, is called with parsed RENDER_PROGRESS lines
+	// from the daemon's stderr (see services/acestep/server.py). The
+	// callback may fire from a goroutine; implementations should be
+	// non-blocking. Set this before EnsureReady is called so the spawned
+	// daemon's stream is captured from the first byte.
+	OnProgress ProgressFunc
+
 	// For tests, allow swapping daemon-spawning behavior.
 	spawner    daemonSpawner
 	probeFn    func(ctx context.Context, url string) (HealthResponse, error)
@@ -154,7 +161,11 @@ func (m *Manager) EnsureReady(ctx context.Context, ch chan<- StatusEvent) (*Clie
 	emit(StatusEvent{Phase: "starting-daemon", Message: "launching ACE-Step daemon"})
 	py := filepath.Join(m.Installer.ServiceDir, "venv", "bin", "python")
 	serverPy := filepath.Join(m.Installer.ServiceDir, "server.py")
-	cmd, err := m.spawner.Start(ctx, m.Installer.ServiceDir, py, []string{serverPy}, m.logger())
+	// Tee the daemon's stderr through a parser that picks up
+	// RENDER_PROGRESS markers (see services/acestep/server.py). If
+	// OnProgress is nil, progressTee returns a plain passthrough.
+	logger := progressTee(m.logger(), m.OnProgress)
+	cmd, err := m.spawner.Start(ctx, m.Installer.ServiceDir, py, []string{serverPy}, logger)
 	if err != nil {
 		emit(StatusEvent{Phase: "starting-daemon", Err: err})
 		return nil, fmt.Errorf("spawn daemon: %w", err)

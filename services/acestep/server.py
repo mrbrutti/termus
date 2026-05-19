@@ -320,6 +320,18 @@ def _generate(spec: RenderSpec) -> bytes:
         audio_format="wav",
     )
 
+    # Progress callback: ACE-Step's generate_music accepts a Gradio-style
+    # progress(value: float, desc: str = "") callback. We re-emit each
+    # progress event as a structured stderr line that the Go-side Manager
+    # parses and forwards to the TUI. Format MUST stay stable; if you
+    # change it, update progress.go's pattern.
+    def _progress(value: float, desc: str = ""):
+        # Clamp + sanitize so the printed line is single-line and
+        # bounded. Desc may contain commas etc., that's fine.
+        v = max(0.0, min(1.0, float(value)))
+        d = (desc or "").replace("\n", " ").strip()
+        print(f"RENDER_PROGRESS: {v:.3f} {d}", file=sys.stderr, flush=True)
+
     with tempfile.TemporaryDirectory() as tmpdir:
         result = generate_music(
             dit_handler=STATE.dit_handler,
@@ -327,6 +339,7 @@ def _generate(spec: RenderSpec) -> bytes:
             params=params,
             config=config,
             save_dir=tmpdir,
+            progress=_progress,
         )
         if not result.success:
             raise HTTPException(status_code=500, detail=f"generation failed: {result.error or 'unknown'}")

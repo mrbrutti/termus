@@ -589,6 +589,23 @@ func (p *Playback) SwitchToACEStep(ctx context.Context, opts ACEStepSwitchOption
 		return err
 	}
 
+	// Wire the manager's OnProgress to the status sink so RENDER_PROGRESS
+	// lines from the daemon emit real percent + description into the TUI.
+	// We map the model's 0..1 progress onto our loader's 0.5..0.95 range so
+	// the bar advances from the "first track" floor (set just below) up
+	// toward 95%, then ACEReady snaps it to 100%.
+	if manager != nil {
+		manager.OnProgress = func(modelPercent float64, detail string) {
+			// 0.5 + modelPercent * 0.45 = 0.5..0.95
+			mapped := 0.5 + modelPercent*0.45
+			d := detail
+			if d == "" {
+				d = "composing first track…"
+			}
+			statusSink.OnStatus("generating-first-track", "Generating Music", d, mapped, nil)
+		}
+	}
+
 	// Tear down the SF2 backend first (release the speaker) so the streamer
 	// has a clean device.
 	p.mu.Lock()
