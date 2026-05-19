@@ -261,6 +261,110 @@ func TestSplashPanelShowsStartupLoading(t *testing.T) {
 	}
 }
 
+// TestLoadSelectedTrackRoutesAITrackThroughEngineSwitcher verifies that
+// picking an AI track from the browser no longer flashes the legacy
+// "relaunch with --engine acestep" status. Instead, the model invokes the
+// wired-up EngineSwitcher and returns its tea.Cmd to bubbletea for execution.
+func TestLoadSelectedTrackRoutesAITrackThroughEngineSwitcher(t *testing.T) {
+	cmdr := &tuiCommanderStub{}
+	var switcherCalled bool
+	var capturedEngine string
+	m := New(nil, cmdr, "Tracks", "Cmin", 42, 70).
+		WithSwitcher([]gen.AlgoSpec{{Name: "ambient", Display: "Ambient"}}, 0, func(spec gen.AlgoSpec, seed int64) gen.Algorithm {
+			return &tuiAlgoStub{name: spec.Name}
+		}).
+		WithTrackBrowser([]TrackNavEntry{{ID: "ai/demo", Style: "ambient", Title: "AI Demo", Engine: "acestep"}}, func(id string) (*gen.Playlist, string, error) {
+			t.Fatalf("trackLoader should NOT be called for an AI track")
+			return nil, "", nil
+		}, true).
+		WithEngineSwitcher(func(id, title, engine string) tea.Cmd {
+			switcherCalled = true
+			capturedEngine = engine
+			return func() tea.Msg {
+				return TrackEngineSwitchMsg{EntryID: id, EntryTitle: title, Engine: engine}
+			}
+		})
+
+	loadCmd := m.loadSelectedTrack()
+	if loadCmd == nil {
+		t.Fatal("expected engine-switch command for AI track")
+	}
+	if !switcherCalled {
+		t.Fatal("EngineSwitcher should be invoked for AI tracks")
+	}
+	if capturedEngine != "acestep" {
+		t.Fatalf("EngineSwitcher engine arg = %q, want acestep", capturedEngine)
+	}
+	if !m.startupLoading {
+		t.Fatalf("track selection should raise the startup loader")
+	}
+	if m.activeTrackID != "ai/demo" {
+		t.Fatalf("activeTrackID = %q, want ai/demo", m.activeTrackID)
+	}
+	if m.trackVisible {
+		t.Fatal("track browser should close after dispatching engine switch")
+	}
+}
+
+// TestLoadSelectedTrackAITrackFallbackWhenNoSwitcher verifies the legacy
+// SP25 behaviour is preserved when no EngineSwitcher is wired: the model
+// flashes the "relaunch" status rather than crashing.
+func TestLoadSelectedTrackAITrackFallbackWhenNoSwitcher(t *testing.T) {
+	cmdr := &tuiCommanderStub{}
+	m := New(nil, cmdr, "Tracks", "Cmin", 42, 70).
+		WithSwitcher([]gen.AlgoSpec{{Name: "ambient", Display: "Ambient"}}, 0, func(spec gen.AlgoSpec, seed int64) gen.Algorithm {
+			return &tuiAlgoStub{name: spec.Name}
+		}).
+		WithTrackBrowser([]TrackNavEntry{{ID: "ai/demo", Style: "ambient", Title: "AI Demo", Engine: "acestep"}}, func(id string) (*gen.Playlist, string, error) {
+			return nil, "", nil
+		}, true)
+
+	if cmd := m.loadSelectedTrack(); cmd != nil {
+		t.Fatalf("expected nil cmd when no EngineSwitcher is wired (legacy fallback)")
+	}
+	if m.status == "" {
+		t.Fatalf("expected legacy status flash for AI track without switcher")
+	}
+}
+
+// TestTrackEngineSwitchMsgDismissesLoaderOnSF2Success verifies the model's
+// TrackEngineSwitchMsg handler clears the startup loader once an SF2 hot-
+// switch reports success. AI tracks keep the loader open until
+// ACEStepReadyMsg arrives.
+func TestTrackEngineSwitchMsgDismissesLoaderOnSF2Success(t *testing.T) {
+	cmdr := &tuiCommanderStub{}
+	m := Model{
+		cmd:            cmdr,
+		startupLoading: true,
+		splashVisible:  true,
+	}
+	updated, _ := m.Update(TrackEngineSwitchMsg{EntryID: "lofi/demo", EntryTitle: "Demo", Engine: "sf2"})
+	got := updated.(Model)
+	if got.startupLoading {
+		t.Fatalf("SF2 engine switch should dismiss the loader")
+	}
+	if got.activeTrackID != "lofi/demo" {
+		t.Fatalf("activeTrackID = %q, want lofi/demo", got.activeTrackID)
+	}
+}
+
+// TestTrackEngineSwitchMsgKeepsLoaderOpenForACEStep verifies the loader stays
+// up after an ACE-Step engine-switch success message; the streamer's
+// ACEStepReadyMsg dismisses it.
+func TestTrackEngineSwitchMsgKeepsLoaderOpenForACEStep(t *testing.T) {
+	cmdr := &tuiCommanderStub{}
+	m := Model{
+		cmd:            cmdr,
+		startupLoading: true,
+		splashVisible:  true,
+	}
+	updated, _ := m.Update(TrackEngineSwitchMsg{EntryID: "ai/demo", EntryTitle: "Demo", Engine: "acestep"})
+	got := updated.(Model)
+	if !got.startupLoading {
+		t.Fatalf("ACE-Step engine switch should keep the loader open until ACEStepReadyMsg")
+	}
+}
+
 func TestLoadSelectedTrackUsesStartupLoaderAndSwapsOnResult(t *testing.T) {
 	cmdr := &tuiCommanderStub{}
 	m := New(nil, cmdr, "Tracks", "Cmin", 42, 70).

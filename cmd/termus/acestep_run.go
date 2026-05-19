@@ -326,6 +326,64 @@ func loadACEStepTrack(path string) (*track.File, error) {
 	return file, nil
 }
 
+// statusSinkAdapter routes tea.Msg events produced by the legacy
+// acquireACEStepClient / ensureACEStepReady code path into an
+// audio.ACEStepStatusSink. Used by the SP26 Playback hot-switch factory so
+// the existing message-flow code can stay unchanged.
+type statusSinkAdapter struct{ s audio.ACEStepStatusSink }
+
+func (a *statusSinkAdapter) Send(msg tea.Msg) {
+	if a.s == nil {
+		return
+	}
+	switch ev := msg.(type) {
+	case tui.ACEStepInstallProgressMsg:
+		a.s.OnInstallProgress(ev.Phase, ev.Title, ev.Detail, ev.Percent, ev.Err)
+	case tui.ACEStepStatusMsg:
+		a.s.OnStatus(ev.Phase, ev.Title, ev.Detail, ev.Percent, ev.Err)
+	}
+}
+
+// buildACEStepFactory wraps the existing acquireACEStepClient code path in
+// the audio.ACEStepFactory shape expected by Playback. The factory captures
+// the per-run opts (port, service URL, etc.) so SwitchToACEStep doesn't have
+// to repeat them.
+func buildACEStepFactory(opts acestepOptions) audio.ACEStepFactory {
+	return func(ctx context.Context, sink audio.ACEStepStatusSink) (*acestep.Client, *acestep.Manager, error) {
+		adapter := &statusSinkAdapter{s: sink}
+		return acquireACEStepClient(ctx, opts, adapter)
+	}
+}
+
+// buildACEStepProducerFactory wraps the existing newRenderingProducer in the
+// audio.ACEStepProducerFactory shape. SP26: per-track rendering progress flows
+// through Playback's render sink (which fans out to the bus) rather than
+// directly to *tea.Program, so the producer can be reused across hot-switches.
+func buildACEStepProducerFactory(file *track.File, trackPath, outputDir string) audio.ACEStepProducerFactory {
+	return func(client *acestep.Client, sink audio.ACEStepRenderSink) audio.AudioProducer {
+		prod := newRenderingProducer(client, file, trackPath, outputDir, &renderSinkAdapter{s: sink})
+		// Re-route onFirstReady through the new sink so Playback knows when
+		// to dismiss the loader.
+		prod.onFirstReady = func() {
+			sink.OnFirstReady("AI engine ready")
+		}
+		return prod
+	}
+}
+
+// renderSinkAdapter translates the tea.Msg events the existing producer
+// emits into the audio.ACEStepRenderSink callbacks Playback exposes.
+type renderSinkAdapter struct{ s audio.ACEStepRenderSink }
+
+func (a *renderSinkAdapter) Send(msg tea.Msg) {
+	if a.s == nil {
+		return
+	}
+	if ev, ok := msg.(tui.ACEStepRenderingMsg); ok {
+		a.s.OnRendering(ev.Seq, ev.Detail, ev.Done, ev.Err)
+	}
+}
+
 // acquireACEStepClient connects to either a managed or externally-running
 // ACE-Step daemon depending on opts. Streams install + status events to the
 // sink (typically a *tea.Program; nil suppresses events).

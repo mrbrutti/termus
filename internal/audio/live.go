@@ -80,6 +80,11 @@ type LiveBackend struct {
 	startFn   func()
 	timeout   time.Duration
 	closeOnce sync.Once
+	// closeMu serialises channel close vs. emit so the "send on closed
+	// channel" race detector report goes away. Without it, watchAttempt
+	// can race with a concurrent Close() and panic when the Stop / engine
+	// switch path is exercised under -race.
+	closeMu sync.Mutex
 }
 
 // StartLive starts the speaker in the background and reports state changes on
@@ -96,6 +101,22 @@ func StartLive(root beep.Streamer, sr beep.SampleRate, bufferSize int, timeout t
 			// that can leave the next launch without working audio on macOS.
 			speaker.Clear()
 		},
+		timeout,
+	)
+}
+
+// startLiveBackendWithController is the seam used by Playback to spin up a
+// LiveBackend whose audio side is driven by an injected SpeakerController.
+// Tests pass a stub speaker; production callers use DefaultSpeaker() and the
+// behaviour is identical to StartLive.
+func startLiveBackendWithController(root beep.Streamer, sr beep.SampleRate, bufferSize int, timeout time.Duration, ctrl SpeakerController) *LiveBackend {
+	if ctrl == nil {
+		return StartLive(root, sr, bufferSize, timeout)
+	}
+	return startLiveBackend(
+		func() error { return ctrl.Init(sr, bufferSize) },
+		func() { ctrl.Play(root) },
+		func() { ctrl.Clear() },
 		timeout,
 	)
 }
@@ -136,18 +157,33 @@ func (b *LiveBackend) SetRenderOnly() {
 
 // Close stops live playback if it was successfully started.
 func (b *LiveBackend) Close() {
+	// closeMu protects against the race where a watchAttempt goroutine
+	// is about to send on b.states while Close is closing the channel.
+	// We hold the lock around the channel close *and* every emit so the
+	// "channel closed" state is observable atomically.
 	b.closed.Store(true)
 	if !b.ready.Swap(false) {
-		b.closeOnce.Do(func() { close(b.states) })
+		b.closeStatesLocked()
 		return
 	}
 	if b.closeFn != nil {
 		b.closeFn()
 	}
+	b.closeStatesLocked()
+}
+
+func (b *LiveBackend) closeStatesLocked() {
+	b.closeMu.Lock()
+	defer b.closeMu.Unlock()
 	b.closeOnce.Do(func() { close(b.states) })
 }
 
 func (b *LiveBackend) emit(state BackendState) {
+	b.closeMu.Lock()
+	defer b.closeMu.Unlock()
+	if b.closed.Load() {
+		return
+	}
 	select {
 	case b.states <- state:
 	default:

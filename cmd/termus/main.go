@@ -546,9 +546,12 @@ func main() {
 	}
 	liveAlgo := gen.WrapDebugStatus(gen.ApplyControlProfile(algo, controlProfile), presetLabel(spec))
 	ring := scope.NewRing(4096)
-	root := audio.NewRoot(liveAlgo, ring)
-	root.SetSeed(*seed)
-	root.SetVolume(*initialVol)
+	// SP26 unified entry: the Playback facade owns the SF2 Root and the
+	// ACE-Step Streamer, plus the speaker handoff between them. Until any
+	// engine is started it's inert; StartSF2 below brings up the SF2 path
+	// (default) and SwitchToACEStep handles in-TUI hot-switches.
+	playback := audio.NewPlayback(audio.DefaultSpeaker(), nil, nil, nil, os.Stderr, *initialVol)
+	playback.AttachScopeRing(ring)
 	buildFn := func(s gen.AlgoSpec, algoSeed int64) gen.Algorithm {
 		return gen.WrapDebugStatus(buildLiveAlgo(s, algoSeed), presetLabel(s))
 	}
@@ -599,7 +602,16 @@ func main() {
 	}
 	openTrackBrowser := defaultTrackBrowse
 
-	model := tui.New(ring, root, spec.Label(), "Cmin", *seed, *initialVol).
+	// Late-bound *tea.Program reference so closures (engine switcher,
+	// message bus) can capture it before the program is constructed.
+	var p *tea.Program
+	progSend := func(msg tea.Msg) {
+		if p != nil {
+			p.Send(msg)
+		}
+	}
+
+	model := tui.New(ring, playback, spec.Label(), "Cmin", *seed, *initialVol).
 		WithDebug(*debugView).
 		WithListeningMode(listenMode.Label).
 		WithControlProfile(&controlProfile).
@@ -631,39 +643,97 @@ func main() {
 	}
 
 	sr := beep.SampleRate(44100)
-	var (
-		liveMu sync.Mutex
-		live   *audio.LiveBackend
-	)
 	model = model.WithAudioControl(&tui.AudioControl{
 		Retry: func() {
-			liveMu.Lock()
-			current := live
-			liveMu.Unlock()
-			if current != nil {
+			if current := playback.ActiveBackend(); current != nil {
 				current.Retry()
 			}
 		},
 		RenderOnly: func() {
-			liveMu.Lock()
-			current := live
-			liveMu.Unlock()
-			if current != nil {
+			if current := playback.ActiveBackend(); current != nil {
 				current.SetRenderOnly()
 			}
 		},
 	})
-	p := tea.NewProgram(model, tea.WithAltScreen())
-	startLive := func() {
-		next := audio.StartLive(root, sr, sr.N(time.Second/20), 3*time.Second)
-		liveMu.Lock()
-		live = next
-		liveMu.Unlock()
-		go func() {
-			for state := range next.States() {
-				p.Send(state)
+
+	// Engine-switch goroutine: when the user picks an AI track from the
+	// browser, the model calls our switcher; we drive Playback.SwitchToACEStep
+	// off-thread so the TUI keeps repainting while the daemon bootstraps and
+	// the first render lands.
+	aceOpts := acestepOptions{
+		serviceURL:   strings.TrimSpace(*acestepServiceURL),
+		crossfadeSec: *acestepCrossfade,
+		queueDepth:   *acestepQueueDepth,
+		maxTracks:    *acestepMaxTracks,
+		outputDir:    *acestepOutputDir,
+		renderTO:     *acestepRenderTimeout,
+		port:         *acestepPort,
+		serviceDir:   defaultACEStepServiceDir(),
+		autoStart:    strings.TrimSpace(*acestepServiceURL) == "",
+		initialVol:   *initialVol,
+	}
+	if !aceOpts.autoStart && aceOpts.serviceURL == "" {
+		aceOpts.serviceURL = fmt.Sprintf("http://localhost:%d", *acestepPort)
+	}
+
+	// Wire the Playback message bus to forward audio-side events into the
+	// TUI via tea.Program.Send. The closures use progSend, which late-binds
+	// to `p` once tea.NewProgram is constructed below.
+	playback.SetMessageBus(&audio.MessageBus{
+		StartupLoad: func(title, detail string, percent float64, done bool) {
+			progSend(tui.StartupLoadMsg{Title: title, Detail: detail, Percent: percent, Done: done})
+		},
+		ACEInstallProgress: func(phase, title, detail string, percent float64, err error) {
+			progSend(tui.ACEStepInstallProgressMsg{Phase: phase, Title: title, Detail: detail, Percent: percent, Err: err})
+		},
+		ACEStatus: func(phase, title, detail string, percent float64, err error) {
+			progSend(tui.ACEStepStatusMsg{Phase: phase, Title: title, Detail: detail, Percent: percent, Err: err})
+		},
+		ACERendering: func(seq int, detail string, done bool, err error) {
+			progSend(tui.ACEStepRenderingMsg{Seq: seq, Detail: detail, Done: done, Err: err})
+		},
+		ACEReady: func(detail string) {
+			progSend(tui.ACEStepReadyMsg{Detail: detail})
+		},
+		BackendState: func(state audio.BackendState) {
+			progSend(state)
+		},
+	})
+	playback.SetACEStepFactory(buildACEStepFactory(aceOpts))
+
+	// Engine switcher: maps tui.EngineSwitcher's (entryID, title, engine)
+	// signature onto Playback.SwitchToACEStep. The returned tea.Cmd dispatches
+	// the switch onto a background goroutine so the UI thread keeps repainting.
+	engineSwitcher := func(entryID, entryTitle, engine string) tea.Cmd {
+		return func() tea.Msg {
+			// Resolve the .tm path for the picked track id.
+			path, err := trackPathFromSelection(entryID)
+			if err != nil {
+				return tui.TrackEngineSwitchMsg{EntryID: entryID, EntryTitle: entryTitle, Engine: engine, Err: err}
 			}
-		}()
+			file, err := loadACEStepTrack(path)
+			if err != nil {
+				return tui.TrackEngineSwitchMsg{EntryID: entryID, EntryTitle: entryTitle, Engine: engine, Err: err}
+			}
+			producerFn := buildACEStepProducerFactory(file, path, aceOpts.outputDir)
+			ctx := context.Background()
+			err = playback.SwitchToACEStep(ctx, audio.ACEStepSwitchOptions{
+				CrossfadeSec: aceOpts.crossfadeSec,
+				QueueDepth:   aceOpts.queueDepth,
+				MaxTracks:    aceOpts.maxTracks,
+				ProducerFn:   producerFn,
+				Title:        entryTitle,
+			})
+			return tui.TrackEngineSwitchMsg{EntryID: entryID, EntryTitle: entryTitle, Engine: engine, Err: err}
+		}
+	}
+	model = model.WithEngineSwitcher(engineSwitcher)
+	p = tea.NewProgram(model, tea.WithAltScreen())
+
+	startLive := func() {
+		if _, err := playback.StartSF2(context.Background(), liveAlgo, *seed, sr); err != nil {
+			fmt.Fprintln(os.Stderr, "audio start:", err)
+		}
 	}
 	if liveStartupLoader {
 		go func() {
@@ -696,7 +766,7 @@ func main() {
 			}
 			if !defaultTrackBrowse {
 				readyAlgo := gen.WrapDebugStatus(buildLiveAlgo(spec, *seed), presetLabel(spec))
-				root.SwapAlgorithmFade(readyAlgo, 0)
+				playback.SwapAlgorithmFade(readyAlgo, 0)
 			}
 			startLive()
 		}()
@@ -707,11 +777,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "tui error:", err)
 		os.Exit(1)
 	}
-	liveMu.Lock()
-	if live != nil {
-		live.Close()
-	}
-	liveMu.Unlock()
+	_ = playback.Stop(context.Background())
 }
 
 // neededPresets returns the deduped list of SoundFont preset names the app
