@@ -246,6 +246,7 @@ func (s *Streamer) playerLoop(ctx context.Context) {
 	// alone with no fade.
 
 	var pending *playableTrack
+	first := true
 	for {
 		var tb trackBuffer
 		var ok bool
@@ -272,6 +273,26 @@ func (s *Streamer) playerLoop(ctx context.Context) {
 			s.setLastError(err)
 			return
 		}
+
+		if first {
+			// First track of the session: play it alone immediately,
+			// don't wait for a second track to arrive. The original
+			// loop required a second track to be received before track
+			// 1 ever began, which meant ~60s of silence if generation
+			// was slow.
+			//
+			// While track 1 plays we'd ideally pre-fetch track 2 for
+			// crossfade, but doing that requires restructuring around
+			// a goroutine that owns the queue read. For now we accept
+			// that the first transition (track 1 → track 2) won't
+			// crossfade. Subsequent tracks crossfade as before.
+			s.playOne(ctx, next, nil)
+			first = false
+			pending = nil
+			s.updateQueueDepth()
+			continue
+		}
+
 		if pending != nil {
 			s.playOne(ctx, pending, next)
 		}
