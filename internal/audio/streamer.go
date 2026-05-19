@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gopxl/beep/v2"
@@ -192,6 +193,12 @@ type Streamer struct {
 	status Status
 
 	started bool
+
+	// paused mirrors audio.Root.paused: when true, the per-track stream
+	// emits silence and does not advance the source, so resume picks up
+	// where pause hit. Shared across all tracks the streamer plays in its
+	// lifetime so pause persists across track boundaries.
+	paused atomic.Bool
 }
 
 // NewStreamer builds a streamer from cfg, filling defaults. Returns a non-nil
@@ -261,6 +268,16 @@ func (s *Streamer) Skip() {
 
 // Status returns a snapshot of the streamer's state. Safe to call from any
 // goroutine.
+// TogglePause flips the streamer's paused flag. While paused the audio
+// callback receives stereo silence and the source streamer is not advanced,
+// so resume picks up where pause was hit. Safe to call from the UI thread.
+// Idempotent across track boundaries: the per-track pauseableStreamer
+// inserted by playOne reads from this shared flag.
+func (s *Streamer) TogglePause() { s.paused.Store(!s.paused.Load()) }
+
+// IsPaused reports the current pause state.
+func (s *Streamer) IsPaused() bool { return s.paused.Load() }
+
 func (s *Streamer) Status() Status {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -455,6 +472,12 @@ func (s *Streamer) playOne(ctx context.Context, current *playableTrack, next *pl
 	// Skip support: wrap toPlay in a stopper.
 	stopCh := make(chan struct{})
 	var src beep.Streamer = toPlay
+	// Pause wrapper goes innermost so when paused: (a) the underlying
+	// source does not advance (resume picks up where pause hit) and (b)
+	// scope and recorder downstream see silence — matching SF2's pause
+	// semantics where audio.Root.Stream zeros the buffer before the
+	// scope/wav taps.
+	src = &pauseableStreamer{src: src, paused: &s.paused}
 	// Scope tap: if the config has a ScopeSink, wrap the stream so every
 	// frame the speaker consumes also flows into the TUI visualizer's ring
 	// buffer. Mirrors how audio.Root.Stream feeds scope in the SF2 path
@@ -560,6 +583,32 @@ func (t *recordTapStreamer) Stream(samples [][2]float64) (n int, ok bool) {
 
 func (t *recordTapStreamer) Err() error {
 	return t.src.Err()
+}
+
+// pauseableStreamer wraps a source streamer with a shared atomic.Bool that,
+// when set, makes Stream emit stereo silence and skip pulling from the
+// source. This freezes the playback position so a TogglePause/Resume
+// round-trip resumes from the same sample. Mirrors how audio.Root.Stream
+// handles pause for the SF2 path (zero the buffer, don't advance the
+// algorithm).
+type pauseableStreamer struct {
+	src    beep.Streamer
+	paused *atomic.Bool
+}
+
+func (p *pauseableStreamer) Stream(samples [][2]float64) (n int, ok bool) {
+	if p.paused.Load() {
+		for i := range samples {
+			samples[i][0] = 0
+			samples[i][1] = 0
+		}
+		return len(samples), true
+	}
+	return p.src.Stream(samples)
+}
+
+func (p *pauseableStreamer) Err() error {
+	return p.src.Err()
 }
 
 // skippableStreamer wraps a beep.Streamer with a "stop" signal that causes

@@ -361,16 +361,30 @@ func (p *Playback) SetVolume(pct int) {
 	}
 }
 
-// TogglePause routes to the active engine. Streamer doesn't yet expose pause
-// (skip is the closest analog) so ACE-Step pause is a no-op with a debug log.
+// TogglePause routes to the active engine. SF2 pauses inside Root.Stream
+// (silence with no algorithm advance); ACE-Step pauses the Streamer (the
+// per-track pauseableStreamer emits silence and holds the source position).
 func (p *Playback) TogglePause() {
 	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.root != nil {
-		p.root.TogglePause()
-		return
+	engine := p.currentEngine
+	root := p.root
+	session := p.session
+	p.mu.Unlock()
+	switch engine {
+	case EngineSF2:
+		if root != nil {
+			root.TogglePause()
+			return
+		}
+	case EngineACEStep:
+		if session != nil {
+			if streamer := session.CurrentStreamer(); streamer != nil {
+				streamer.TogglePause()
+				return
+			}
+		}
 	}
-	fmt.Fprintln(p.logger, "playback: TogglePause: ignored — ACE-Step streamer has no pause path yet")
+	fmt.Fprintln(p.logger, "playback: TogglePause: no active engine")
 }
 
 // ToggleRecord routes to whichever engine is currently driving the speaker.

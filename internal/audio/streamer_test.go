@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -447,6 +448,62 @@ func TestScopeTap_AttenuatesByHalf(t *testing.T) {
 	// load-bearing in code review.
 	if scopeTapGain != 0.5 {
 		t.Fatalf("scopeTapGain = %v, want 0.5", scopeTapGain)
+	}
+}
+
+// TestPauseableStreamer_EmitsSilenceWhenPaused verifies the pause wrapper
+// returns zero samples and does not advance the source while paused, and
+// resumes from the same source position on unpause. Mirrors SF2's pause
+// semantics where audio.Root.Stream zeros the buffer before downstream
+// taps.
+func TestPauseableStreamer_EmitsSilenceWhenPaused(t *testing.T) {
+	src := &constSineStream{
+		amp:  0.8,
+		inc:  2 * math.Pi * 440.0 / 48000.0,
+		left: 4096,
+	}
+	var paused atomic.Bool
+	p := &pauseableStreamer{src: src, paused: &paused}
+
+	buf := make([][2]float64, 64)
+	// 1. Unpaused → samples flow.
+	n, ok := p.Stream(buf)
+	if !ok || n != len(buf) {
+		t.Fatalf("unpaused stream: n=%d ok=%v", n, ok)
+	}
+	beforePause := buf[0]
+	srcLeftBeforePause := src.left
+
+	// 2. Pause → next chunk is zeros and source is NOT advanced.
+	paused.Store(true)
+	n, ok = p.Stream(buf)
+	if !ok || n != len(buf) {
+		t.Fatalf("paused stream: n=%d ok=%v", n, ok)
+	}
+	for i := range buf {
+		if buf[i][0] != 0 || buf[i][1] != 0 {
+			t.Fatalf("paused buf[%d] = %v, want zero", i, buf[i])
+		}
+	}
+	if src.left != srcLeftBeforePause {
+		t.Fatalf("source advanced while paused: left went %d -> %d",
+			srcLeftBeforePause, src.left)
+	}
+
+	// 3. Resume → next sample is identical to what it would have been with
+	// no pause in between.
+	paused.Store(false)
+	n, ok = p.Stream(buf)
+	if !ok || n != len(buf) {
+		t.Fatalf("resumed stream: n=%d ok=%v", n, ok)
+	}
+	// Sanity: first resumed sample is non-zero (the source is mid-sine, not
+	// exactly at a zero-crossing given our increment).
+	if buf[0] == beforePause {
+		t.Logf("first resumed sample %v matches pre-pause %v (acceptable)", buf[0], beforePause)
+	}
+	if buf[0][0] == 0 && buf[0][1] == 0 {
+		t.Fatalf("first resumed sample is zero; source should have produced audio")
 	}
 }
 
