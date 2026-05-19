@@ -34,6 +34,11 @@ type TrackNavEntry struct {
 	EventCount   int
 	Complexity   string
 	Structure    []TrackNavSection
+
+	// Engine is "sf2" or "acestep". Drives the per-row badge in the track
+	// browser. Empty string is treated the same as "sf2" so legacy .tm
+	// files without an explicit render_engine continue to render cleanly.
+	Engine string
 }
 
 type TrackNavSection struct {
@@ -702,6 +707,16 @@ func (m *Model) loadSelectedTrack() tea.Cmd {
 	title := strings.TrimSpace(entry.Title)
 	if title == "" {
 		title = entry.ID
+	}
+	// SP25: ACE-Step tracks need the AI streaming engine; the running TUI
+	// session in this code path is SF2-backed. Until the unified
+	// PlaybackSession.Switch hot-switch is wired through the live audio
+	// backend, we flash a status message rather than crash with a confusing
+	// SF2 compile error. Users can still launch ACE-Step tracks directly
+	// via `termus --track <path> --engine acestep`.
+	if strings.EqualFold(entry.Engine, "acestep") || strings.EqualFold(entry.Engine, "ace-step") || strings.EqualFold(entry.Engine, "ai") {
+		m.flashStatus("AI track — relaunch with --engine acestep", 4*time.Second)
+		return nil
 	}
 	m.startupLoading = true
 	m.startupTitle = title

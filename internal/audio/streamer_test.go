@@ -355,5 +355,100 @@ var (
 	_ AudioSink     = (*recordingSink)(nil)
 )
 
+// recordingScopeSink captures every mono sample the streamer pushes into a
+// scope sink. Used by TestScopeTap_AttenuatesByHalf to verify the SP25
+// scope-tap gain of 0.5.
+type recordingScopeSink struct {
+	mu       sync.Mutex
+	samples  []float64
+}
+
+func (r *recordingScopeSink) Write(samples []float64) {
+	r.mu.Lock()
+	r.samples = append(r.samples, samples...)
+	r.mu.Unlock()
+}
+
+func (r *recordingScopeSink) peak() float64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	peak := 0.0
+	for _, v := range r.samples {
+		abs := v
+		if abs < 0 {
+			abs = -abs
+		}
+		if abs > peak {
+			peak = abs
+		}
+	}
+	return peak
+}
+
+// constSineStream produces a constant-amplitude stereo sine so the scope tap
+// has a deterministic peak to compare against. Returns ok=true forever (caller
+// must wrap with beep.Take or skip-stream to terminate).
+type constSineStream struct {
+	phase float64
+	inc   float64
+	amp   float64
+	left  int // frames remaining; 0 means infinite
+}
+
+func (s *constSineStream) Stream(samples [][2]float64) (int, bool) {
+	if s.left == 0 {
+		// Treat 0 as a small finite count so the caller doesn't spin.
+		s.left = 1024
+	}
+	n := len(samples)
+	if n > s.left {
+		n = s.left
+	}
+	for i := 0; i < n; i++ {
+		v := s.amp * math.Sin(s.phase)
+		samples[i][0] = v
+		samples[i][1] = v
+		s.phase += s.inc
+	}
+	s.left -= n
+	return n, s.left > 0
+}
+
+func (s *constSineStream) Err() error { return nil }
+
+// TestScopeTap_AttenuatesByHalf verifies that the scope-tap mirror is fed at
+// half the source's amplitude (SP25 visualizer normalization). The source
+// peaks at amp; the scope mirror's recorded peak must be approximately
+// amp * 0.5.
+func TestScopeTap_AttenuatesByHalf(t *testing.T) {
+	const amp = 0.8
+	src := &constSineStream{
+		amp:  amp,
+		inc:  2 * math.Pi * 440.0 / 44100.0,
+		left: 4096,
+	}
+	sink := &recordingScopeSink{}
+	tap := &scopeTapStreamer{src: src, sink: sink}
+	// Drain the tap fully; the underlying mono samples will be captured by
+	// the sink as the streamer pulls.
+	buf := make([][2]float64, 256)
+	for {
+		_, ok := tap.Stream(buf)
+		if !ok {
+			break
+		}
+	}
+	got := sink.peak()
+	want := amp * scopeTapGain
+	if math.Abs(got-want) > 0.01 {
+		t.Fatalf("scope-tap peak = %.4f, want approx %.4f (amp=%.2f * gain=%.2f)", got, want, amp, scopeTapGain)
+	}
+	// And confirm scopeTapGain is the documented 0.5 so the constant stays
+	// load-bearing in code review.
+	if scopeTapGain != 0.5 {
+		t.Fatalf("scopeTapGain = %v, want 0.5", scopeTapGain)
+	}
+}
+
 // Catch a typo: unused fmt import would fail compilation, so we use it here.
 var _ = fmt.Sprintf

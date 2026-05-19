@@ -139,8 +139,16 @@ func renderTrackListPane(m Model, w, h int, theme ColorTheme) string {
 			prefix = "• "
 		}
 		titleGlyphs := trackStyleGlyph(entry.Style) + trackSubstyleGlyph(entry.Substyle)
+		badge := renderEngineBadge(entry.Engine, theme, idx == m.trackIdx)
+		// Reserve 6 columns for the badge slot ("[AI] " / "[SF2] ") so
+		// the title block doesn't wobble when scrolling.
+		titleW := maxInt(8, w-5-6)
+		titleLine := prefix + titleGlyphs + " " + trimToWidth(title, titleW)
+		if badge != "" {
+			titleLine = titleLine + " " + badge
+		}
 		block := lipgloss.JoinVertical(lipgloss.Left,
-			lipgloss.NewStyle().Bold(idx == m.trackIdx).Render(prefix+titleGlyphs+" "+trimToWidth(title, maxInt(8, w-5))),
+			lipgloss.NewStyle().Bold(idx == m.trackIdx).Render(titleLine),
 			lipgloss.NewStyle().Faint(true).Render(trimToWidth("  "+meta, maxInt(8, w-2))),
 		)
 		if idx == m.trackIdx {
@@ -163,8 +171,13 @@ func renderTrackDetailPane(m Model, w, h int, theme ColorTheme) string {
 	if title == "" {
 		title = entry.ID
 	}
+	titleLine := trackStyleGlyph(entry.Style) + trackSubstyleGlyph(entry.Substyle) + " " + title
+	badge := renderEngineBadge(entry.Engine, theme, true)
+	if badge != "" {
+		titleLine = titleLine + " " + badge
+	}
 	lines := []string{
-		lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render(trackStyleGlyph(entry.Style) + trackSubstyleGlyph(entry.Substyle) + " " + title),
+		lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render(titleLine),
 	}
 	meta := make([]string, 0, 4)
 	if entry.Style != "" {
@@ -252,6 +265,26 @@ func trackCompactMeta(entry TrackNavEntry) string {
 		return entry.ID
 	}
 	return strings.Join(parts, " · ")
+}
+
+// renderEngineBadge returns the small "[AI]" / "[SF2]" tag shown to the right
+// of a track title, so the user can see at a glance which engine will play
+// a given .tm. Highlighted (the currently-selected row) gets the BarHi color;
+// the others stay faint. An empty engine string is treated as "sf2" — that
+// matches the default for .tm files that omit render_engine entirely.
+func renderEngineBadge(engine string, theme ColorTheme, highlighted bool) string {
+	label := strings.ToUpper(strings.TrimSpace(engine))
+	if label == "" || label == "SF2" {
+		label = "SF2"
+	}
+	if label == "ACESTEP" || label == "ACE-STEP" || label == "ACE" {
+		label = "AI"
+	}
+	text := "[" + label + "]"
+	if highlighted {
+		return lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render(text)
+	}
+	return lipgloss.NewStyle().Foreground(theme.BarFg).Faint(true).Render(text)
 }
 
 func trackStyleGlyph(style string) string {

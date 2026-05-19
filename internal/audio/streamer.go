@@ -403,6 +403,16 @@ func (s *Streamer) playOne(ctx context.Context, current *playableTrack, next *pl
 // them into a ScopeSink. The mono mix matches what audio.Root.Stream does for
 // the SF2 path — (L + R) * 0.5 — so the visualizer sees comparable amplitudes
 // regardless of which engine is feeding it.
+//
+// SP25 visualizer normalization: ACE-Step renders typically peak around
+// -3 dBFS, while SF2 procedural output usually lands at -12 to -18 dBFS.
+// That makes the TUI scope visualizer look like a wall of waveform on AI
+// tracks and a thin ribbon on SF2 tracks. We apply a fixed -6 dB attenuation
+// (×0.5) to the scope-tap copy only, which brings ACE-Step closer to SF2's
+// typical scope range. The speaker output is untouched — only the visualizer
+// tap is scaled.
+const scopeTapGain = 0.5
+
 type scopeTapStreamer struct {
 	src  beep.Streamer
 	sink ScopeSink
@@ -417,7 +427,7 @@ func (t *scopeTapStreamer) Stream(samples [][2]float64) (n int, ok bool) {
 		}
 		mono := t.mono[:n]
 		for i := 0; i < n; i++ {
-			mono[i] = (samples[i][0] + samples[i][1]) * 0.5
+			mono[i] = (samples[i][0] + samples[i][1]) * 0.5 * scopeTapGain
 		}
 		t.sink.Write(mono)
 	}

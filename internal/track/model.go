@@ -611,6 +611,12 @@ type Entry struct {
 	EventCount   int
 	Complexity   string
 	Structure    []EntrySection
+
+	// RenderEngine mirrors File.RenderEngine for the discovered track, so
+	// callers can render an engine badge ("AI" vs "SF2") in the TUI
+	// browser without re-parsing the file. Empty string is treated as
+	// sf2 (the default).
+	RenderEngine RenderEngine
 }
 
 type EntrySection struct {
