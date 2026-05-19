@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"sync"
 	"time"
 
@@ -62,27 +63,53 @@ func (s *controllerSink) Play(ctx context.Context, stream beep.Streamer, format 
 	if s.ctrl == nil {
 		return fmt.Errorf("controllerSink: nil SpeakerController")
 	}
+	// Open the audio debug log lazily so we get visibility into init/play
+	// errors that would otherwise be swallowed by the io.Discard logger.
+	logf := func(format string, args ...interface{}) {
+		f, err := os.OpenFile("/tmp/termus-audio.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+		if err != nil {
+			return
+		}
+		defer f.Close()
+		fmt.Fprintf(f, "[controllerSink %s] ", time.Now().Format("15:04:05.000"))
+		fmt.Fprintf(f, format, args...)
+		fmt.Fprintln(f)
+	}
+
 	s.mu.Lock()
+	logf("Play called: format.SampleRate=%d format.NumChannels=%d s.initialised=%v s.sampleRate=%d",
+		int(format.SampleRate), format.NumChannels, s.initialised, int(s.sampleRate))
 	if !s.initialised || format.SampleRate != s.sampleRate {
 		if s.initialised {
+			logf("clearing old rate before re-init")
 			s.ctrl.Clear()
 		}
 		bufSize := format.SampleRate.N(100 * time.Millisecond)
+		logf("calling ctrl.Init(sr=%d, bufSize=%d)", int(format.SampleRate), bufSize)
 		if err := s.ctrl.Init(format.SampleRate, bufSize); err != nil {
 			s.mu.Unlock()
+			logf("ctrl.Init FAILED: %v", err)
 			return fmt.Errorf("controllerSink: ctrl.Init: %w", err)
 		}
 		s.initialised = true
 		s.sampleRate = format.SampleRate
+		logf("ctrl.Init OK")
 	}
 	s.mu.Unlock()
 
 	done := make(chan struct{})
-	s.ctrl.Play(beep.Seq(stream, beep.Callback(func() { close(done) })))
+	logf("calling ctrl.Play(stream)")
+	s.ctrl.Play(beep.Seq(stream, beep.Callback(func() {
+		logf("playback callback fired (stream finished)")
+		close(done)
+	})))
+	logf("ctrl.Play returned; waiting on done or ctx.Done")
 	select {
 	case <-done:
+		logf("done channel closed; returning nil")
 		return nil
 	case <-ctx.Done():
+		logf("ctx cancelled; calling ctrl.Clear")
 		s.ctrl.Clear()
 		return ctx.Err()
 	}

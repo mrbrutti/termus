@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"sync"
 	"time"
 
@@ -627,12 +628,16 @@ func (p *Playback) SwitchToACEStep(ctx context.Context, opts ACEStepSwitchOption
 
 	renderSink := &playbackRenderSink{p: p}
 	prod := opts.ProducerFn(client, renderSink)
+	// Audio-path debug log. Streamer/sink errors are otherwise swallowed
+	// (they don't reach stderr because that would smear the TUI). Tail
+	// /tmp/termus-audio.log to see init/play errors during hot-switch.
+	debugLog := openAudioDebugLog()
 	streamCfg := StreamerConfig{
 		Producer:     prod,
 		QueueDepth:   opts.QueueDepth,
 		CrossfadeSec: opts.CrossfadeSec,
 		MaxTracks:    opts.MaxTracks,
-		Logger:       io.Discard,
+		Logger:       debugLog,
 		// Route audio through Playback's SpeakerController so there is one
 		// owner of the global beep.speaker. The previous default (a fresh
 		// internal speakerSink) raced Playback's controller across the
@@ -718,6 +723,21 @@ func (p *Playback) SwitchToACEStep(ctx context.Context, opts ACEStepSwitchOption
 	p.launched = true
 	p.mu.Unlock()
 	return nil
+}
+
+// openAudioDebugLog returns a writer for the audio-path debug log. Errors
+// in the streamer/sink chain would otherwise vanish into io.Discard (we
+// can't write to stderr without smearing the TUI alt-screen). Tail
+// /tmp/termus-audio.log during a hot-switch to see what's actually
+// happening. Falls back to io.Discard if the file can't be opened.
+func openAudioDebugLog() io.Writer {
+	path := "/tmp/termus-audio.log"
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return io.Discard
+	}
+	fmt.Fprintf(f, "\n=== playback session opened %s ===\n", time.Now().Format(time.RFC3339))
+	return f
 }
 
 // formatElapsed renders an elapsed Duration as "M:SS" — the same format the
