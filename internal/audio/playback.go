@@ -590,12 +590,13 @@ func (p *Playback) SwitchToSF2(ctx context.Context, algo gen.Algorithm, seed int
 	}
 
 	// Speaker handoff: clear the global mixer (which held the now-stopped
-	// streamer's audio), then re-init at the SF2 sample rate and Play the
-	// new Root via a fresh LiveBackend.
+	// streamer's audio plus any silenced bridge SF2 Roots), then Play the
+	// new Root via a fresh LiveBackend. SP27 collapsed sample-rate handoff
+	// to a single project-wide synth.SampleRate (48 kHz), so re-Init'ing
+	// the speaker here is unnecessary — and actively broken, since beep
+	// v2's global speaker can only be Init'd once per process. Caller has
+	// already paid the Init at startup.
 	p.speaker.Clear()
-	if err := p.speaker.Init(sr, sr.N(time.Second/20)); err != nil {
-		return fmt.Errorf("playback: speaker.Init: %w", err)
-	}
 
 	p.mu.Lock()
 	newRoot := p.buildSF2RootLocked(algo, seed)
