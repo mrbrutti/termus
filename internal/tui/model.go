@@ -1973,13 +1973,13 @@ type helpGroup struct {
 func helpColumns() ([]helpGroup, []helpGroup) {
 	col1 := []helpGroup{
 		{"PLAYBACK", [][2]string{
-			{"space", "play / pause"},
+			{"space", "play/pause"},
 			{"↑ ↓ + −", "volume"},
-			{"n / p", "next / previous algorithm"},
+			{"n / p", "next/previous algorithm"},
 			{"r", "record to ./exports"},
 		}},
 		{"VIEW", [][2]string{
-			{"c / C", "theme / visual"},
+			{"c / C", "theme/visual"},
 			{"z", "zen — scope only"},
 			{"d", "debug narration bar"},
 		}},
@@ -1992,14 +1992,14 @@ func helpColumns() ([]helpGroup, []helpGroup) {
 	col2 := []helpGroup{
 		{"SEEDS", [][2]string{
 			{"[ ]", "browse seeds"},
-			{"a / b", "store slot A / B"},
+			{"a / b", "store slot A/B"},
 			{"tab", "compare A/B"},
-			{"k / x", "keep / reject take"},
+			{"k / x", "keep/reject take"},
 		}},
 		{"INSIDE PANELS", [][2]string{
 			{"↑ ↓", "browse rows"},
 			{"← →", "adjust value"},
-			{"enter", "apply / open"},
+			{"enter", "apply/open"},
 			{"tab", "next section"},
 		}},
 		{"GLOBAL", [][2]string{
