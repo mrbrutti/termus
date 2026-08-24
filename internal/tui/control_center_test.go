@@ -93,14 +93,15 @@ func TestActivatingSavedLibraryClosesControlCenter(t *testing.T) {
 // that will not fit has to be trimmed rather than wrapped — lipgloss's
 // Width().Render() wraps silently, which the per-line assertion catches. The
 // short heights matter too: h=18 leaves the debug tab's structure preview no
-// room, and without vertical clipping it pushes the footer off screen.
+// room, and without vertical clipping it pushes the footer off screen, and
+// h=15 forces the item list into a scrolled window.
 func TestControlsPanelNeverExceedsSize(t *testing.T) {
 	theme := DefaultTheme()
 	sections := []controlTab{
 		controlTabNow, controlTabLook, controlTabMusic, controlTabSeeds,
 		controlTabLibrary, controlTabExport, controlTabAudio, controlTabDebug,
 	}
-	heights := []int{18, 24, 32}
+	heights := []int{15, 18, 24, 32}
 	for _, section := range sections {
 		for _, h := range heights {
 			for w := 40; w <= 200; w++ {
@@ -173,6 +174,100 @@ func TestControlsPanelShowsTransientStatus(t *testing.T) {
 	if quiet := controlsPanel(m, 118, 32, DefaultTheme()); strings.Contains(quiet, "export failed") {
 		t.Fatalf("expired status should not linger:\n%s", quiet)
 	}
+}
+
+// TestControlsPanelWindowsRowsAroundCursor covers the short-terminal case
+// where the nine music macros cannot all be drawn: the list used to be clipped
+// from the tail, so ↑↓ could park the cursor on a row that was never rendered
+// and the pane looked frozen. The visible window now follows the cursor and
+// marks the rows it hides.
+func TestControlsPanelWindowsRowsAroundCursor(t *testing.T) {
+	theme := DefaultTheme()
+
+	bottom := controlsTestModel()
+	bottom.controlRow = 8 // "seed morph", the last macro
+	out := controlsPanel(bottom, 118, 15, theme)
+	if !strings.Contains(out, "seed morph") {
+		t.Fatalf("cursor row scrolled out of view at h=15:\n%s", out)
+	}
+	if !strings.Contains(out, "…") {
+		t.Fatalf("expected a … marker for the rows above the window:\n%s", out)
+	}
+	if line := lineContaining(out, "seed morph"); !strings.Contains(line, "›") {
+		t.Fatalf("cursor marker missing from the seed morph row: %q\n%s", line, out)
+	}
+
+	top := controlsTestModel()
+	top.controlRow = 0 // "density", the first macro
+	out = controlsPanel(top, 118, 15, theme)
+	if !strings.Contains(out, "density") {
+		t.Fatalf("first row missing at h=15:\n%s", out)
+	}
+	if !strings.Contains(out, "…") {
+		t.Fatalf("expected a … marker for the rows below the window:\n%s", out)
+	}
+	if line := lineContaining(out, "density"); !strings.Contains(line, "›") {
+		t.Fatalf("cursor marker missing from the density row: %q\n%s", line, out)
+	}
+	if strings.Contains(out, "seed morph") {
+		t.Fatalf("window should end before the last macro at h=15:\n%s", out)
+	}
+}
+
+// TestControlsPanelLaddersAreAllOrNothing pins the ladder decision to the pane
+// rather than the row: dropping it per row left the macro column ragged at
+// middling widths, with the short titles keeping their ladder and the long
+// ones losing it.
+func TestControlsPanelLaddersAreAllOrNothing(t *testing.T) {
+	theme := DefaultTheme()
+	m := controlsTestModel()
+	// 80 columns is narrow enough that at least one macro cluster overflows.
+	const narrow = 80
+	rightW := maxInt(12, maxInt(1, narrow-4)-14-4)
+	fits := 0
+	for _, item := range m.musicControlItems() {
+		if controlItemFitsLadder(theme, item, rightW) {
+			fits++
+		}
+	}
+	if fits == 0 || fits == len(m.musicControlItems()) {
+		t.Fatalf("w=%d is not a ragged width any more (%d of 9 macros fit); pick another probe width", narrow, fits)
+	}
+	out := controlsPanel(m, narrow, 32, theme)
+	if strings.Contains(out, "air · lean") {
+		t.Fatalf("density kept its ladder while wider rows lost theirs:\n%s", out)
+	}
+	if !strings.Contains(out, "●") || !strings.Contains(out, "steady") {
+		t.Fatalf("pips and value words must survive the ladder drop:\n%s", out)
+	}
+}
+
+// TestControlsPanelFooterKeepsLongStatus guards the footer's shedding order:
+// the status used to be pre-capped to a third of the row before the hints were
+// given a chance to step aside, so a long export error was cut to ~38 columns
+// on a 118-column terminal with ~80 columns going spare.
+func TestControlsPanelFooterKeepsLongStatus(t *testing.T) {
+	m := controlsTestModel()
+	m.status = "export failed: no space left on device while writing exports/wav-"
+	m.status += strings.Repeat("9", 70-len(m.status))
+	m.statusTTL = time.Now().Add(time.Minute)
+	out := controlsPanel(m, 118, 32, DefaultTheme())
+	if !strings.Contains(out, m.status[:60]) {
+		t.Fatalf("footer truncated a 70-char status below 60 chars:\n%s", out)
+	}
+	if !strings.Contains(out, "3 of 8") {
+		t.Fatalf("section index must survive a long status:\n%s", out)
+	}
+}
+
+// lineContaining returns the first rendered line holding needle.
+func lineContaining(out, needle string) string {
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, needle) {
+			return line
+		}
+	}
+	return ""
 }
 
 func TestControlsPanelPipCountMatchesValue(t *testing.T) {
