@@ -1201,14 +1201,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.splashVisible {
 			// Station dial: ←/→ browse stations without dismissing the
 			// splash (playback is already running — this rides the normal
-			// switchAlgo path). Any other key dismisses as before.
+			// switchAlgo path). A loaded playlist owns the algorithm
+			// schedule, so there the arrows stay inert rather than swapping
+			// the algo out from under the scheduler. Any other key dismisses
+			// as before.
 			switch msg.String() {
-			case "left":
-				m.switchAlgo(-1)
-				m.splashUntil = time.Now().Add(5 * time.Second)
-				return m, nil
-			case "right":
-				m.switchAlgo(1)
+			case "left", "right":
+				if m.playlist == nil {
+					step := 1
+					if msg.String() == "left" {
+						step = -1
+					}
+					m.switchAlgo(step)
+				}
 				m.splashUntil = time.Now().Add(5 * time.Second)
 				return m, nil
 			}

@@ -23,6 +23,21 @@ func splashTestModel() Model {
 	return m
 }
 
+// splashStations resolves a spread of stations so the dial has enough
+// entries to wrap onto a second row at narrow widths.
+func splashStations(t *testing.T, names ...string) []gen.AlgoSpec {
+	t.Helper()
+	specs := make([]gen.AlgoSpec, 0, len(names))
+	for _, n := range names {
+		spec, ok := gen.Resolve(n)
+		if !ok {
+			t.Fatalf("gen.Resolve(%q) failed", n)
+		}
+		specs = append(specs, spec)
+	}
+	return specs
+}
+
 func TestSplashScreenShowsWordmarkAndDial(t *testing.T) {
 	m := splashTestModel()
 	out := splashScreen(m, 118, 32, DefaultTheme(), time.Now())
@@ -101,6 +116,110 @@ func TestStartupLoadingSwallowsDialKeys(t *testing.T) {
 	}
 }
 
+// A playlist (radio / --track mode) owns the algorithm schedule: the dial
+// must not swap the algo out from under it, and the splash must not advertise
+// a control that does nothing.
+func TestSplashDialIsInertUnderPlaylist(t *testing.T) {
+	m := splashTestModel()
+	m.playlist = &gen.Playlist{Name: "Radio", Tracks: []gen.Track{{
+		Spec: m.genres[0], Seed: 7, Duration: time.Minute,
+	}}}
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	got := next.(Model)
+	if got.genreIdx != 0 {
+		t.Fatalf("genreIdx = %d, want 0 — the dial is inert under a playlist", got.genreIdx)
+	}
+	if !got.splashVisible {
+		t.Fatal("right arrow should still not dismiss the splash")
+	}
+	if !got.splashUntil.After(time.Now().Add(3 * time.Second)) {
+		t.Fatalf("the arrow should still re-arm the splash timer, got %v", got.splashUntil)
+	}
+
+	out := splashScreen(got, 118, 32, DefaultTheme(), time.Now())
+	if strings.Contains(out, "choose a station") {
+		t.Fatalf("playlist splash should not advertise the dial:\n%s", out)
+	}
+	if !strings.Contains(out, "[enter] begin · [t] authored tracks") {
+		t.Fatalf("playlist splash lost the rest of the footer:\n%s", out)
+	}
+	if !strings.Contains(out, "NIGHT DRIFT") {
+		t.Fatalf("playlist splash should still name the playing station:\n%s", out)
+	}
+	if strings.Contains(out, "deep field") {
+		t.Fatalf("playlist splash should not list browsable stations:\n%s", out)
+	}
+}
+
+// Every theme has to draw the same 5×40 wordmark. (lipgloss strips color in
+// tests — the ASCII profile — so the palette itself is probed below.)
+func TestWordmarkRendersUnderEveryTheme(t *testing.T) {
+	for _, theme := range Themes {
+		out := renderWordmark("TERMUS", theme)
+		rows := strings.Split(out, "\n")
+		if len(rows) != 5 {
+			t.Fatalf("theme %q rendered %d wordmark rows, want 5: %q", theme.Name, len(rows), out)
+		}
+		if !strings.Contains(out, "█") {
+			t.Fatalf("theme %q lost the wordmark glyphs: %q", theme.Name, out)
+		}
+		for i, row := range rows {
+			if got := lipgloss.Width(row); got != 40 {
+				t.Fatalf("theme %q wordmark row %d is %d cols, want 40: %q", theme.Name, i, got, row)
+			}
+		}
+	}
+}
+
+// The wordmark samples the palette per cell, not once per row: a horizontal
+// theme (rainbow) would otherwise render flat in its first hue.
+func TestWordmarkSamplesThemeAcrossColumns(t *testing.T) {
+	type sample struct{ cx, cy, w, h int }
+	var seen []sample
+	probe := ColorTheme{
+		Name: "probe",
+		ColorAt: func(cx, cy, w, h int) lipgloss.Color {
+			seen = append(seen, sample{cx, cy, w, h})
+			return lipgloss.Color("#ffffff")
+		},
+		BarFg: "#ffffff",
+		BarHi: "#ffffff",
+	}
+	renderWordmark("TERMUS", probe)
+	if len(seen) == 0 {
+		t.Fatal("renderWordmark never consulted the theme")
+	}
+	cols := map[int]struct{}{}
+	rowsSeen := map[int]struct{}{}
+	for _, s := range seen {
+		if s.w != 40 || s.h != 5 {
+			t.Fatalf("theme sampled with grid %dx%d, want 40x5", s.w, s.h)
+		}
+		cols[s.cx] = struct{}{}
+		rowsSeen[s.cy] = struct{}{}
+	}
+	if len(cols) < 2 {
+		t.Fatalf("wordmark sampled only %d column(s) — a horizontal theme would render flat", len(cols))
+	}
+	if len(rowsSeen) != 5 {
+		t.Fatalf("wordmark sampled %d rows, want 5", len(rowsSeen))
+	}
+
+	// The real horizontal theme must actually vary across those columns.
+	var rainbow ColorTheme
+	for _, th := range Themes {
+		if th.Name == "rainbow" {
+			rainbow = th
+		}
+	}
+	if rainbow.ColorAt == nil {
+		t.Skip("no rainbow theme in the palette")
+	}
+	if rainbow.ColorAt(0, 0, 40, 5) == rainbow.ColorAt(39, 0, 40, 5) {
+		t.Fatal("rainbow should span the wordmark left-to-right")
+	}
+}
+
 // TestSplashScreenNeverExceedsSize sweeps every runnable width at four
 // heights, loading and idle, with and without stations. The splash is a
 // full-screen centered stack, so at h=10 the full stack (wordmark, tagline,
@@ -114,6 +233,8 @@ func TestSplashScreenNeverExceedsSize(t *testing.T) {
 			for _, withGenres := range []bool{false, true} {
 				for w := 40; w <= 200; w++ {
 					m := splashTestModel()
+					m.genres = splashStations(t, "ambient", "drone", "bells",
+						"lullaby", "classical", "phase", "lofi", "jazz")
 					if !withGenres {
 						m.genres = nil
 					}

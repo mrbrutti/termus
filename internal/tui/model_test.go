@@ -266,25 +266,6 @@ func TestSplashPanelShowsOnboarding(t *testing.T) {
 	}
 }
 
-func TestSplashPanelShowsStartupLoading(t *testing.T) {
-	m := Model{
-		width:          90,
-		height:         18,
-		splashVisible:  true,
-		startupLoading: true,
-		startupTitle:   "Loading MAX palette · Dusty Swing · jazz",
-		startupDetail:  "ready 1/2 · last sgm",
-		startupPercent: 0.5,
-		themes:         []ColorTheme{DefaultTheme()},
-	}
-	panel := splashScreen(m, 90, 18, DefaultTheme(), time.Unix(0, 0))
-	for _, want := range []string{"█", "50%", "Loading MAX palette", "ready 1/2"} {
-		if !strings.Contains(panel, want) {
-			t.Fatalf("onboarding splash missing %q:\n%s", want, panel)
-		}
-	}
-}
-
 // TestLoadSelectedTrackRoutesAITrackThroughEngineSwitcher verifies that
 // picking an AI track from the browser no longer flashes the legacy
 // "relaunch with --engine acestep" status. Instead, the model invokes the
@@ -428,10 +409,14 @@ func TestLoadSelectedTrackUsesStartupLoaderAndSwapsOnResult(t *testing.T) {
 	}
 }
 
-func TestStartupLoadingViewShowsBrailleStyleProgress(t *testing.T) {
+// TestStartupLoadingProgressOnSplashScreen covers the loading half of the
+// merged splash: the wordmark stays, and the braille bar, percent, loader
+// title and current detail all report progress.
+func TestStartupLoadingProgressOnSplashScreen(t *testing.T) {
 	m := Model{
 		width:          90,
 		height:         18,
+		splashVisible:  true,
 		startupLoading: true,
 		startupTitle:   "Loading MAX palette · Dusty Swing · jazz",
 		startupDetail:  "ready 1/2 · last sgm",
@@ -439,7 +424,7 @@ func TestStartupLoadingViewShowsBrailleStyleProgress(t *testing.T) {
 		themes:         []ColorTheme{DefaultTheme()},
 	}
 	view := splashScreen(m, 90, 18, DefaultTheme(), time.Unix(0, 0))
-	for _, want := range []string{"Loading MAX palette", "50%", "ready 1/2"} {
+	for _, want := range []string{"█", "Loading MAX palette", "50%", "ready 1/2"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("startup loading view missing %q:\n%s", want, view)
 		}
