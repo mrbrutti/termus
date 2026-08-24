@@ -1005,6 +1005,16 @@ func renderControlTrackStructure(m Model, theme ColorTheme, width, budget int) s
 	return strings.Join(lines, "\n")
 }
 
+// minFuzzyStructureKey is the shortest key the substring pass will consider.
+// The generator reports procedural section kinds as single letters ("A", "B"),
+// which would otherwise claim any authored label that happens to contain that
+// letter — "A" matching "intro" put the FORM highlight on the wrong row.
+const minFuzzyStructureKey = 3
+
+// currentTrackStructureSection finds the authored section the live playhead is
+// in. Exact (normalized) matches win; the substring pass is a fallback for
+// authored ids like "head-a" against a live "head", and is deliberately
+// refused for keys too short — or empty — to be distinctive.
 func currentTrackStructureSection(entry TrackNavEntry, liveSection string) (TrackNavSection, bool) {
 	liveKey := normalizeStructureKey(liveSection)
 	if liveKey == "" {
@@ -1015,9 +1025,19 @@ func currentTrackStructureSection(entry TrackNavEntry, liveSection string) (Trac
 			return section, true
 		}
 	}
+	if len(liveKey) < minFuzzyStructureKey {
+		return TrackNavSection{}, false
+	}
 	for _, section := range entry.Structure {
-		if strings.Contains(normalizeStructureKey(section.ID), liveKey) || strings.Contains(normalizeStructureKey(section.Label), liveKey) || strings.Contains(liveKey, normalizeStructureKey(section.ID)) || strings.Contains(liveKey, normalizeStructureKey(section.Label)) {
-			return section, true
+		for _, key := range []string{normalizeStructureKey(section.ID), normalizeStructureKey(section.Label)} {
+			// An empty id makes strings.Contains trivially true, which would
+			// hand the highlight to whichever section happens to be first.
+			if len(key) < minFuzzyStructureKey {
+				continue
+			}
+			if strings.Contains(key, liveKey) || strings.Contains(liveKey, key) {
+				return section, true
+			}
 		}
 	}
 	return TrackNavSection{}, false

@@ -145,3 +145,39 @@ func TestControlsPanelPipCountMatchesValue(t *testing.T) {
 		t.Fatalf("empty pips = %d, want 2", got)
 	}
 }
+
+// TestCurrentTrackStructureSectionMatching pins the matcher that drives both
+// the control center's structure preview and the track library's FORM
+// highlight. The substring fallback is useful for authored ids ("head-a" vs a
+// live "head") but must not fire on the generator's single-letter procedural
+// kinds, or on sections that carry no id at all.
+func TestCurrentTrackStructureSectionMatching(t *testing.T) {
+	authored := TrackNavEntry{Structure: []TrackNavSection{
+		{ID: "intro", Label: "intro"},
+		{ID: "head", Label: "head"},
+		{ID: "solo", Label: "solo"},
+		{ID: "outro", Label: "outro"},
+	}}
+	if got, ok := currentTrackStructureSection(authored, "A"); ok {
+		t.Fatalf("procedural kind %q must not match authored sections, got %+v", "A", got)
+	}
+	if got, ok := currentTrackStructureSection(authored, "B"); ok {
+		t.Fatalf("procedural kind %q must not match authored sections, got %+v", "B", got)
+	}
+	empty := TrackNavEntry{Structure: []TrackNavSection{{}, {ID: "head", Label: "head"}}}
+	if got, ok := currentTrackStructureSection(empty, "development"); ok && got.ID == "" {
+		t.Fatalf("empty section id must not match %q, got %+v", "development", got)
+	}
+	if got, ok := currentTrackStructureSection(authored, "solo"); !ok || got.ID != "solo" {
+		t.Fatalf("exact id match broke: got %+v ok=%v", got, ok)
+	}
+	// Normalization still bridges case and punctuation on an exact match, and
+	// still bridges authored suffixes on a long-enough key.
+	quoted := TrackNavEntry{Structure: []TrackNavSection{{Label: "a'"}, {ID: "head-a", Label: "Head A"}}}
+	if got, ok := currentTrackStructureSection(quoted, "A'"); !ok || got.Label != "a'" {
+		t.Fatalf("normalized exact match broke: got %+v ok=%v", got, ok)
+	}
+	if got, ok := currentTrackStructureSection(quoted, "head"); !ok || got.ID != "head-a" {
+		t.Fatalf("substring fallback broke: got %+v ok=%v", got, ok)
+	}
+}

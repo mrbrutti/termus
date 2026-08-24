@@ -126,42 +126,130 @@ func (m Model) filteredTrackIndices() []int {
 	return out
 }
 
+// chunkGap is the blank run between two chips in a packed row, and chunkMarker
+// is what a "there is more this way" arrow costs including its gap.
+const (
+	chunkGap    = 2
+	chunkMarker = 1 + chunkGap
+)
+
+// packChunks picks the run of chips that fits in width, keeping the focused
+// chip visible: a filter row that drops chunks off the tail would hide the
+// active filter on a narrow terminal, so ←/→ would appear to do nothing. It
+// returns the half-open window plus whether chips are hidden on either side.
+// Chunks are measured as plain text; the caller styles the survivors.
+// A negative focus packs from the head (no chip has to stay visible).
+func packChunks(chunks []string, width, focus int) (start, end int, hiddenBefore, hiddenAfter bool) {
+	if len(chunks) == 0 || width <= 0 {
+		return 0, 0, false, false
+	}
+	if focus < 0 || focus >= len(chunks) {
+		focus = 0
+	}
+	total := 0
+	for i, chunk := range chunks {
+		if i > 0 {
+			total += chunkGap
+		}
+		total += lipgloss.Width(chunk)
+	}
+	if total <= width {
+		return 0, len(chunks), false, false
+	}
+	// Truncation is certain, so pay for both markers up front rather than
+	// re-deciding the budget every time the window grows.
+	budget := width - 2*chunkMarker
+	start, end = focus, focus+1
+	used := lipgloss.Width(chunks[focus])
+	for used <= budget {
+		grew := false
+		// Extend forward first so the row keeps its reading order.
+		if end < len(chunks) {
+			if cost := chunkGap + lipgloss.Width(chunks[end]); used+cost <= budget {
+				used += cost
+				end++
+				grew = true
+			}
+		}
+		if start > 0 {
+			if cost := chunkGap + lipgloss.Width(chunks[start-1]); used+cost <= budget {
+				used += cost
+				start--
+				grew = true
+			}
+		}
+		if !grew {
+			break
+		}
+	}
+	hiddenBefore, hiddenAfter = start > 0, end < len(chunks)
+	markers := 0
+	if hiddenBefore {
+		markers += chunkMarker
+	}
+	if hiddenAfter {
+		markers += chunkMarker
+	}
+	if used+markers > width {
+		// The focused chip barely fits on its own; show it bare rather than
+		// spending its columns on arrows.
+		return start, end, false, false
+	}
+	return start, end, hiddenBefore, hiddenAfter
+}
+
 // renderTrackStyleBar draws the style filter row. The active filter carries a
 // "▌" bar and bold highlight; the rest stay faint. Chunks are measured as
-// plain text and dropped whole once the row is full — the old code trimmed the
+// plain text and windowed around the active filter — the old code trimmed the
 // already-styled join, which slices through ANSI escapes.
 func renderTrackStyleBar(m Model, theme ColorTheme, width int) string {
 	styles := m.trackStyleOptions()
 	active := m.currentTrackStyle()
-	parts := make([]string, 0, len(styles))
-	used := 0
-	for _, style := range styles {
+	chunks := make([]string, len(styles))
+	activeIdx := 0
+	for i, style := range styles {
 		count := 0
 		for _, entry := range m.tracks {
 			if style == "all" || strings.EqualFold(entry.Style, style) {
 				count++
 			}
 		}
-		text := fmt.Sprintf("%s %s %d", trackStyleGlyph(style), style, count)
-		isActive := strings.EqualFold(style, active)
-		if isActive {
-			text = "▌" + text
+		chunks[i] = fmt.Sprintf("%s %s %d", trackStyleGlyph(style), style, count)
+		if strings.EqualFold(style, active) {
+			activeIdx = i
+			chunks[i] = "▌" + chunks[i]
 		}
-		gap := 0
-		if len(parts) > 0 {
-			gap = 2
-		}
-		if used+gap+lipgloss.Width(text) > width {
-			break
-		}
-		used += gap + lipgloss.Width(text)
-		if isActive {
+	}
+	start, end, before, after := packChunks(chunks, width, activeIdx)
+	marker := lipgloss.NewStyle().Foreground(theme.BarFg).Faint(true)
+	parts := make([]string, 0, len(chunks)+2)
+	if before {
+		parts = append(parts, marker.Render("‹"))
+	}
+	for i := start; i < end; i++ {
+		text := trimToWidth(chunks[i], width)
+		if i == activeIdx {
 			parts = append(parts, lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render(text))
 			continue
 		}
 		parts = append(parts, lipgloss.NewStyle().Foreground(theme.BarFg).Faint(true).Render(text))
 	}
-	return strings.Join(parts, "  ")
+	if after {
+		parts = append(parts, marker.Render("›"))
+	}
+	return strings.Join(parts, spaces(chunkGap))
+}
+
+// titleWithBadge trims a plain title to the room the badge slot leaves, styles
+// it, and appends the already-styled badge only when it still fits. slot is the
+// reserved badge width: the list pane reserves a fixed slot so rows don't
+// wobble between "[AI]" and "[SF2]" while scrolling.
+func titleWithBadge(head, title, badge string, w, slot int, textStyle lipgloss.Style) string {
+	line := textStyle.Render(head + trimToWidth(title, maxInt(1, w-lipgloss.Width(head)-slot)))
+	if badge != "" && lipgloss.Width(line)+1+lipgloss.Width(badge) <= w {
+		line += " " + badge
+	}
+	return line
 }
 
 func renderTrackListPane(m Model, w, h int, theme ColorTheme) string {
@@ -200,14 +288,10 @@ func renderTrackListPane(m Model, w, h int, theme ColorTheme) string {
 		}
 		titleGlyphs := trackStyleGlyph(entry.Style) + trackSubstyleGlyph(entry.Substyle)
 		badge := renderEngineBadge(entry.Engine, theme, idx == m.trackIdx)
-		head := prefix + titleGlyphs + " "
 		// Reserve 6 columns for the badge slot ("[AI] " / "[SF2] ") so
 		// the title block doesn't wobble when scrolling.
-		titleW := maxInt(1, w-lipgloss.Width(head)-6)
-		titleLine := lipgloss.NewStyle().Bold(idx == m.trackIdx).Render(head + trimToWidth(title, titleW))
-		if badge != "" && lipgloss.Width(titleLine)+1+lipgloss.Width(badge) <= w {
-			titleLine = titleLine + " " + badge
-		}
+		titleLine := titleWithBadge(prefix+titleGlyphs+" ", title, badge, w, 6,
+			lipgloss.NewStyle().Bold(idx == m.trackIdx))
 		metaStyle := lipgloss.NewStyle().Faint(true)
 		if idx == m.trackIdx {
 			// Dimmed BarHi keeps the selected row's meta legible without
@@ -237,19 +321,13 @@ func renderTrackDetailPane(m Model, w, h int, theme ColorTheme) string {
 	}
 	entry := m.tracks[m.trackIdx]
 	title := firstNonEmpty(entry.Title, entry.ID)
-	head := trackStyleGlyph(entry.Style) + trackSubstyleGlyph(entry.Substyle) + " "
 	badge := renderEngineBadge(entry.Engine, theme, true)
 	badgeSlot := 0
 	if badge != "" {
 		badgeSlot = lipgloss.Width(badge) + 1
 	}
-	// Trim the title while it is still plain text, then style it; the badge
-	// arrives already styled and is only appended when it fits.
-	titleLine := lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).
-		Render(head + trimToWidth(title, maxInt(1, w-lipgloss.Width(head)-badgeSlot)))
-	if badge != "" && lipgloss.Width(titleLine)+1+lipgloss.Width(badge) <= w {
-		titleLine += " " + badge
-	}
+	titleLine := titleWithBadge(trackStyleGlyph(entry.Style)+trackSubstyleGlyph(entry.Substyle)+" ",
+		title, badge, w, badgeSlot, lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true))
 	lines := []string{titleLine}
 
 	meta := make([]string, 0, 6)
@@ -339,10 +417,18 @@ func renderTrackFormMap(m Model, entry TrackNavEntry, w, budget int, theme Color
 	barMax := clampInt(w-labelW-2-durW, 1, 24)
 	isActive := entry.ID == m.activeTrackID
 	current, hasCurrent := currentTrackStructureSection(entry, m.debug.Section)
-	lines := make([]string, 0, len(entry.Structure))
+	// The "…" row costs a line of its own, so a truncated form shows one
+	// section fewer. Spending budget+1 rows here would push the tail
+	// ("● currently loaded") off the bottom of a short pane.
+	shown := len(entry.Structure)
+	truncated := false
+	if shown > budget {
+		shown = maxInt(0, budget-1)
+		truncated = true
+	}
+	lines := make([]string, 0, minInt(budget, len(entry.Structure)+1))
 	for i, s := range entry.Structure {
-		if i >= budget {
-			lines = append(lines, lipgloss.NewStyle().Faint(true).Render("…"))
+		if i >= shown {
 			break
 		}
 		label := firstNonEmpty(s.Label, s.ID)
@@ -355,13 +441,14 @@ func renderTrackFormMap(m Model, entry TrackNavEntry, w, budget int, theme Color
 		if isActive && hasCurrent && sectionsMatch(s, current) {
 			labelStyle = lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true)
 		}
-		dur := ""
+		// An undated section still pays for the duration column so the
+		// harmony that follows stays in line with its neighbours.
+		dur := spaces(durW)
 		if s.Duration > 0 {
-			dur = padLeft(formMapDuration(s.Duration), durW)
+			dur = lipgloss.NewStyle().Faint(true).Render(padLeft(formMapDuration(s.Duration), durW))
 		}
 		line := labelStyle.Render(padRight(trimToWidth(label, labelW), labelW)) + "  " +
-			labelStyle.Render(strings.Repeat("▰", cells)) + spaces(barMax-cells) +
-			lipgloss.NewStyle().Faint(true).Render(dur)
+			labelStyle.Render(strings.Repeat("▰", cells)) + spaces(barMax-cells) + dur
 		if meta := formMapSectionMeta(s); meta != "" {
 			room := maxInt(0, w-lipgloss.Width(line)-2)
 			if room > 0 {
@@ -369,6 +456,9 @@ func renderTrackFormMap(m Model, entry TrackNavEntry, w, budget int, theme Color
 			}
 		}
 		lines = append(lines, line)
+	}
+	if truncated {
+		lines = append(lines, lipgloss.NewStyle().Faint(true).Render("…"))
 	}
 	return lines
 }
@@ -522,27 +612,21 @@ func firstNonEmpty(values ...string) string {
 }
 
 // renderTrackTags lays out "#tag" chips, dropping whole chips once the row is
-// full — trimming the styled join would slice through an ANSI escape.
+// full — trimming the styled join would slice through an ANSI escape. No tag
+// has to stay visible, so the row simply packs from the head.
 func renderTrackTags(tags []string, theme ColorTheme, width int) string {
-	parts := make([]string, 0, len(tags))
-	used := 0
+	chunks := make([]string, 0, len(tags))
 	for _, tag := range tags {
-		tag = strings.TrimSpace(tag)
-		if tag == "" {
-			continue
+		if tag = strings.TrimSpace(tag); tag != "" {
+			chunks = append(chunks, "#"+tag)
 		}
-		text := "#" + tag
-		gap := 0
-		if len(parts) > 0 {
-			gap = 2
-		}
-		if used+gap+lipgloss.Width(text) > width {
-			break
-		}
-		used += gap + lipgloss.Width(text)
-		parts = append(parts, lipgloss.NewStyle().Foreground(theme.BarFg).Faint(true).Render(text))
 	}
-	return strings.Join(parts, "  ")
+	start, end, _, _ := packChunks(chunks, width, -1)
+	parts := make([]string, 0, end-start)
+	for i := start; i < end; i++ {
+		parts = append(parts, lipgloss.NewStyle().Foreground(theme.BarFg).Faint(true).Render(trimToWidth(chunks[i], width)))
+	}
+	return strings.Join(parts, spaces(chunkGap))
 }
 
 func renderTrackDivider(height int, theme ColorTheme) string {

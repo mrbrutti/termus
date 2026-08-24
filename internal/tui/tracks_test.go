@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -153,11 +154,31 @@ func TestTrackPanelNeverExceedsSize(t *testing.T) {
 			Duration:  time.Duration(20+i*47) * time.Second,
 		})
 	}
+	// A crowded library: enough styles that the filter row has to window, and
+	// a selection deep enough that the list pane has to scroll.
+	crowded := make([]TrackNavEntry, 0, 14)
+	styles := []string{"ambient", "bells", "classical", "drone", "jazz", "lofi", "phase"}
+	for i := 0; i < 14; i++ {
+		crowded = append(crowded, TrackNavEntry{
+			ID:       fmt.Sprintf("%s/track-%02d", styles[i%len(styles)], i),
+			Style:    styles[i%len(styles)],
+			Substyle: "a-substyle-that-is-not-short",
+			Title:    fmt.Sprintf("Crowded Library Entry Number %02d With A Long Title", i),
+			Tempo:    "88",
+			Ensemble: []string{"ep", "bass", "drums"},
+		})
+	}
 	models := map[string]Model{
 		"populated": {
 			tracks:        []TrackNavEntry{long, {ID: "jazz/short", Style: "jazz", Title: "Short", Engine: "sf2"}},
 			activeTrackID: long.ID,
 			debug:         gen.DebugStatus{Section: "section-c"},
+		},
+		"long-list": {
+			tracks:        crowded,
+			trackIdx:      11,
+			trackStyleIdx: 4,
+			activeTrackID: crowded[3].ID,
 		},
 		"empty": {},
 	}
@@ -180,6 +201,59 @@ func TestTrackPanelNeverExceedsSize(t *testing.T) {
 					}
 				}
 			}
+		}
+	}
+}
+
+// TestTrackPanelKeepsTailAndActiveFilter guards the two things a naive
+// truncation drops first: the detail pane's tail ("● currently loaded" sits
+// below a form map long enough to be cut) and the active style filter (which
+// is not the first chip, so a row that packs from the head hides it and ←/→
+// looks dead).
+func TestTrackPanelKeepsTailAndActiveFilter(t *testing.T) {
+	theme := DefaultTheme()
+
+	loaded := TrackNavEntry{
+		ID: "lofi/long-form", Style: "lofi", Substyle: "rainy-cafe", Title: "Long Form",
+		Key: "D minor", Tempo: "84", ListenMode: "hour-stream",
+		Description: "twenty sections, more than any pane can show",
+		Ensemble:    []string{"rhodes", "bass"},
+		Textures:    []string{"rain -36 dB"},
+		Tags:        []string{"lofi", "rain"},
+	}
+	for i := 0; i < 20; i++ {
+		loaded.Structure = append(loaded.Structure, TrackNavSection{
+			ID:       fmt.Sprintf("part-%02d", i),
+			Label:    fmt.Sprintf("part %02d", i),
+			Harmony:  "Dm9 | G13",
+			Duration: time.Duration(30+i*10) * time.Second,
+		})
+	}
+	m := Model{width: 118, height: 32, tracks: []TrackNavEntry{loaded}, activeTrackID: loaded.ID}
+	m.trackVisible = true
+	out := trackPanel(m, 118, 32, theme)
+	if !strings.Contains(out, "…") {
+		t.Fatalf("form map should have truncated at 20 sections: %q", out)
+	}
+	if !strings.Contains(out, "● currently loaded") {
+		t.Fatalf("truncated form map pushed the detail tail off the pane: %q", out)
+	}
+	if !strings.Contains(out, "textures  rain -36 dB") {
+		t.Fatalf("truncated form map pushed the textures row off the pane: %q", out)
+	}
+
+	// Seven styles at the narrowest supported width: the filter row cannot
+	// show them all, and the active one is well past the head.
+	var wide []TrackNavEntry
+	for i, style := range []string{"ambient", "bells", "classical", "drone", "jazz", "lofi", "phase"} {
+		wide = append(wide, TrackNavEntry{ID: fmt.Sprintf("%s/t%d", style, i), Style: style, Title: "T"})
+	}
+	for _, idx := range []int{0, 3, 5, 7} {
+		narrow := Model{width: 40, height: 24, tracks: wide, trackStyleIdx: idx}
+		narrow.trackVisible = true
+		got := trackPanel(narrow, 40, 24, theme)
+		if !strings.Contains(got, "▌"+trackStyleGlyph(narrow.currentTrackStyle())) {
+			t.Fatalf("active filter %q (idx %d) not visible at w=40: %q", narrow.currentTrackStyle(), idx, got)
 		}
 	}
 }
