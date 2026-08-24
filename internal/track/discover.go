@@ -82,25 +82,31 @@ func Resolve(entries []Entry, input string) (Entry, bool) {
 			}
 			pack := resolveStylePack(style, file.Substyle, file.Title, file.Tags)
 			sections, structure, ensemble, eventCount, complexity := buildEntrySummary(file, pack)
+			// invalid -> 0; same idiom as section durations above.
+			totalDuration, _ := time.ParseDuration(strings.TrimSpace(file.TotalDuration))
+			if totalDuration < 0 {
+				totalDuration = 0
+			}
 			return Entry{
-				ID:           id,
-				Path:         input,
-				Style:        style,
-				Substyle:     pack.Substyle,
-				Title:        file.Title,
-				Description:  file.Description,
-				Tags:         append([]string(nil), file.Tags...),
-				Key:          file.Key,
-				Tempo:        file.Tempo,
-				ListenMode:   file.ListenMode,
-				SectionCount: len(sections),
-				Sections:     sections,
-				Ensemble:     ensemble,
-				EventCount:   eventCount,
-				Complexity:   complexity,
-				Structure:    structure,
-				RenderEngine: file.RenderEngine,
-				Textures:     textureLabels(file.Textures),
+				ID:            id,
+				Path:          input,
+				Style:         style,
+				Substyle:      pack.Substyle,
+				Title:         file.Title,
+				Description:   file.Description,
+				Tags:          append([]string(nil), file.Tags...),
+				Key:           file.Key,
+				Tempo:         file.Tempo,
+				ListenMode:    file.ListenMode,
+				SectionCount:  len(sections),
+				Sections:      sections,
+				Ensemble:      ensemble,
+				EventCount:    eventCount,
+				Complexity:    complexity,
+				Structure:     structure,
+				TotalDuration: totalDuration,
+				RenderEngine:  file.RenderEngine,
+				Textures:      textureLabels(file.Textures),
 			}, true
 		}
 	}
@@ -130,25 +136,31 @@ func loadEntry(root, path string) (Entry, error) {
 	}
 	pack := resolveStylePack(style, file.Substyle, file.Title, file.Tags)
 	sections, structure, ensemble, eventCount, complexity := buildEntrySummary(file, pack)
+	// invalid -> 0; same idiom as section durations above.
+	totalDuration, _ := time.ParseDuration(strings.TrimSpace(file.TotalDuration))
+	if totalDuration < 0 {
+		totalDuration = 0
+	}
 	return Entry{
-		ID:           rel,
-		Path:         path,
-		Style:        style,
-		Substyle:     pack.Substyle,
-		Title:        file.Title,
-		Description:  file.Description,
-		Tags:         append([]string(nil), file.Tags...),
-		Key:          file.Key,
-		Tempo:        file.Tempo,
-		ListenMode:   file.ListenMode,
-		SectionCount: len(sections),
-		Sections:     sections,
-		Ensemble:     ensemble,
-		EventCount:   eventCount,
-		Complexity:   complexity,
-		Structure:    structure,
-		RenderEngine: file.RenderEngine,
-		Textures:     textureLabels(file.Textures),
+		ID:            rel,
+		Path:          path,
+		Style:         style,
+		Substyle:      pack.Substyle,
+		Title:         file.Title,
+		Description:   file.Description,
+		Tags:          append([]string(nil), file.Tags...),
+		Key:           file.Key,
+		Tempo:         file.Tempo,
+		ListenMode:    file.ListenMode,
+		SectionCount:  len(sections),
+		Sections:      sections,
+		Ensemble:      ensemble,
+		EventCount:    eventCount,
+		Complexity:    complexity,
+		Structure:     structure,
+		TotalDuration: totalDuration,
+		RenderEngine:  file.RenderEngine,
+		Textures:      textureLabels(file.Textures),
 	}, nil
 }
 

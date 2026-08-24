@@ -12,6 +12,7 @@ style: lofi
 substyle: rainy-cafe
 tempo: 84 bpm
 key: D minor
+total_duration: 5m
 textures:
   - name: rain
     level_db: -36
@@ -54,6 +55,50 @@ func TestDiscoverEntryDurationsAndTextures(t *testing.T) {
 	}
 	if len(entry.Textures) != 2 || entry.Textures[0] != "rain -36 dB" || entry.Textures[1] != "vinyl -44 dB" {
 		t.Fatalf("textures = %v, want [rain -36 dB, vinyl -44 dB]", entry.Textures)
+	}
+	if entry.TotalDuration != 5*time.Minute {
+		t.Fatalf("total duration = %v, want 5m", entry.TotalDuration)
+	}
+}
+
+// TestDiscoverEntryNoTotalDuration covers a file that omits total_duration:
+// entirely; Entry.TotalDuration should come out zero rather than defaulting
+// to the summed section durations (that fallback lives in the TUI, not here).
+func TestDiscoverEntryNoTotalDuration(t *testing.T) {
+	entry := discoverSingleEntry(t, noTexturesTM)
+	if entry.TotalDuration != 0 {
+		t.Fatalf("total duration = %v, want 0", entry.TotalDuration)
+	}
+}
+
+// TestResolveAdHocEntryMatchesLoadEntry covers Resolve's ad-hoc .tm path
+// (input is a stat-able .tm file not already in the entries slice), which
+// builds its own Entry literal separate from loadEntry's. Guards against the
+// two literals drifting out of sync, as happened with TotalDuration.
+func TestResolveAdHocEntryMatchesLoadEntry(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rainy-test.tm")
+	if err := os.WriteFile(path, []byte(entryTestTM), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	entry, ok := Resolve(nil, path)
+	if !ok {
+		t.Fatalf("Resolve(%q) = false, want true", path)
+	}
+	if len(entry.Structure) != 2 {
+		t.Fatalf("structure = %d sections, want 2", len(entry.Structure))
+	}
+	if entry.Structure[0].Duration != 30*time.Second {
+		t.Fatalf("intro duration = %v, want 30s", entry.Structure[0].Duration)
+	}
+	if entry.Structure[1].Duration != 90*time.Second {
+		t.Fatalf("body duration = %v, want 90s", entry.Structure[1].Duration)
+	}
+	if len(entry.Textures) != 2 || entry.Textures[0] != "rain -36 dB" || entry.Textures[1] != "vinyl -44 dB" {
+		t.Fatalf("textures = %v, want [rain -36 dB, vinyl -44 dB]", entry.Textures)
+	}
+	if entry.TotalDuration != 5*time.Minute {
+		t.Fatalf("total duration = %v, want 5m", entry.TotalDuration)
 	}
 }
 

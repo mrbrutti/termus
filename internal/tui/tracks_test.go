@@ -104,6 +104,30 @@ func TestTrackDetailShowsFormMap(t *testing.T) {
 	}
 }
 
+// TestTrackDetailPrefersAuthoredTotalDuration covers the meta-line total: an
+// authored total_duration (TotalDuration) should win over the sum of section
+// durations. Two 30s sections sum to 1:00, but the authored total is 5m, so
+// the meta line must show "5:00" and not "1:00".
+func TestTrackDetailPrefersAuthoredTotalDuration(t *testing.T) {
+	m := Model{width: 118, height: 32}
+	m.tracks = []TrackNavEntry{{
+		ID: "lofi/rainy", Style: "lofi", Title: "Rainy Cafe",
+		TotalDuration: 5 * time.Minute,
+		Structure: []TrackNavSection{
+			{ID: "intro", Label: "intro", Duration: 30 * time.Second},
+			{ID: "body", Label: "body", Duration: 30 * time.Second},
+		},
+	}}
+	m.trackVisible = true
+	out := trackPanel(m, 118, 32, DefaultTheme())
+	if !strings.Contains(out, "5:00") {
+		t.Fatalf("detail missing authored total duration 5:00: %q", out)
+	}
+	if strings.Contains(out, "1:00") {
+		t.Fatalf("detail shows summed section duration 1:00 instead of authored total: %q", out)
+	}
+}
+
 func TestTrackHeaderShowsCountAndFilters(t *testing.T) {
 	m := formMapTestModel()
 	out := trackPanel(m, 118, 32, DefaultTheme())

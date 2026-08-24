@@ -348,9 +348,11 @@ func renderTrackDetailPane(m Model, w, h int, theme ColorTheme) string {
 	if entry.ListenMode != "" {
 		meta = append(meta, entry.ListenMode)
 	}
-	var total time.Duration
-	for _, s := range entry.Structure {
-		total += s.Duration
+	total := entry.TotalDuration
+	if total <= 0 {
+		for _, s := range entry.Structure {
+			total += s.Duration
+		}
 	}
 	if total > 0 {
 		meta = append(meta, formMapDuration(total))
