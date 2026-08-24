@@ -24,6 +24,10 @@ import (
 	"github.com/mrbrutti/termus/internal/tui"
 )
 
+// version is stamped by the release workflow via
+// -ldflags="-X main.version=...". Local builds report "dev".
+var version = "dev"
+
 const (
 	defaultRenderSeconds  = 180.0
 	defaultPlaylistTracks = 6
@@ -73,6 +77,7 @@ func shouldWarmStartupSF2(defaultTrackBrowse, liveRun bool, spec gen.AlgoSpec) b
 }
 
 func main() {
+	showVersion := flag.Bool("version", false, "print the termus version and exit")
 	seed := flag.Int64("seed", time.Now().UnixNano(), "RNG seed (default: time-based)")
 	algoName := flag.String("algo", "ambient",
 		"algorithm name. Genre names: ambient | drone | bells | lullaby | "+
@@ -123,6 +128,11 @@ func main() {
 		"disable the TUI for ACE-Step playback and stream one-line progress to stderr instead (auto-enabled on non-TTY stderr)")
 
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("termus", version)
+		return
+	}
 
 	visited := map[string]bool{}
 	flag.Visit(func(f *flag.Flag) { visited[f.Name] = true })
