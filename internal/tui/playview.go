@@ -113,7 +113,7 @@ func formRailBar(m Model, w int, theme ColorTheme) string {
 	}
 	countdown := ""
 	if !m.nextSectionAt.IsZero() {
-		countdown = shortDuration(time.Until(m.nextSectionAt)) + " to next section"
+		countdown = formMapDuration(time.Until(m.nextSectionAt)) + " to next section"
 	}
 
 	// Everything is measured as PLAIN text first: styled (ANSI) strings must

@@ -214,7 +214,13 @@ func renderTrackStyleBar(m Model, theme ColorTheme, width int) string {
 				count++
 			}
 		}
-		chunks[i] = fmt.Sprintf("%s %s %d", trackStyleGlyph(style), style, count)
+		if style == "all" {
+			// "all" carries no genre glyph in the mock — just the bare label
+			// and count.
+			chunks[i] = fmt.Sprintf("%s %d", style, count)
+		} else {
+			chunks[i] = fmt.Sprintf("%s %s %d", trackStyleGlyph(style), style, count)
+		}
 		if strings.EqualFold(style, active) {
 			activeIdx = i
 			chunks[i] = "▌" + chunks[i]

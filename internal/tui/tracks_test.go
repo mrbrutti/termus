@@ -271,7 +271,13 @@ func TestTrackPanelKeepsTailAndActiveFilter(t *testing.T) {
 		narrow := Model{width: 40, height: 24, tracks: wide, trackStyleIdx: idx}
 		narrow.trackVisible = true
 		got := trackPanel(narrow, 40, 24, theme)
-		if !strings.Contains(got, "▌"+trackStyleGlyph(narrow.currentTrackStyle())) {
+		style := narrow.currentTrackStyle()
+		want := "▌" + trackStyleGlyph(style)
+		if style == "all" {
+			// "all" carries no genre glyph — just the bare label.
+			want = "▌all"
+		}
+		if !strings.Contains(got, want) {
 			t.Fatalf("active filter %q (idx %d) not visible at w=40: %q", narrow.currentTrackStyle(), idx, got)
 		}
 	}
