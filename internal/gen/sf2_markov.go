@@ -575,14 +575,22 @@ func (a *SF2Markov) SectionGain() float64 {
 
 func (a *SF2Markov) DebugStatus() DebugStatus {
 	chord := ""
+	next := ""
 	if len(a.progression) > 0 {
 		bar := sampleBarIndex(a.samplesElapsed, a.barSamples) % len(a.progression)
 		chord = a.progression[bar].label
+		next = a.progression[(bar+1)%len(a.progression)].label
 	}
+	movement, episode, chain, idx := a.form.FormStatus(a.samplesElapsed)
 	return DebugStatus{
-		Chord:   chord,
-		Section: string(a.section.Kind),
-		Bar:     a.form.BarAt(a.samplesElapsed),
+		Chord:     chord,
+		Section:   string(a.section.Kind),
+		Bar:       a.form.BarAt(a.samplesElapsed),
+		Movement:  movement,
+		Episode:   episode,
+		NextChord: next,
+		FormChain: chain,
+		FormIndex: idx,
 	}
 }
 

@@ -2,6 +2,7 @@ package track
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/mrbrutti/termus/internal/gen"
 )
@@ -634,6 +635,10 @@ type Entry struct {
 	// browser without re-parsing the file. Empty string is treated as
 	// sf2 (the default).
 	RenderEngine RenderEngine
+
+	// Textures are pre-formatted texture labels ("rain -36 dB") from the
+	// file's textures: block, for the TUI track-library detail pane.
+	Textures []string
 }
 
 type EntrySection struct {
@@ -642,6 +647,10 @@ type EntrySection struct {
 	Harmony   string
 	RoleNames []string
 	Events    []string
+	// Duration is the section's authored length, parsed from the .tm
+	// duration (or bars) field. Zero when unknown. Drives the
+	// duration-proportional form-map bars in the TUI track library.
+	Duration time.Duration
 }
 
 func playlistKey(spec gen.AlgoSpec, seed int64) string {

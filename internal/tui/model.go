@@ -35,6 +35,10 @@ type TrackNavEntry struct {
 	Complexity   string
 	Structure    []TrackNavSection
 
+	// Textures are pre-formatted texture labels ("rain -36 dB") shown in
+	// the track-library detail pane.
+	Textures []string
+
 	// Engine is "sf2" or "acestep". Drives the per-row badge in the track
 	// browser. Empty string is treated the same as "sf2" so legacy .tm
 	// files without an explicit render_engine continue to render cleanly.
@@ -47,6 +51,7 @@ type TrackNavSection struct {
 	Harmony   string
 	RoleNames []string
 	Events    []string
+	Duration  time.Duration
 }
 
 type TrackLoader func(id string) (*gen.Playlist, string, error)
@@ -1194,6 +1199,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.splashVisible {
+			// Station dial: ←/→ browse stations without dismissing the
+			// splash (playback is already running — this rides the normal
+			// switchAlgo path). A loaded playlist owns the algorithm
+			// schedule, so there the arrows stay inert rather than swapping
+			// the algo out from under the scheduler. Any other key dismisses
+			// as before.
+			switch msg.String() {
+			case "left", "right":
+				if m.playlist == nil {
+					step := 1
+					if msg.String() == "left" {
+						step = -1
+					}
+					m.switchAlgo(step)
+				}
+				m.splashUntil = time.Now().Add(5 * time.Second)
+				return m, nil
+			}
 			m.splashVisible = false
 		}
 		if m.trackVisible {
@@ -1398,15 +1421,39 @@ func (m Model) View() string {
 	}
 	now := time.Now()
 	theme := m.activeTheme()
-	if m.startupLoading {
-		return startupLoadingView(m, m.width, m.height, theme, now)
+	// One screen covers both startup states: the loader takes precedence over
+	// the onboarding splash, and both render as the same centered full screen.
+	if m.startupLoading || m.splashVisible {
+		return splashScreen(m, m.width, m.height, theme, now)
+	}
+	// The control center is a full-screen pane, not a floating box inside the
+	// play-view chrome.
+	if m.controlsVisible {
+		return controlsPanel(m, m.width, m.height, theme)
+	}
+	// The track library is full screen too: the form map needs the rows.
+	if m.trackVisible {
+		return trackPanel(m, m.width, m.height, theme)
 	}
 	compact := useCompactLayout(m.width, m.height)
-	chromeH := 3 // top + now-playing + bottom bars
+	showNarration := !compact
+	rail := ""
+	if !m.reducedChrome && showFormRail(m.height) {
+		rail = formRailBar(m, m.width, theme)
+	}
+	chromeH := 2 // station header + footer
 	if m.reducedChrome {
 		chromeH = 1
-	} else if m.debugVisible {
-		chromeH++
+	} else {
+		if showNarration {
+			chromeH++
+		}
+		if rail != "" {
+			chromeH++
+		}
+		if m.debugVisible {
+			chromeH++
+		}
 	}
 	if m.volumeOverlayVisible(now) {
 		chromeH++
@@ -1433,9 +1480,7 @@ func (m Model) View() string {
 		scopeStr = blendVisualFrames(prev, scopeStr, clamp01(progress))
 	}
 
-	top := topBar(m, innerW, theme, compact)
-	playback := playbackBar(m, innerW, theme, samples, compact)
-	bottom := bottomBar(m, innerW, theme, compact)
+	bottom := bottomBar(m, innerW, theme)
 	volumeLine := ""
 	if m.volumeOverlayVisible(now) {
 		volumeLine = renderVolumeLine(m, innerW, theme)
@@ -1443,18 +1488,12 @@ func (m Model) View() string {
 	body := scopeStr
 	if m.helpVisible {
 		body = helpPanel(m, innerW, innerH, theme)
-	} else if m.trackVisible {
-		body = trackPanel(m, innerW, innerH, theme)
 	} else if m.libraryVisible {
 		body = libraryPanel(m, innerW, innerH, theme)
 	} else if m.inspectorVisible {
 		body = inspectorPanel(m, innerW, innerH, theme)
 	} else if m.exportVisible {
 		body = exportPanel(m, innerW, innerH, theme)
-	} else if m.controlsVisible {
-		body = controlsPanel(m, innerW, innerH, theme)
-	} else if m.splashVisible {
-		body = splashPanel(m, innerW, innerH, theme)
 	}
 	if m.reducedChrome {
 		if volumeLine != "" {
@@ -1462,17 +1501,24 @@ func (m Model) View() string {
 		}
 		return lipgloss.JoinVertical(lipgloss.Left, body, bottom)
 	}
-	if m.debugVisible {
-		debug := debugBar(m, innerW, theme)
-		if volumeLine != "" {
-			return lipgloss.JoinVertical(lipgloss.Left, top, playback, volumeLine, debug, body, bottom)
-		}
-		return lipgloss.JoinVertical(lipgloss.Left, top, playback, debug, body, bottom)
+	// Zen mode has already returned, so the header and the narration row are
+	// only rendered on the path that actually shows them.
+	rows := []string{topBar(m, innerW, theme, compact)}
+	if showNarration {
+		rows = append(rows, playbackBar(m, innerW, theme, samples, compact))
 	}
 	if volumeLine != "" {
-		return lipgloss.JoinVertical(lipgloss.Left, top, playback, volumeLine, body, bottom)
+		rows = append(rows, volumeLine)
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, top, playback, body, bottom)
+	if m.debugVisible {
+		rows = append(rows, debugBar(m, innerW, theme))
+	}
+	rows = append(rows, body)
+	if rail != "" {
+		rows = append(rows, rail)
+	}
+	rows = append(rows, bottom)
+	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
 func (m Model) activeTheme() ColorTheme {
@@ -1637,60 +1683,103 @@ func (m *Model) applyACEStepReady(msg ACEStepReadyMsg) {
 }
 
 func topBar(m Model, w int, theme ColorTheme, compact bool) string {
-	currentAlgo := m.currentAlgoIdentity()
-	var label string
-	if m.playlist != nil {
-		// SP17: when the active track is a single seamless composition
-		// (Sections > 1), show the section name; otherwise keep the
-		// "playlist-position" fraction display for true multi-track
-		// playlists (radio mode, mixed playlists).
-		positionLabel := playlistPositionLabel(&m)
-		if compact {
-			label = fmt.Sprintf("termus · %s · %s · %d", currentAlgo, positionLabel, m.seed)
-		} else {
-			label = fmt.Sprintf("termus · %s · %s %s · seed=%d",
-				m.playlist.Name, positionLabel,
-				currentAlgo, m.seed)
-		}
-	} else {
-		if compact {
-			label = fmt.Sprintf("termus · %s · %d", currentAlgo, m.seed)
-		} else {
-			label = fmt.Sprintf("termus · %s · %s · seed=%d",
-				currentAlgo, m.keyName, m.seed)
+	spec, hasSpec := m.activeSpec()
+	station := m.algo
+	glyph := stationGlyph("")
+	metaParts := make([]string, 0, 3)
+	if hasSpec {
+		station = spec.Label()
+		glyph = stationGlyph(spec.Name)
+		metaParts = append(metaParts, spec.Name)
+	}
+	if m.keyName != "" {
+		metaParts = append(metaParts, m.keyName)
+	}
+	if hasSpec {
+		if character := stationCharacter(spec.Name); character != "" {
+			metaParts = append(metaParts, character)
 		}
 	}
-	right := ""
-	if m.recording {
-		rec := lipgloss.NewStyle().Foreground(lipgloss.Color("#ff5b5b")).Render("● REC")
-		if right == "" {
-			right = rec
-		} else {
-			right += "  " + rec
-		}
+	if compact {
+		metaParts = metaParts[:0]
 	}
+
+	seedPart := fmt.Sprintf("seed %d", m.seed)
+	slotParts := make([]string, 0, 2)
 	if !compact {
-		if seeds := m.seedSlotsLabel(); seeds != "" {
-			seeds = lipgloss.NewStyle().Faint(true).Render(seeds)
-			if right == "" {
-				right = seeds
-			} else {
-				right = seeds + "  " + right
-			}
+		if m.seedA != nil {
+			slotParts = append(slotParts, fmt.Sprintf("A %d", m.seedA.Seed))
+		}
+		if m.seedB != nil {
+			slotParts = append(slotParts, fmt.Sprintf("B %d", m.seedB.Seed))
 		}
 	}
-	if compact && len(m.kept) > 0 {
-		kept := lipgloss.NewStyle().Faint(true).Render(fmt.Sprintf("keep=%d", len(m.kept)))
-		if right == "" {
-			right = kept
-		} else {
-			right = kept + "  " + right
+	keepPart := ""
+	if len(m.kept) > 0 {
+		keepPart = fmt.Sprintf("keep %d", len(m.kept))
+	}
+	recPart := ""
+	if m.recording {
+		recPart = "● REC"
+	}
+
+	// Lay the row out in PLAIN text first and degrade until it fits: styled
+	// (ANSI) strings must never be trimmed.
+	identityPlain := glyph + " " + strings.ToUpper(station)
+	rightPlain := func() string {
+		parts := append([]string{seedPart}, slotParts...)
+		if keepPart != "" {
+			parts = append(parts, keepPart)
 		}
+		out := strings.Join(parts, " · ")
+		if recPart != "" {
+			out += "  " + recPart
+		}
+		return out
 	}
-	if right != "" {
-		label = trimToWidth(label, maxInt(0, w-lipgloss.Width(right)-1))
+	leftPlain := func() string {
+		if len(metaParts) == 0 {
+			return identityPlain
+		}
+		return identityPlain + "   " + strings.Join(metaParts, " · ")
 	}
-	left := lipgloss.NewStyle().Foreground(theme.BarFg).Render(label)
+	fits := func() bool {
+		return lipgloss.Width(leftPlain())+lipgloss.Width(rightPlain())+1 <= w
+	}
+	// (a) shed meta from the right: character, then key, then algo name.
+	for !fits() && len(metaParts) > 0 {
+		metaParts = metaParts[:len(metaParts)-1]
+	}
+	// (b) shed right-side detail: seed slots first, then the keep count.
+	for !fits() && len(slotParts) > 0 {
+		slotParts = slotParts[:len(slotParts)-1]
+	}
+	if !fits() && keepPart != "" {
+		keepPart = ""
+	}
+	// (c) last resort: drop the REC badge, then trim the station text itself.
+	if !fits() && recPart != "" {
+		recPart = ""
+	}
+	if !fits() {
+		identityPlain = trimToWidth(identityPlain, maxInt(0, w-lipgloss.Width(rightPlain())-1))
+	}
+
+	left := lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render(identityPlain)
+	if len(metaParts) > 0 {
+		left += "   " + lipgloss.NewStyle().Foreground(theme.BarFg).Render(strings.Join(metaParts, " · "))
+	}
+	rightText := seedPart
+	if len(slotParts) > 0 {
+		rightText += " · " + strings.Join(slotParts, " · ")
+	}
+	if keepPart != "" {
+		rightText += " · " + keepPart
+	}
+	right := lipgloss.NewStyle().Faint(true).Render(rightText)
+	if recPart != "" {
+		right += "  " + lipgloss.NewStyle().Foreground(lipgloss.Color("#ff5b5b")).Render(recPart)
+	}
 	pad := w - lipgloss.Width(left) - lipgloss.Width(right)
 	if pad < 1 {
 		pad = 1
@@ -1698,53 +1787,8 @@ func topBar(m Model, w int, theme ColorTheme, compact bool) string {
 	return left + spaces(pad) + right
 }
 
-func (m Model) seedSlotsLabel() string {
-	parts := make([]string, 0, 3)
-	if m.seedA != nil {
-		parts = append(parts, fmt.Sprintf("A=%d", m.seedA.Seed))
-	}
-	if m.seedB != nil {
-		parts = append(parts, fmt.Sprintf("B=%d", m.seedB.Seed))
-	}
-	if len(m.kept) > 0 {
-		parts = append(parts, fmt.Sprintf("keep=%d", len(m.kept)))
-	}
-	switch len(parts) {
-	case 0:
-		return ""
-	case 1:
-		return parts[0]
-	}
-	out := parts[0]
-	for _, part := range parts[1:] {
-		out += " · " + part
-	}
-	return out
-}
-
 func playbackBar(m Model, w int, theme ColorTheme, samples []float64, compact bool) string {
-	leftParts := []string{formatElapsed("live", time.Since(m.startedAt))}
-	if m.listeningMode != "" {
-		leftParts = append(leftParts, m.listeningMode)
-	}
-	if m.playlist != nil && m.playlistIdx < len(m.playlist.Tracks) {
-		track := m.playlist.Tracks[m.playlistIdx]
-		if compact {
-			leftParts = append(leftParts,
-				fmt.Sprintf("%s/%s", shortDuration(time.Since(m.trackStartedAt)), shortDuration(track.Duration)),
-				fmt.Sprintf("next %s", shortDuration(time.Until(m.nextTrackAt))),
-			)
-		} else {
-			leftParts = append(leftParts,
-				fmt.Sprintf("track %s/%s", shortDuration(time.Since(m.trackStartedAt)), shortDuration(track.Duration)),
-				fmt.Sprintf("next %s", shortDuration(time.Until(m.nextTrackAt))),
-				fmt.Sprintf("fade %s", shortDuration(time.Duration(m.playlistFade)*time.Second/44100)),
-			)
-		}
-		if pos := playlistPositionLabel(&m); pos != "" {
-			leftParts = append(leftParts, pos)
-		}
-	}
+	leftParts := narrationParts(m)
 	if m.recording && !m.recordStartedAt.IsZero() {
 		leftParts = append(leftParts, formatElapsed("rec", time.Since(m.recordStartedAt)))
 	}
@@ -1755,13 +1799,16 @@ func playbackBar(m Model, w int, theme ColorTheme, samples []float64, compact bo
 		}
 		leftParts = append(leftParts, "AI: "+label)
 	}
-	leftText := trimToWidth(strings.Join(leftParts, " · "), maxInt(0, w-22))
+	// Render the meter first and budget the narration off its measured width:
+	// the "clip" label is two columns wider than "ok", so a fixed reserve
+	// overflows exactly when the signal is hottest.
 	meter, clipped := meterSummary(samples)
 	meterWidth := 14
 	if compact {
 		meterWidth = 8
 	}
 	right := renderCompactMeter(theme, meter, clipped, meterWidth)
+	leftText := trimToWidth(strings.Join(leftParts, " · "), maxInt(0, w-lipgloss.Width(right)-1))
 	left := lipgloss.NewStyle().Faint(true).Render(leftText)
 	pad := w - lipgloss.Width(left) - lipgloss.Width(right)
 	if pad < 1 {
@@ -1871,7 +1918,7 @@ func inspectorDebugLabel(status gen.DebugStatus) string {
 	return text
 }
 
-func bottomBar(m Model, w int, theme ColorTheme, compact bool) string {
+func bottomBar(m Model, w int, theme ColorTheme) string {
 	if m.reducedChrome {
 		left := lipgloss.NewStyle().Foreground(theme.BarFg).Render(m.algo)
 		right := lipgloss.NewStyle().Faint(true).Render("?")
@@ -1881,12 +1928,19 @@ func bottomBar(m Model, w int, theme ColorTheme, compact bool) string {
 		}
 		return left + spaces(pad) + right
 	}
-	leftText := lipgloss.NewStyle().Foreground(theme.BarFg).Render(m.algo)
-	rightText := lipgloss.NewStyle().Faint(true).Render("?  m")
-	status := m.currentStatus(time.Now())
-	if status == "" && compact {
-		status = " "
+	// Pick the hint strings as PLAIN text and measure before styling: the
+	// full footer needs 59 columns, but the app runs down to w=40.
+	leftPlain := "[space] play   [m] control   [t] tracks   [?] help"
+	rightPlain := "[z] zen"
+	// +3, not +2: the status gutter below is clamped to a minimum of one
+	// column, so the hints must leave room for it or the row runs one over.
+	if lipgloss.Width(leftPlain)+lipgloss.Width(rightPlain)+3 > w {
+		leftPlain = "[?] help"
+		rightPlain = "[z]"
 	}
+	leftText := lipgloss.NewStyle().Faint(true).Render(leftPlain)
+	rightText := lipgloss.NewStyle().Faint(true).Render(rightPlain)
+	status := m.currentStatus(time.Now())
 	statusStyle := lipgloss.NewStyle().Foreground(theme.BarHi)
 	if status == "" {
 		statusStyle = lipgloss.NewStyle().Faint(true)
@@ -1907,33 +1961,182 @@ func bottomBar(m Model, w int, theme ColorTheme, compact bool) string {
 	return leftText + spaces(leftPad+1) + centerText + spaces(rightPad+1) + rightText
 }
 
-func helpPanel(m Model, w, h int, theme ColorTheme) string {
-	bodyW := maxInt(24, minInt(w-6, 76))
-	bodyH := maxInt(10, minInt(h-2, 18))
-	lines := []string{
-		styleHelpLine(theme, false, "Global", "[space] play / pause   [↑↓] volume   [m] control center   [t] tracks"),
-		styleHelpLine(theme, false, "View", "The main screen stays minimal. Use the control center for everything deeper."),
-		styleHelpLine(theme, false, "Track Library", "[t] open library   [←→] style   [↑↓] browse   [enter] play"),
-		styleHelpLine(theme, false, "Inside Control Center", "[↑↓] browse   [←→] adjust   [enter] apply / open   [tab] next section"),
-		styleHelpLine(theme, false, "Sections", "Now   Look   Music   Seeds   Library   Export   Audio   Debug"),
-		styleHelpLine(theme, false, "Close", "[?] close help   [q] quit"),
+// helpGroup is one titled cluster of key/action rows in the help overlay.
+type helpGroup struct {
+	Title string
+	Rows  [][2]string
+}
+
+// helpColumns returns the two logical columns of groups shown by the help
+// overlay. Split out so both the two-column and single-column layouts share
+// the same source of truth.
+func helpColumns() ([]helpGroup, []helpGroup) {
+	col1 := []helpGroup{
+		{"PLAYBACK", [][2]string{
+			{"space", "play/pause"},
+			{"↑ ↓ + −", "volume"},
+			{"n / p", "next/previous algorithm"},
+			{"r", "record to ./exports"},
+		}},
+		{"VIEW", [][2]string{
+			{"c / C", "theme/visual"},
+			{"z", "zen — scope only"},
+			{"d", "debug narration bar"},
+		}},
+		{"OPEN", [][2]string{
+			{"m", "control center"},
+			{"t", "track library"},
+			{"e", "export drawer"},
+		}},
 	}
-	content := strings.Join(lines, "\n")
+	col2 := []helpGroup{
+		{"SEEDS", [][2]string{
+			{"[ ]", "browse seeds"},
+			{"a / b", "store slot A/B"},
+			{"tab", "compare A/B"},
+			{"k / x", "keep/reject take"},
+		}},
+		{"INSIDE PANELS", [][2]string{
+			{"↑ ↓", "browse rows"},
+			{"← →", "adjust value"},
+			{"enter", "apply/open"},
+			{"tab", "next section"},
+		}},
+		{"GLOBAL", [][2]string{
+			{"?", "this help"},
+			{"q", "quit"},
+		}},
+	}
+	return col1, col2
+}
+
+// helpPanel renders the full grouped key reference shown by the `?` overlay.
+// It re-advertises the hidden power-user keys (seed browsing, A/B compare,
+// keep/reject, zen mode) alongside the core transport controls. It is an
+// overlay in the play-view body area — not full-screen — so it must fit
+// within the given w×h: a two-column layout when there's room, a single
+// stacked column otherwise, with clipLines bounding the height as a last
+// resort.
+func helpPanel(m Model, w, h int, theme ColorTheme) string {
+	col1, col2 := helpColumns()
+	bodyW := maxInt(30, minInt(w-4, 96))
+	innerW := maxInt(1, bodyW-6) // minus 2×3 horizontal padding
+
+	footerStyle := lipgloss.NewStyle().Faint(true)
+	footerText := "every key still works everywhere — the footer just stopped shouting about it"
+
+	var columns string
+	const gap = 6
+	// twoColMinInnerW is the smallest content width where a two-column
+	// layout stays worth it: colW works out to (64-6)/2 = 29, so the action
+	// column gets 29-keyW=18 cols. The longest rows (e.g.
+	// "next/previous algorithm", "record to ./exports", "debug narration
+	// bar") get a light trimToWidth ellipsis at that width, but all six
+	// group headers still render. Below this we fall back to a single
+	// stacked column instead, because splitting further would start
+	// clipping whole groups instead of just trimming a few action strings.
+	//
+	// This is a different, lower threshold than the footer text: the
+	// footer (76 cols) starts getting ellipsized by trimToWidth(footerText,
+	// innerW) below innerW 76, while the two-column layout keeps working
+	// all the way down to innerW 64 — the footer is the first thing to give
+	// ground, well before the columns collapse.
+	const twoColMinInnerW = 64
+	if innerW >= twoColMinInnerW {
+		colW := (innerW - gap) / 2
+		left := renderHelpColumn(col1, colW, theme)
+		right := renderHelpColumn(col2, colW, theme)
+		columns = lipgloss.JoinHorizontal(lipgloss.Top, left, spaces(gap), right)
+	} else {
+		// Single column: real estate is tight enough that clipLines below
+		// may cut the tail of the group list. Put GLOBAL (q, ?) first so the
+		// keys to quit or close help are never the clipping casualty, then
+		// the rest in roughly descending importance.
+		single := []helpGroup{col2[2], col1[0], col1[2], col1[1], col2[0], col2[1]}
+		columns = renderHelpColumn(single, innerW, theme)
+	}
+
+	inner := lipgloss.JoinVertical(
+		lipgloss.Left,
+		helpTitleRow(innerW, theme),
+		"",
+		columns,
+		"",
+		footerStyle.Render(trimToWidth(footerText, innerW)),
+	)
+	// Border (2 rows) + vertical padding (2 rows) must also fit within h.
+	inner = clipLines(inner, maxInt(1, h-4))
+	// lipgloss.Style.Width(), when Padding is also set, sizes the
+	// content+padding box together — so the Width argument here must be
+	// bodyW (content + padding), not innerW (content alone), or the padding
+	// eats into the space we already budgeted for innerW and wraps lines
+	// that were sized to fit exactly.
 	panel := lipgloss.NewStyle().
 		Width(bodyW).
-		Height(bodyH).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(theme.BarFg).
-		Padding(1, 2).
-		Render(
-			lipgloss.JoinVertical(
-				lipgloss.Left,
-				lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render("TERMUS HELP"),
-				"",
-				content,
-			),
-		)
+		Padding(1, 3).
+		Render(inner)
 	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, panel)
+}
+
+// helpTitleRow renders "TERMUS HELP" left-aligned with a right-aligned
+// quit/close reminder. clipLines can cut the bottom of the two-column body
+// (the GLOBAL group, where q and ? are also listed) well before it reaches
+// h's limit on real terminal sizes, since helpPanel's h is the play-view's
+// body height minus chrome, not the raw window height. Quit and close are
+// pinned here, in the first line of inner content, so clipLines — which
+// only ever trims from the bottom — can never remove them.
+func helpTitleRow(innerW int, theme ColorTheme) string {
+	label := "TERMUS HELP"
+	left := lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render(label)
+	// Tiered so the reminder still fits down to the smallest innerW helpPanel
+	// actually reaches (30, at w=40/41 where bodyW is clamped to its w-4
+	// floor). Measured on the plain strings, before styling — trimToWidth
+	// and lipgloss.Width can't see through ANSI sequences reliably for
+	// layout math, so all the arithmetic below happens on unstyled text.
+	hints := []string{"[?] close · [q] quit", "[?] close [q] quit", "[q] quit"}
+	hint := ""
+	for _, h := range hints {
+		if lipgloss.Width(label)+1+lipgloss.Width(h) <= innerW {
+			hint = h
+			break
+		}
+	}
+	if hint == "" {
+		return left
+	}
+	right := lipgloss.NewStyle().Faint(true).Render(hint)
+	pad := innerW - lipgloss.Width(left) - lipgloss.Width(right)
+	return left + spaces(pad) + right
+}
+
+// renderHelpColumn lays out a stack of help groups as "key   action" rows,
+// key-column padded to a fixed width and the action text trimmed to fit w.
+func renderHelpColumn(groups []helpGroup, w int, theme ColorTheme) string {
+	// keyW is the fixed key-column width (README: "~11 cols"). At the
+	// twoColMinInnerW threshold in helpPanel (colW == 29), the widest
+	// action string ("next/previous algorithm", 23 cols) only just
+	// overflows w-keyW == 18 and picks up a trimToWidth ellipsis — the key
+	// column itself never needs to shrink.
+	const keyW = 11
+	keyStyle := lipgloss.NewStyle().Foreground(theme.BarFg)
+	titleStyle := lipgloss.NewStyle().Foreground(theme.BarHi)
+	// Capacity covers the single-column fallback's worst case: 6 group
+	// titles + 20 rows + 5 blank separators = 31 lines.
+	lines := make([]string, 0, 32)
+	for gi, group := range groups {
+		if gi > 0 {
+			lines = append(lines, "")
+		}
+		lines = append(lines, titleStyle.Render(group.Title))
+		for _, row := range group.Rows {
+			key := keyStyle.Render(padRight(row[0], keyW))
+			action := trimToWidth(row[1], maxInt(0, w-keyW))
+			lines = append(lines, key+action)
+		}
+	}
+	return lipgloss.NewStyle().Width(w).Render(strings.Join(lines, "\n"))
 }
 
 func styleHelpLine(theme ColorTheme, dim bool, title, text string) string {
@@ -1943,55 +2146,6 @@ func styleHelpLine(theme ColorTheme, dim bool, title, text string) string {
 		valueStyle = valueStyle.Faint(true)
 	}
 	return label + "  " + valueStyle.Render(text)
-}
-
-func filterHelpLines(lines []string, m Model) []string {
-	return append([]string(nil), lines...)
-}
-
-func splashPanel(m Model, w, h int, theme ColorTheme) string {
-	bodyW := maxInt(30, minInt(w-6, 72))
-	bodyH := maxInt(12, minInt(h-2, 16))
-	lines := []string{
-		lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render("TERMUS"),
-		"",
-		styleHelpLine(theme, false, "Play", "[space] pause / resume   [↑↓] volume"),
-		styleHelpLine(theme, false, "Open", "[m] control center   [t] tracks   [?] help"),
-		styleHelpLine(theme, false, "Global", "[q] quit   [z] zen"),
-		"",
-		lipgloss.NewStyle().Faint(true).Render("Press any key to start exploring."),
-	}
-	panel := lipgloss.NewStyle().
-		Width(bodyW).
-		Height(bodyH).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(theme.BarFg).
-		Padding(1, 2).
-		Render(strings.Join(lines, "\n"))
-	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, panel)
-}
-
-func startupLoadingView(m Model, w, h int, theme ColorTheme, now time.Time) string {
-	title := m.startupTitle
-	if title == "" {
-		title = "Loading termus"
-	}
-	barW := maxInt(26, minInt(w-10, 72))
-	barH := 3
-	phase := float64(now.UnixNano()) / float64(time.Second)
-	bar := renderStartupBrailleBar(barW, barH, clamp01(m.startupPercent), phase, theme)
-	pct := lipgloss.NewStyle().Foreground(theme.BarHi).Render(fmt.Sprintf("%3d%%", int(clamp01(m.startupPercent)*100)))
-	titleLine := lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render(title)
-	detail := ""
-	if m.startupDetail != "" {
-		detail = lipgloss.NewStyle().Foreground(theme.BarFg).Faint(true).Render(m.startupDetail)
-	}
-	parts := []string{titleLine, "", bar, pct, "", detail}
-	if ctx := composingContextBlock(m, barW, theme); ctx != "" {
-		parts = append(parts, "", ctx)
-	}
-	content := lipgloss.JoinVertical(lipgloss.Center, parts...)
-	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, content)
 }
 
 // composingContextBlock renders the .tm track's compositional metadata
@@ -2258,6 +2412,18 @@ func shortDuration(d time.Duration) string {
 
 func useCompactLayout(w, h int) bool {
 	return w < 72 || h < 18
+}
+
+// showFormRail reports whether the play view has the vertical room for the
+// form-rail row above the footer.
+//
+// The play view sheds chrome in a fixed order as the terminal shrinks, so the
+// scope keeps as many rows as possible: the narration row drops first (at the
+// compact threshold), then the form rail (below this height), then the debug
+// row when it is toggled off. The station header and footer never drop —
+// only zen mode removes the header.
+func showFormRail(h int) bool {
+	return h >= 14
 }
 
 func maxInt(a, b int) int {

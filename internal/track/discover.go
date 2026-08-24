@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 func DefaultRoots() []string {
@@ -99,6 +100,7 @@ func Resolve(entries []Entry, input string) (Entry, bool) {
 				Complexity:   complexity,
 				Structure:    structure,
 				RenderEngine: file.RenderEngine,
+				Textures:     textureLabels(file.Textures),
 			}, true
 		}
 	}
@@ -146,6 +148,7 @@ func loadEntry(root, path string) (Entry, error) {
 		Complexity:   complexity,
 		Structure:    structure,
 		RenderEngine: file.RenderEngine,
+		Textures:     textureLabels(file.Textures),
 	}, nil
 }
 
@@ -186,12 +189,18 @@ func buildEntrySummary(file *File, pack stylePack) ([]string, []EntrySection, []
 		}
 		events := reviewEventLabels(sectionEvents(section))
 		totalEvents += len(events)
+		// invalid -> 0; Compile rejects bad durations before playback
+		dur, _ := time.ParseDuration(strings.TrimSpace(section.Duration))
+		if dur < 0 {
+			dur = 0
+		}
 		structure = append(structure, EntrySection{
 			ID:        section.ID,
 			Label:     label,
 			Harmony:   section.Harmony,
 			RoleNames: roleNames,
 			Events:    append([]string(nil), events...),
+			Duration:  dur,
 		})
 	}
 	return titles, structure, ensemble, totalEvents, entryComplexity(len(structure), totalEvents, len(ensemble))
@@ -286,6 +295,51 @@ func entryComplexity(sectionCount, eventCount, ensembleCount int) string {
 	default:
 		return "lean"
 	}
+}
+
+// defaultTextureLevelDB returns the per-texture default gain (dBFS) used
+// when a texture's level_db is omitted/zero, keyed by lowercase-normalized
+// name. Shared by compileTextures (authored_compile.go) — the actual
+// playback level — and textureLabels below, so the TUI display always
+// matches what plays.
+func defaultTextureLevelDB(name string) float64 {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "rain":
+		return -38
+	case "room_tone":
+		return -42
+	case "vinyl":
+		return -40
+	case "tape_hiss":
+		return -48
+	case "cafe":
+		return -36
+	default:
+		return -42
+	}
+}
+
+// textureLabels renders the file's textures: block as display strings for
+// the track-library detail pane, e.g. "rain -36 dB". When a texture omits
+// level_db (or sets it to 0), the same default compileTextures applies at
+// playback time is used, so the label matches what actually plays.
+func textureLabels(textures []TextureSpec) []string {
+	out := make([]string, 0, len(textures))
+	for _, tx := range textures {
+		name := strings.TrimSpace(tx.Name)
+		if name == "" {
+			continue
+		}
+		level := tx.LevelDB
+		if level == 0 {
+			level = defaultTextureLevelDB(name)
+		}
+		out = append(out, fmt.Sprintf("%s %.0f dB", name, level))
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func dedupePaths(paths []string) []string {

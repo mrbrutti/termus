@@ -350,13 +350,16 @@ func (a *SF2Drone) Next(left, right []float64) {
 
 func (a *SF2Drone) DebugStatus() DebugStatus {
 	chord := ""
+	next := ""
 	if len(a.chords) > 0 {
 		chord = a.chords[a.currentChordIdx].label
+		next = a.chords[(a.currentChordIdx+1)%len(a.chords)].label
 	}
 	return DebugStatus{
-		Chord:   chord,
-		Section: string(a.section.Kind),
-		Bar:     a.currentChordIdx + 1,
+		Chord:     chord,
+		Section:   string(a.section.Kind),
+		Bar:       a.currentChordIdx + 1,
+		NextChord: next,
 	}
 }
 

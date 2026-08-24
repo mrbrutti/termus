@@ -25,13 +25,33 @@ const (
 )
 
 type controlItem struct {
-	Title    string
-	Value    string
+	Title string
+	Value string
+	// Hint is not rendered for rows that carry a Scale — the pip cluster and
+	// the word ladder take its place.
 	Hint     string
 	Disabled bool
-	Adjust   func(*Model, int)
-	Activate func(*Model) tea.Cmd
+	// Scale/ScaleValue drive the ●●●○○ pip cluster and the faint word
+	// ladder. Scale is nil for rows without a 5-step macro.
+	Scale      []string
+	ScaleValue int
+	Adjust     func(*Model, int)
+	Activate   func(*Model) tea.Cmd
 }
+
+// The nine music macros share one 5-step vocabulary each: the word ladder is
+// both the current-value label and the faint scale printed after the pips.
+var (
+	densityLadder    = []string{"air", "lean", "steady", "lush", "full"}
+	brightnessLadder = []string{"soft", "warm", "natural", "clear", "gloss"}
+	motionLadder     = []string{"still", "settled", "breathing", "glide", "orbit"}
+	reverbLadder     = []string{"dry", "close", "room", "hall", "halo"}
+	swingLadder      = []string{"straight", "tight", "groove", "late", "loose"}
+	droneLadder      = []string{"light", "trim", "grounded", "deep", "sub"}
+	tempoLadder      = []string{"slower", "laid back", "natural", "driven", "urgent"}
+	phraseLadder     = []string{"short", "trim", "natural", "long", "floating"}
+	morphLadder      = []string{"cut", "quick", "blend", "wash", "drift"}
+)
 
 func (t controlTab) label() string {
 	switch t {
@@ -259,101 +279,69 @@ func (m Model) lookControlItems() []controlItem {
 	}
 }
 
+// macroItem builds one 5-step macro row: the ladder supplies both the current
+// value word and the faint scale drawn after the pips.
+func macroItem(title string, ladder []string, value int, hint string, adjust func(*Model, int)) controlItem {
+	return controlItem{
+		Title:      title,
+		Value:      macroLabel(value, ladder),
+		Hint:       hint,
+		Scale:      ladder,
+		ScaleValue: value,
+		Adjust:     adjust,
+	}
+}
+
 func (m Model) musicControlItems() []controlItem {
 	profile := gen.DefaultControlProfile()
 	if m.musicProfile != nil {
 		profile = *m.musicProfile
 	}
 	return []controlItem{
-		{
-			Title: "density",
-			Value: macroLabel(profile.Density, []string{"air", "lean", "steady", "lush", "full"}),
-			Hint:  "left/right rebuild",
-			Adjust: func(m *Model, delta int) {
-				m.updateMusicProfile("density", func(profile *gen.ControlProfile) {
-					profile.Density += delta
-				})
-			},
-		},
-		{
-			Title: "brightness",
-			Value: macroLabel(profile.Brightness, []string{"soft", "warm", "natural", "clear", "gloss"}),
-			Hint:  "left/right rebuild",
-			Adjust: func(m *Model, delta int) {
-				m.updateMusicProfile("brightness", func(profile *gen.ControlProfile) {
-					profile.Brightness += delta
-				})
-			},
-		},
-		{
-			Title: "motion",
-			Value: macroLabel(profile.Motion, []string{"still", "settled", "breathing", "glide", "orbit"}),
-			Hint:  "left/right rebuild",
-			Adjust: func(m *Model, delta int) {
-				m.updateMusicProfile("motion", func(profile *gen.ControlProfile) {
-					profile.Motion += delta
-				})
-			},
-		},
-		{
-			Title: "reverb",
-			Value: macroLabel(profile.Reverb, []string{"dry", "close", "room", "hall", "halo"}),
-			Hint:  "left/right rebuild",
-			Adjust: func(m *Model, delta int) {
-				m.updateMusicProfile("reverb", func(profile *gen.ControlProfile) {
-					profile.Reverb += delta
-				})
-			},
-		},
-		{
-			Title: "swing",
-			Value: macroLabel(profile.Swing, []string{"straight", "tight", "groove", "late", "loose"}),
-			Hint:  "left/right rebuild",
-			Adjust: func(m *Model, delta int) {
-				m.updateMusicProfile("swing", func(profile *gen.ControlProfile) {
-					profile.Swing += delta
-				})
-			},
-		},
-		{
-			Title: "drone depth",
-			Value: macroLabel(profile.DroneDepth, []string{"light", "trim", "grounded", "deep", "sub"}),
-			Hint:  "left/right rebuild",
-			Adjust: func(m *Model, delta int) {
-				m.updateMusicProfile("drone depth", func(profile *gen.ControlProfile) {
-					profile.DroneDepth += delta
-				})
-			},
-		},
-		{
-			Title: "tempo",
-			Value: macroLabel(profile.Tempo, []string{"slower", "laid back", "natural", "driven", "urgent"}),
-			Hint:  "rhythmic genres",
-			Adjust: func(m *Model, delta int) {
-				m.updateMusicProfile("tempo", func(profile *gen.ControlProfile) {
-					profile.Tempo += delta
-				})
-			},
-		},
-		{
-			Title: "phrase length",
-			Value: macroLabel(profile.Phrase, []string{"short", "trim", "natural", "long", "floating"}),
-			Hint:  "ambient textures",
-			Adjust: func(m *Model, delta int) {
-				m.updateMusicProfile("phrase length", func(profile *gen.ControlProfile) {
-					profile.Phrase += delta
-				})
-			},
-		},
-		{
-			Title: "seed morph",
-			Value: macroLabel(m.morphMode, []string{"cut", "quick", "blend", "wash", "drift"}),
-			Hint:  "seed and algo swaps",
-			Adjust: func(m *Model, delta int) {
-				m.morphMode = clampInt(m.morphMode+delta, 0, 4)
-				m.flashStatus("seed morph: "+macroLabel(m.morphMode, []string{"cut", "quick", "blend", "wash", "drift"}), 2*time.Second)
-			},
-		},
+		macroItem("density", densityLadder, profile.Density, "left/right rebuild", func(m *Model, delta int) {
+			m.updateMusicProfile("density", func(profile *gen.ControlProfile) {
+				profile.Density += delta
+			})
+		}),
+		macroItem("brightness", brightnessLadder, profile.Brightness, "left/right rebuild", func(m *Model, delta int) {
+			m.updateMusicProfile("brightness", func(profile *gen.ControlProfile) {
+				profile.Brightness += delta
+			})
+		}),
+		macroItem("motion", motionLadder, profile.Motion, "left/right rebuild", func(m *Model, delta int) {
+			m.updateMusicProfile("motion", func(profile *gen.ControlProfile) {
+				profile.Motion += delta
+			})
+		}),
+		macroItem("reverb", reverbLadder, profile.Reverb, "left/right rebuild", func(m *Model, delta int) {
+			m.updateMusicProfile("reverb", func(profile *gen.ControlProfile) {
+				profile.Reverb += delta
+			})
+		}),
+		macroItem("swing", swingLadder, profile.Swing, "left/right rebuild", func(m *Model, delta int) {
+			m.updateMusicProfile("swing", func(profile *gen.ControlProfile) {
+				profile.Swing += delta
+			})
+		}),
+		macroItem("drone depth", droneLadder, profile.DroneDepth, "left/right rebuild", func(m *Model, delta int) {
+			m.updateMusicProfile("drone depth", func(profile *gen.ControlProfile) {
+				profile.DroneDepth += delta
+			})
+		}),
+		macroItem("tempo", tempoLadder, profile.Tempo, "rhythmic genres", func(m *Model, delta int) {
+			m.updateMusicProfile("tempo", func(profile *gen.ControlProfile) {
+				profile.Tempo += delta
+			})
+		}),
+		macroItem("phrase length", phraseLadder, profile.Phrase, "ambient textures", func(m *Model, delta int) {
+			m.updateMusicProfile("phrase length", func(profile *gen.ControlProfile) {
+				profile.Phrase += delta
+			})
+		}),
+		macroItem("seed morph", morphLadder, m.morphMode, "seed and algo swaps", func(m *Model, delta int) {
+			m.morphMode = clampInt(m.morphMode+delta, 0, 4)
+			m.flashStatus("seed morph: "+macroLabel(m.morphMode, morphLadder), 2*time.Second)
+		}),
 	}
 }
 
@@ -474,6 +462,7 @@ func (m Model) libraryControlItems() []controlItem {
 			Hint:  "enter open",
 			Activate: func(m *Model) tea.Cmd {
 				m.toggleLibrary()
+				m.controlsVisible = false
 				return nil
 			},
 		},
@@ -735,80 +724,141 @@ func (m Model) debugControlItems() []controlItem {
 	}
 }
 
-func currentTabItems(m Model) []controlItem {
-	return m.controlItems()
-}
-
 func controlsPanel(m Model, w, h int, theme ColorTheme) string {
-	bodyW := maxInt(42, minInt(w-6, 100))
-	bodyH := maxInt(16, minInt(h-2, 24))
-	sidebarW := 13
-	rightW := bodyW - sidebarW - 7
+	// The pane pads 2 columns per side, so w-4 is all the room there is:
+	// claiming more would make lipgloss wrap every row and grow the pane past
+	// the terminal height.
+	innerW := maxInt(1, w-4)
+	sidebarW := 14
+	// View refuses to draw below m.width 40, so innerW is never under 36 and
+	// the 12-column floor only guards against a pathological direct call: at
+	// w=40 the natural right pane is 18 columns.
+	rightW := maxInt(12, innerW-sidebarW-4)
 	sections := []controlTab{
-		controlTabNow,
-		controlTabLook,
-		controlTabMusic,
-		controlTabSeeds,
-		controlTabLibrary,
-		controlTabExport,
-		controlTabAudio,
-		controlTabDebug,
+		controlTabNow, controlTabLook, controlTabMusic, controlTabSeeds,
+		controlTabLibrary, controlTabExport, controlTabAudio, controlTabDebug,
 	}
 	sidebarLines := make([]string, 0, len(sections))
 	for _, section := range sections {
 		sidebarLines = append(sidebarLines, renderControlSection(theme, m.controlTab == section, section.label()))
 	}
-	items := currentTabItems(m)
-	lines := make([]string, 0, len(items)+4)
-	lines = append(lines,
-		lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render(strings.ToUpper(m.controlTab.label())),
-		lipgloss.NewStyle().Faint(true).Render(controlCenterSummary(m)),
-		"",
-	)
+
+	// Both the annotation and the explainer are trimmed as plain text so a
+	// narrow pane drops words instead of wrapping into an extra row.
+	titleText := strings.ToUpper(m.controlTab.label())
+	title := lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render(titleText)
+	annotation := lipgloss.NewStyle().Faint(true).
+		Render(trimToWidth(controlSectionAnnotation(m.controlTab), maxInt(0, rightW-lipgloss.Width(titleText)-2)))
+	lines := []string{title + "  " + annotation, ""}
+	items := m.controlItems()
 	for i, item := range items {
 		lines = append(lines, renderControlItem(theme, i == m.controlRow, item, rightW))
 	}
+	if explainer := controlSectionExplainer(m.controlTab); explainer != "" {
+		lines = append(lines, "", lipgloss.NewStyle().Faint(true).Render(trimToWidth(explainer, rightW)))
+	}
 	if m.controlTab == controlTabDebug {
-		if preview := renderControlTrackStructure(m, theme, rightW, bodyH-len(lines)-5); preview != "" {
+		if preview := renderControlTrackStructure(m, theme, rightW, h-len(lines)-8); preview != "" {
 			lines = append(lines, "", preview)
 		}
 	}
+
 	sidebar := lipgloss.NewStyle().Width(sidebarW).Render(strings.Join(sidebarLines, "\n"))
 	content := lipgloss.NewStyle().Width(rightW).Render(strings.Join(lines, "\n"))
-	main := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, content)
-	panel := lipgloss.NewStyle().
-		Width(bodyW).
-		Height(bodyH).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(theme.BarFg).
-		Padding(1, 2).
-		Render(
-			lipgloss.JoinVertical(
-				lipgloss.Left,
-				lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render("CONTROL CENTER"),
-				"",
-				main,
-				"",
-				lipgloss.NewStyle().Faint(true).Render("[tab] next section  [↑↓] browse  [←→] adjust  [enter] apply  [m] close"),
-			),
-		)
-	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, panel)
+	main := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, spaces(4), content)
+
+	header := controlHeaderRow(m, theme, innerW)
+	footer := controlFooterRow(m.controlTab, theme, innerW, m.currentStatus(time.Now()))
+
+	bodyH := maxInt(1, h-2-3) // padding rows + header + blank + footer
+	// Clip vertically as well as horizontally: the debug tab's structure
+	// preview can outrun a short terminal, and an unclipped body would push the
+	// footer off screen instead of being cut.
+	body := lipgloss.NewStyle().Height(bodyH).Render(clipLines(main, bodyH))
+	return lipgloss.NewStyle().Width(w).Height(h).Padding(1, 2).
+		Render(lipgloss.JoinVertical(lipgloss.Left, header, "", body, footer))
+}
+
+const controlFooterHint = "[tab] section   [↑↓] row   [←→] adjust   [enter] apply   [m] close"
+
+// controlFooterRow draws the key hints, the section index, and — centered
+// between them — the transient status line. flashStatus feedback (export
+// results and failures, "rec → path", session saves) is otherwise only drawn
+// by bottomBar, which this full-screen pane replaces, so an export could fail
+// silently while the control center is open.
+func controlFooterRow(tab controlTab, theme ColorTheme, w int, status string) string {
+	index := fmt.Sprintf("%d of 8", int(tab)+1)
+	status = strings.TrimSpace(status)
+	if status != "" {
+		status = trimToWidth(status, maxInt(1, w/3))
+	}
+	hint := controlFooterHint
+	if status != "" {
+		// Status feedback outranks the key hints when the pane is narrow.
+		for _, candidate := range []string{controlFooterHint, "[tab] section   [m] close", "[m] close", ""} {
+			hint = candidate
+			if lipgloss.Width(candidate)+lipgloss.Width(index)+lipgloss.Width(status)+4 <= w {
+				break
+			}
+		}
+	}
+	// Trim the hint while it is plain text. Letting lipgloss wrap it instead
+	// would push the pane a row past the terminal height.
+	hint = trimToWidth(hint, maxInt(0, w-lipgloss.Width(index)-1))
+	left := lipgloss.NewStyle().Faint(true).Render(hint)
+	right := lipgloss.NewStyle().Faint(true).Render(index)
+	pad := w - lipgloss.Width(left) - lipgloss.Width(right)
+	if pad < 1 {
+		pad = 1
+	}
+	available := pad - 2
+	if status == "" || available < 1 {
+		return left + spaces(pad) + right
+	}
+	center := lipgloss.NewStyle().Foreground(theme.BarHi).Render(trimToWidth(status, available))
+	centerWidth := lipgloss.Width(center)
+	leftPad := (available - centerWidth) / 2
+	rightPad := available - centerWidth - leftPad
+	return left + spaces(leftPad+1) + center + spaces(rightPad+1) + right
+}
+
+// clipLines truncates a rendered block to at most n lines.
+func clipLines(text string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	rows := strings.Split(text, "\n")
+	if len(rows) <= n {
+		return text
+	}
+	return strings.Join(rows[:n], "\n")
+}
+
+func controlHeaderRow(m Model, theme ColorTheme, w int) string {
+	label := "CONTROL CENTER"
+	left := lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render(label)
+	// Trim the summary while it is still plain text — trimToWidth cannot see
+	// through ANSI sequences.
+	summary := trimToWidth(controlCenterSummary(m), maxInt(0, w-lipgloss.Width(label)-1))
+	right := lipgloss.NewStyle().Faint(true).Render(summary)
+	pad := w - lipgloss.Width(left) - lipgloss.Width(right)
+	if pad < 1 {
+		pad = 1
+	}
+	return left + spaces(pad) + right
 }
 
 func renderControlSection(theme ColorTheme, active bool, label string) string {
-	cursor := " "
-	style := lipgloss.NewStyle().Faint(true)
 	if active {
-		cursor = "›"
-		style = lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true)
+		return lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render("▌ " + label)
 	}
-	return style.Render(cursor + " " + strings.ToUpper(label))
+	return lipgloss.NewStyle().Faint(true).Render("  " + label)
 }
 
 func renderControlItem(theme ColorTheme, active bool, item controlItem, w int) string {
-	cursor := " "
+	cursor := "  "
 	if active {
-		cursor = "›"
+		cursor = "› "
 	}
 	titleStyle := lipgloss.NewStyle().Foreground(theme.BarHi)
 	valueStyle := lipgloss.NewStyle().Foreground(theme.BarFg)
@@ -817,31 +867,53 @@ func renderControlItem(theme ColorTheme, active bool, item controlItem, w int) s
 		titleStyle = titleStyle.Faint(true)
 		valueStyle = valueStyle.Faint(true)
 	}
-	left := titleStyle.Render(item.Title)
-	value := valueStyle.Render(item.Value)
-	base := cursor + " " + left
-	right := value
-	if item.Hint != "" {
-		right += "  " + hintStyle.Render(item.Hint)
+	title := trimToWidth(item.Title, maxInt(0, w-lipgloss.Width(cursor)-1))
+	left := cursor + titleStyle.Render(title)
+	// Everything right of the title is measured and trimmed as plain text
+	// first; styling happens last so trimToWidth never sees ANSI.
+	availRight := maxInt(0, w-lipgloss.Width(left)-1)
+	var right string
+	if len(item.Scale) > 0 {
+		pips := renderPips(theme, item.ScaleValue, len(item.Scale))
+		pipsW := lipgloss.Width(pips)
+		value := item.Value
+		ladder := strings.Join(item.Scale, " · ")
+		if pipsW+2+lipgloss.Width(value)+2+lipgloss.Width(ladder) <= availRight {
+			right = pips + "  " + valueStyle.Render(value) + "  " + hintStyle.Render(ladder)
+		} else {
+			// Not enough room for the ladder — drop it, keep pips + value.
+			value = trimToWidth(value, maxInt(0, availRight-pipsW-2))
+			right = pips + "  " + valueStyle.Render(value)
+		}
+	} else {
+		value := item.Value
+		hint := item.Hint
+		if hint != "" && lipgloss.Width(value)+2+lipgloss.Width(hint) > availRight {
+			hint = ""
+		}
+		value = trimToWidth(value, availRight)
+		right = valueStyle.Render(value)
+		if hint != "" {
+			right += "  " + hintStyle.Render(hint)
+		}
 	}
-	base = trimToWidth(base, maxInt(0, w/2))
-	right = trimToWidth(right, maxInt(0, w-lipgloss.Width(base)-1))
-	pad := w - lipgloss.Width(base) - lipgloss.Width(right)
+	pad := w - lipgloss.Width(left) - lipgloss.Width(right)
 	if pad < 1 {
 		pad = 1
 	}
-	return base + spaces(pad) + right
+	return left + spaces(pad) + right
 }
 
 func controlCenterSummary(m Model) string {
-	parts := []string{m.currentAlgoIdentity(), fmt.Sprintf("seed %d", m.seed)}
+	parts := []string{m.algo}
+	if spec, ok := m.activeSpec(); ok {
+		parts = []string{algoIdentity(spec)}
+	}
+	parts = append(parts, fmt.Sprintf("seed %d", m.seed))
 	if m.paused {
 		parts = append(parts, "paused")
 	} else {
 		parts = append(parts, "playing")
-	}
-	if m.debug.Preset != "" {
-		parts = append(parts, m.debug.Preset)
 	}
 	return strings.Join(parts, " · ")
 }
@@ -895,7 +967,9 @@ func renderControlTrackStructure(m Model, theme ColorTheme, width, budget int) s
 		lines = append(lines, lipgloss.NewStyle().Faint(true).Render(trimToWidth("ensemble  "+strings.Join(entry.Ensemble, " · "), width)))
 	}
 	if budget <= 0 {
-		return strings.Join(lines, "\n")
+		// No room for the section list, and possibly not even for every header
+		// line: keep only the rows the caller can actually show.
+		return clipLines(strings.Join(lines, "\n"), len(lines)+budget)
 	}
 	remaining := budget
 	for i, section := range entry.Structure {
@@ -932,6 +1006,16 @@ func renderControlTrackStructure(m Model, theme ColorTheme, width, budget int) s
 	return strings.Join(lines, "\n")
 }
 
+// minFuzzyStructureKey is the shortest key the substring pass will consider.
+// The generator reports procedural section kinds as single letters ("A", "B"),
+// which would otherwise claim any authored label that happens to contain that
+// letter — "A" matching "intro" put the FORM highlight on the wrong row.
+const minFuzzyStructureKey = 3
+
+// currentTrackStructureSection finds the authored section the live playhead is
+// in. Exact (normalized) matches win; the substring pass is a fallback for
+// authored ids like "head-a" against a live "head", and is deliberately
+// refused for keys too short — or empty — to be distinctive.
 func currentTrackStructureSection(entry TrackNavEntry, liveSection string) (TrackNavSection, bool) {
 	liveKey := normalizeStructureKey(liveSection)
 	if liveKey == "" {
@@ -942,9 +1026,19 @@ func currentTrackStructureSection(entry TrackNavEntry, liveSection string) (Trac
 			return section, true
 		}
 	}
+	if len(liveKey) < minFuzzyStructureKey {
+		return TrackNavSection{}, false
+	}
 	for _, section := range entry.Structure {
-		if strings.Contains(normalizeStructureKey(section.ID), liveKey) || strings.Contains(normalizeStructureKey(section.Label), liveKey) || strings.Contains(liveKey, normalizeStructureKey(section.ID)) || strings.Contains(liveKey, normalizeStructureKey(section.Label)) {
-			return section, true
+		for _, key := range []string{normalizeStructureKey(section.ID), normalizeStructureKey(section.Label)} {
+			// An empty id makes strings.Contains trivially true, which would
+			// hand the highlight to whichever section happens to be first.
+			if len(key) < minFuzzyStructureKey {
+				continue
+			}
+			if strings.Contains(key, liveKey) || strings.Contains(liveKey, key) {
+				return section, true
+			}
 		}
 	}
 	return TrackNavSection{}, false
@@ -1028,4 +1122,42 @@ func clampInt(v, low, high int) int {
 		return high
 	}
 	return v
+}
+
+// renderPips draws the 5-step value scale: value is the 0-based macro index,
+// so index 2 fills three pips (●●●○○).
+func renderPips(theme ColorTheme, value, steps int) string {
+	filled := clampInt(value+1, 0, steps)
+	return lipgloss.NewStyle().Foreground(theme.BarHi).Render(strings.Repeat("●", filled)) +
+		lipgloss.NewStyle().Faint(true).Render(strings.Repeat("○", steps-filled))
+}
+
+// controlSectionAnnotation is the faint one-liner next to the section title.
+func controlSectionAnnotation(tab controlTab) string {
+	switch tab {
+	case controlTabNow:
+		return "playback and session at a glance"
+	case controlTabLook:
+		return "themes · visuals · chrome"
+	case controlTabMusic:
+		return "nine macros · every change rebuilds the world in place"
+	case controlTabSeeds:
+		return "browse, bookmark, and keep generative seeds"
+	case controlTabLibrary:
+		return "curation · history · sessions"
+	case controlTabExport:
+		return "render artifacts to ./exports"
+	case controlTabAudio:
+		return "backend health and recovery"
+	default:
+		return "live engine state"
+	}
+}
+
+// controlSectionExplainer is the faint line below the item list.
+func controlSectionExplainer(tab controlTab) string {
+	if tab == controlTabMusic {
+		return "changes take effect at the next phrase boundary — nothing hard-cuts"
+	}
+	return ""
 }

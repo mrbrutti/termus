@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<style>
+body{margin:0;background:#17171c}
+a{color:#5bfaff;text-decoration:none} a:hover{color:#a0a0ff}
+</style>
+</helmet>
+<section style="display:flex;flex-direction:column;gap:12px;padding:48px;font-family:Helvetica,Arial,sans-serif">
+<div style="display:flex;align-items:baseline;gap:16px">
+  <span style="background:#5bfaff;color:#0c0c0e;font-family:'SF Mono',Menlo,Consolas,monospace;font-size:13px;font-weight:700;padding:2px 8px;border-radius:4px">redesign</span>
+  <h1 style="color:#e8e8f2;font-size:20px;font-weight:600;margin:0">Termus — the interface narrates the music</h1>
+  <span style="color:#8a8a96;font-size:13px">station identity · live musical narration · form rail · same keys, same terminal</span>
+</div>
+<div style="display:grid;grid-template-columns:repeat(2,max-content);gap:28px;align-items:start">
+
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="white-space:pre;color:#9a9aa6;font-size:12px;font-family:'SF Mono',Menlo,monospace">play view · station header + narration + form rail (tweak: station, zen)</div>
+<div style="background:#0c0c0e;border-radius:8px;padding:14px 16px;font-family:'SF Mono',Menlo,Consolas,monospace;font-size:12px;line-height:1.3;color:#d8d8d8;width:max-content;box-shadow:0 12px 40px rgba(0,0,0,0.5)">
+  <sc-if value="{{ chromeVisible }}" hint-placeholder-val="{{ true }}">
+  <div style="display:flex;justify-content:space-between;width:118ch;gap:2ch">
+    <span style="white-space:pre"><span style="color:#5bfaff;font-weight:700">{{ stationGlyph }} {{ stationName }}</span><span style="color:#a0a0ff">   {{ stationMeta }}</span></span>
+    <span style="white-space:pre;color:#6a6a72">{{ seedLabel }}</span>
+  </div>
+  <div style="display:flex;justify-content:space-between;width:118ch;gap:2ch">
+    <span style="white-space:pre;color:#6a6a72">{{ narration }}</span>
+    <span><span style="white-space:pre;color:#a0a0ff">lvl </span><span style="white-space:pre;color:#5bfaff">─────────</span><span style="white-space:pre;color:#6a6a72">─────</span><span style="white-space:pre;color:#6a6a72"> ok</span></span>
+  </div>
+  </sc-if>
+  <div style="width:118ch;overflow:hidden">
+    <sc-for list="{{ scopeLines }}" as="ln" hint-placeholder-count="4">
+      <div style="white-space:pre;height:1.3em;color:{{ ln.c }}">{{ ln.t }}</div>
+    </sc-for>
+  </div>
+  <sc-if value="{{ chromeVisible }}" hint-placeholder-val="{{ true }}">
+  <div style="display:flex;justify-content:space-between;width:118ch;gap:2ch">
+    <span><sc-for list="{{ formSegs }}" as="seg" hint-placeholder-count="5"><span style="white-space:pre;font-weight:{{ seg.w }};color:{{ seg.c }}">{{ seg.t }}</span></sc-for></span>
+    <span style="white-space:pre;color:#6a6a72">{{ nextLabel }}</span>
+  </div>
+  <div style="display:flex;justify-content:space-between;width:118ch;gap:2ch">
+    <span style="white-space:pre;color:#6a6a72">[space] play   [m] control   [t] tracks   [?] help</span>
+    <span style="white-space:pre;color:#6a6a72">[z] zen</span>
+  </div>
+  </sc-if>
+  <sc-if value="{{ zenOn }}" hint-placeholder-val="{{ false }}">
+  <div style="display:flex;justify-content:space-between;width:118ch;gap:2ch">
+    <span style="white-space:pre;color:#a0a0ff">{{ stationAlgo }}</span>
+    <span style="white-space:pre;color:#6a6a72">?</span>
+  </div>
+  </sc-if>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="white-space:pre;color:#9a9aa6;font-size:12px;font-family:'SF Mono',Menlo,monospace">control center · full-screen, value scales visible</div>
+<div style="background:#0c0c0e;border-radius:8px;padding:14px 16px;font-family:'SF Mono',Menlo,Consolas,monospace;font-size:12px;line-height:1.3;color:#d8d8d8;width:max-content;box-shadow:0 12px 40px rgba(0,0,0,0.5)">
+  <div style="width:118ch;height:41.6em;overflow:hidden;padding:1.3em 2ch;box-sizing:border-box">
+    <div style="display:flex;justify-content:space-between">
+      <span style="white-space:pre;color:#5bfaff;font-weight:700">CONTROL CENTER</span>
+      <span style="white-space:pre;color:#6a6a72">Night Drift · ambient · seed 71001 · playing</span>
+    </div>
+    <div style="white-space:pre;height:1.3em"> </div>
+    <div style="display:flex;gap:4ch">
+      <div style="width:14ch;overflow:hidden;display:flex;flex-direction:column">
+        <span style="white-space:pre;color:#6a6a72">  now</span>
+        <span style="white-space:pre;color:#6a6a72">  look</span>
+        <span style="white-space:pre;color:#5bfaff;font-weight:700">▌ music</span>
+        <span style="white-space:pre;color:#6a6a72">  seeds</span>
+        <span style="white-space:pre;color:#6a6a72">  library</span>
+        <span style="white-space:pre;color:#6a6a72">  export</span>
+        <span style="white-space:pre;color:#6a6a72">  audio</span>
+        <span style="white-space:pre;color:#6a6a72">  debug</span>
+      </div>
+      <div style="width:94ch;overflow:hidden;display:flex;flex-direction:column">
+        <span style="white-space:pre"><span style="color:#5bfaff;font-weight:700">MUSIC</span><span style="color:#6a6a72">   nine macros · every change rebuilds the world in place</span></span>
+        <span style="white-space:pre;height:1.3em"> </span>
+        <div style="display:flex;justify-content:space-between"><span style="white-space:pre"><span style="color:#d8d8d8">› </span><span style="color:#5bfaff">density</span></span><span style="white-space:pre"><span style="color:#5bfaff">●●●</span><span style="color:#4a4a6e">○○</span><span style="color:#a0a0ff">  steady</span><span style="color:#6a6a72">      air · lean · steady · lush · full</span></span></div>
+        <div style="display:flex;justify-content:space-between"><span style="white-space:pre">  <span style="color:#5bfaff">brightness</span></span><span style="white-space:pre"><span style="color:#5bfaff">●●●</span><span style="color:#4a4a6e">○○</span><span style="color:#a0a0ff">  natural</span><span style="color:#6a6a72">     soft · warm · natural · clear · gloss</span></span></div>
+        <div style="display:flex;justify-content:space-between"><span style="white-space:pre">  <span style="color:#5bfaff">motion</span></span><span style="white-space:pre"><span style="color:#5bfaff">●●●</span><span style="color:#4a4a6e">○○</span><span style="color:#a0a0ff">  breathing</span><span style="color:#6a6a72">   still · settled · breathing · glide · orbit</span></span></div>
+        <div style="display:flex;justify-content:space-between"><span style="white-space:pre">  <span style="color:#5bfaff">reverb</span></span><span style="white-space:pre"><span style="color:#5bfaff">●●●</span><span style="color:#4a4a6e">○○</span><span style="color:#a0a0ff">  room</span><span style="color:#6a6a72">        dry · close · room · hall · halo</span></span></div>
+        <div style="display:flex;justify-content:space-between"><span style="white-space:pre">  <span style="color:#5bfaff">swing</span></span><span style="white-space:pre"><span style="color:#5bfaff">●</span><span style="color:#4a4a6e">○○○○</span><span style="color:#a0a0ff">  straight</span><span style="color:#6a6a72">    straight · tight · groove · late · loose</span></span></div>
+        <div style="display:flex;justify-content:space-between"><span style="white-space:pre">  <span style="color:#5bfaff">drone depth</span></span><span style="white-space:pre"><span style="color:#5bfaff">●●●</span><span style="color:#4a4a6e">○○</span><span style="color:#a0a0ff">  grounded</span><span style="color:#6a6a72">    light · trim · grounded · deep · sub</span></span></div>
+        <div style="display:flex;justify-content:space-between"><span style="white-space:pre">  <span style="color:#5bfaff">tempo</span></span><span style="white-space:pre"><span style="color:#5bfaff">●●●</span><span style="color:#4a4a6e">○○</span><span style="color:#a0a0ff">  natural</span><span style="color:#6a6a72">     slower · laid back · natural · driven · urgent</span></span></div>
+        <div style="display:flex;justify-content:space-between"><span style="white-space:pre">  <span style="color:#5bfaff">phrase length</span></span><span style="white-space:pre"><span style="color:#5bfaff">●●●</span><span style="color:#4a4a6e">○○</span><span style="color:#a0a0ff">  natural</span><span style="color:#6a6a72">     short · trim · natural · long · floating</span></span></div>
+        <div style="display:flex;justify-content:space-between"><span style="white-space:pre">  <span style="color:#5bfaff">seed morph</span></span><span style="white-space:pre"><span style="color:#5bfaff">●●●</span><span style="color:#4a4a6e">○○</span><span style="color:#a0a0ff">  blend</span><span style="color:#6a6a72">       cut · quick · blend · wash · drift</span></span></div>
+        <span style="white-space:pre;height:1.3em"> </span>
+        <span style="white-space:pre;color:#6a6a72">changes take effect at the next phrase boundary — nothing hard-cuts</span>
+      </div>
+    </div>
+    <div style="white-space:pre;height:1.3em"> </div>
+    <div style="display:flex;justify-content:space-between">
+      <span style="white-space:pre;color:#6a6a72">[tab] section   [↑↓] row   [←→] adjust   [enter] apply   [m] close</span>
+      <span style="white-space:pre;color:#6a6a72">3 of 8</span>
+    </div>
+  </div>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="white-space:pre;color:#9a9aa6;font-size:12px;font-family:'SF Mono',Menlo,monospace">track library · form map + tags</div>
+<div style="background:#0c0c0e;border-radius:8px;padding:14px 16px;font-family:'SF Mono',Menlo,Consolas,monospace;font-size:12px;line-height:1.3;color:#d8d8d8;width:max-content;box-shadow:0 12px 40px rgba(0,0,0,0.5)">
+  <div style="width:118ch;height:41.6em;overflow:hidden;padding:1.3em 2ch;box-sizing:border-box">
+    <div style="display:flex;justify-content:space-between">
+      <span style="white-space:pre;color:#5bfaff;font-weight:700">TRACK LIBRARY</span>
+      <span style="white-space:pre;color:#6a6a72">53 authored tracks · one performer</span>
+    </div>
+    <div style="white-space:pre;height:1.3em"> </div>
+    <div style="white-space:pre"><span style="color:#6a6a72">all 53   </span><span style="color:#6a6a72">◌ ambient 8   • blues 9   • chill 10   ♬ jazz 9   </span><span style="color:#5bfaff;font-weight:700">▌◒ lofi 9</span><span style="color:#6a6a72">   • rock 8</span></div>
+    <div style="white-space:pre;height:1.3em"> </div>
+    <div style="display:flex;gap:3ch">
+      <div style="width:46ch;overflow:hidden;display:flex;flex-direction:column">
+        <span style="white-space:pre;color:#d8d8d8">  ◒ Autumn Walk Home            <span style="color:#6a6a72">[SF2]</span></span>
+        <span style="white-space:pre;color:#6a6a72">    walk-home · 05 sec · 82 bpm</span>
+        <span style="white-space:pre;color:#d8d8d8">  ◒ Autumn Walk Rhodes          <span style="color:#6a6a72">[AI]</span></span>
+        <span style="white-space:pre;color:#6a6a72">    rhodes · 05 sec · 80 bpm</span>
+        <span style="white-space:pre;color:#d8d8d8">  ◒ Bookstore Quiet Aisle       <span style="color:#6a6a72">[SF2]</span></span>
+        <span style="white-space:pre;color:#6a6a72">    bookstore · 04 sec · 76 bpm</span>
+        <span style="white-space:pre;color:#d8d8d8">  ◒ Bookstore Rainy Night       <span style="color:#6a6a72">[AI]</span></span>
+        <span style="white-space:pre;color:#6a6a72">    bookstore · v3 · acestep</span>
+        <span style="white-space:pre;color:#d8d8d8">  ◒ Cassette Dream Loop         <span style="color:#6a6a72">[AI]</span></span>
+        <span style="white-space:pre;color:#6a6a72">    cassette · 05 sec · 78 bpm</span>
+        <span style="white-space:pre;color:#d8d8d8">  ◒ Midnight Train Window       <span style="color:#6a6a72">[SF2]</span></span>
+        <span style="white-space:pre;color:#6a6a72">    train · 06 sec · 74 bpm</span>
+        <span style="white-space:pre;color:#5bfaff;font-weight:700">▌ ◒ Rainy Window Cafe           <span style="color:#4bb8c4">[SF2]</span></span>
+        <span style="white-space:pre;color:#4bb8c4">    rainy-cafe · 06 sec · 84 bpm · Dmin</span>
+        <span style="white-space:pre;color:#d8d8d8">  ◒ Late Night Letter           <span style="color:#6a6a72">[AI]</span></span>
+        <span style="white-space:pre;color:#6a6a72">    vocal · acestep</span>
+        <span style="white-space:pre;color:#d8d8d8">  ◒ Subway Window Night         <span style="color:#6a6a72">[AI]</span></span>
+        <span style="white-space:pre;color:#6a6a72">    subway · acestep</span>
+      </div>
+      <div style="width:65ch;overflow:hidden;display:flex;flex-direction:column">
+        <span style="white-space:pre;color:#5bfaff;font-weight:700">◒ Rainy Window Cafe  <span style="color:#4bb8c4">[SF2]</span></span>
+        <span style="white-space:pre;color:#a0a0ff">lofi · rainy-cafe · D minor · 84 bpm · hour-stream · 6m</span>
+        <span style="white-space:pre;color:#6a6a72">Rhodes + walking sub-bass + brushed drums + rain</span>
+        <span style="white-space:pre;height:1.3em"> </span>
+        <span style="white-space:pre;color:#6a6a72">FORM</span>
+        <span style="white-space:pre"><span style="color:#a0a0ff">intro   </span><span style="color:#a0a0ff">▰▰▰</span><span style="color:#4a4a6e">                    </span><span style="color:#6a6a72"> 0:40   Dm9 · Gm7 · B♭maj7 · A7</span></span>
+        <span style="white-space:pre"><span style="color:#a0a0ff">loop a  </span><span style="color:#a0a0ff">▰▰▰▰▰▰</span><span style="color:#4a4a6e">                 </span><span style="color:#6a6a72"> 1:20   rhodes theme</span></span>
+        <span style="white-space:pre"><span style="color:#5bfaff;font-weight:700">loop b  </span><span style="color:#5bfaff">▰▰▰▰▰▰</span><span style="color:#4a4a6e">                 </span><span style="color:#6a6a72"> 1:20   pickup · lead-in</span></span>
+        <span style="white-space:pre"><span style="color:#a0a0ff">bridge  </span><span style="color:#a0a0ff">▰▰▰▰</span><span style="color:#4a4a6e">                   </span><span style="color:#6a6a72"> 0:50   Gm7 · C7 · Fmaj7 · A7</span></span>
+        <span style="white-space:pre"><span style="color:#a0a0ff">loop a′ </span><span style="color:#a0a0ff">▰▰▰▰▰▰</span><span style="color:#4a4a6e">                 </span><span style="color:#6a6a72"> 1:20   theme return</span></span>
+        <span style="white-space:pre"><span style="color:#a0a0ff">outro   </span><span style="color:#a0a0ff">▰▰▰</span><span style="color:#4a4a6e">                    </span><span style="color:#6a6a72"> 0:30   rain fade</span></span>
+        <span style="white-space:pre;height:1.3em"> </span>
+        <span style="white-space:pre;color:#6a6a72">ensemble   rhodes · bass · sub · kick · snare · hat</span>
+        <span style="white-space:pre;color:#6a6a72">textures   rain −36 dB · vinyl −44 dB</span>
+        <span style="white-space:pre;color:#5a5a8c">#lofi  #rhodes  #rain  #brushes</span>
+        <span style="white-space:pre;height:1.3em"> </span>
+        <span style="white-space:pre;color:#5bfaff">● currently loaded</span>
+      </div>
+    </div>
+    <div style="white-space:pre;height:1.3em"> </div>
+    <div style="white-space:pre;color:#6a6a72">[t] close   [←→] style   [↑↓] browse   [enter] play</div>
+  </div>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="white-space:pre;color:#9a9aa6;font-size:12px;font-family:'SF Mono',Menlo,monospace">splash + loading · wordmark + station dial</div>
+<div style="background:#0c0c0e;border-radius:8px;padding:14px 16px;font-family:'SF Mono',Menlo,Consolas,monospace;font-size:12px;line-height:1.3;color:#d8d8d8;width:max-content;box-shadow:0 12px 40px rgba(0,0,0,0.5)">
+  <div style="width:118ch;height:41.6em;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center">
+    <div>
+      <sc-for list="{{ wordmark }}" as="ln" hint-placeholder-count="5">
+        <div style="white-space:pre;height:1.3em;color:{{ ln.c }}">{{ ln.t }}</div>
+      </sc-for>
+    </div>
+    <div style="white-space:pre;color:#6a6a72">a terminal music instrument</div>
+    <div style="white-space:pre;height:1.3em"> </div>
+    <div style="white-space:pre;height:1.3em"> </div>
+    <div style="white-space:pre"><span style="color:#5bfaff;font-weight:700">◌ NIGHT DRIFT</span><span style="color:#6a6a72">   ▤ deep field   ✶ glass chapel   ☾ sleep walk   ◇ chamber loop</span></div>
+    <div style="white-space:pre;color:#6a6a72">∿ slow signal   ◒ soft tape   ♬ dusty swing</div>
+    <div style="white-space:pre;height:1.3em"> </div>
+    <div>
+      <sc-for list="{{ loadLines }}" as="row" hint-placeholder-count="3">
+        <div style="white-space:pre;height:1.3em"><sc-for list="{{ row }}" as="seg" hint-placeholder-count="2"><span style="color:{{ seg.c }}">{{ seg.t }}</span></sc-for></div>
+      </sc-for>
+    </div>
+    <div style="white-space:pre"><span style="color:#5bfaff">42%</span><span style="color:#6a6a72"> · loading SoundFont preset · general (32 MB)</span></div>
+    <div style="white-space:pre;height:1.3em"> </div>
+    <div style="white-space:pre;color:#6a6a72">[←→] choose a station · [enter] begin · [t] authored tracks</div>
+  </div>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="white-space:pre;color:#9a9aa6;font-size:12px;font-family:'SF Mono',Menlo,monospace">help · full key reference, grouped</div>
+<div style="background:#0c0c0e;border-radius:8px;padding:14px 16px;font-family:'SF Mono',Menlo,Consolas,monospace;font-size:12px;line-height:1.3;color:#d8d8d8;width:max-content;box-shadow:0 12px 40px rgba(0,0,0,0.5)">
+  <div style="width:118ch;height:41.6em;overflow:hidden;display:flex;align-items:center;justify-content:center">
+    <div style="border:1px solid #a0a0ff;border-radius:8px;overflow:hidden;padding:1.3em 3ch;width:96ch;box-sizing:border-box">
+      <div style="white-space:pre;color:#5bfaff;font-weight:700">TERMUS HELP</div>
+      <div style="white-space:pre;height:1.3em"> </div>
+      <div style="display:flex;gap:6ch">
+        <div style="display:flex;flex-direction:column;width:42ch">
+          <span style="white-space:pre;color:#5bfaff">PLAYBACK</span>
+          <span style="white-space:pre"><span style="color:#a0a0ff">space</span><span style="color:#d8d8d8">      play / pause</span></span>
+          <span style="white-space:pre"><span style="color:#a0a0ff">↑ ↓ + −</span><span style="color:#d8d8d8">    volume</span></span>
+          <span style="white-space:pre"><span style="color:#a0a0ff">n / p</span><span style="color:#d8d8d8">      next / previous algorithm</span></span>
+          <span style="white-space:pre"><span style="color:#a0a0ff">r</span><span style="color:#d8d8d8">          record to ./exports</span></span>
+          <span style="white-space:pre;height:1.3em"> </span>
+          <span style="white-space:pre;color:#5bfaff">VIEW</span>
+          <span style="white-space:pre"><span style="color:#a0a0ff">c / C</span><span style="color:#d8d8d8">      theme / visual</span></span>
+          <span style="white-space:pre"><span style="color:#a0a0ff">z</span><span style="color:#d8d8d8">          zen — scope only</span></span>
+          <span style="white-space:pre"><span style="color:#a0a0ff">d</span><span style="color:#d8d8d8">          debug narration bar</span></span>
+          <span style="white-space:pre;height:1.3em"> </span>
+          <span style="white-space:pre;color:#5bfaff">OPEN</span>
+          <span style="white-space:pre"><span style="color:#a0a0ff">m</span><span style="color:#d8d8d8">          control center</span></span>
+          <span style="white-space:pre"><span style="color:#a0a0ff">t</span><span style="color:#d8d8d8">          track library</span></span>
+          <span style="white-space:pre"><span style="color:#a0a0ff">e</span><span style="color:#d8d8d8">          export drawer</span></span>
+        </div>
+        <div style="display:flex;flex-direction:column;width:42ch">
+          <span style="white-space:pre;color:#5bfaff">SEEDS</span>
+          <span style="white-space:pre"><span style="color:#a0a0ff">[ ]</span><span style="color:#d8d8d8">        browse seeds</span></span>
+          <span style="white-space:pre"><span style="color:#a0a0ff">a / b</span><span style="color:#d8d8d8">      store slot A / B</span></span>
+          <span style="white-space:pre"><span style="color:#a0a0ff">tab</span><span style="color:#d8d8d8">        compare A/B</span></span>
+          <span style="white-space:pre"><span style="color:#a0a0ff">k / x</span><span style="color:#d8d8d8">      keep / reject take</span></span>
+          <span style="white-space:pre;height:1.3em"> </span>
+          <span style="white-space:pre;color:#5bfaff">INSIDE PANELS</span>
+          <span style="white-space:pre"><span style="color:#a0a0ff">↑ ↓</span><span style="color:#d8d8d8">        browse rows</span></span>
+          <span style="white-space:pre"><span style="color:#a0a0ff">← →</span><span style="color:#d8d8d8">        adjust value</span></span>
+          <span style="white-space:pre"><span style="color:#a0a0ff">enter</span><span style="color:#d8d8d8">      apply / open</span></span>
+          <span style="white-space:pre"><span style="color:#a0a0ff">tab</span><span style="color:#d8d8d8">        next section</span></span>
+          <span style="white-space:pre;height:1.3em"> </span>
+          <span style="white-space:pre;color:#5bfaff">GLOBAL</span>
+          <span style="white-space:pre"><span style="color:#a0a0ff">?</span><span style="color:#d8d8d8">          this help</span></span>
+          <span style="white-space:pre"><span style="color:#a0a0ff">q</span><span style="color:#d8d8d8">          quit</span></span>
+        </div>
+      </div>
+      <div style="white-space:pre;height:1.3em"> </div>
+      <div style="white-space:pre;color:#6a6a72">every key still works everywhere — the footer just stopped shouting about it</div>
+    </div>
+  </div>
+</div>
+</div>
+
+</div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;station&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Night Drift&quot;,&quot;Dusty Swing&quot;,&quot;Soft Tape&quot;],&quot;default&quot;:&quot;Night Drift&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Play view&quot;},&quot;scopeSeed&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:71001,&quot;min&quot;:1,&quot;max&quot;:999999,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Play view&quot;},&quot;zen&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Play view&quot;}}">
+class Component extends DCLogic {
+  stations() {
+    return {
+      "Night Drift": { glyph: "◌", algo: "ambient", meta: "ambient · C major · slow drift",
+        narr: "movement II · episode 3 · section drift · bar 129 · Dm9 → Gm7",
+        sections: ["intro", "drift", "bloom", "recede", "coda"], cur: 1,
+        next: "2:13 to next section · endless", walk: { step: 2.6, sin: 0.5, freq: 0.012 } },
+      "Dusty Swing": { glyph: "♬", algo: "jazz", meta: "jazz · F blues · 96 bpm",
+        narr: "chorus 4 · piano solo · bar 52 · F7 → B♭7",
+        sections: ["head", "solos", "trades", "head out"], cur: 1,
+        next: "0:48 to trades · endless", walk: { step: 6.5, sin: 1.8, freq: 0.05 } },
+      "Soft Tape": { glyph: "◒", algo: "lofi", meta: "lofi · D minor · 84 bpm",
+        narr: "loop b · pickup bars · bar 33 · Dm9 → Gm7",
+        sections: ["intro", "loop a", "loop b", "bridge", "outro"], cur: 2,
+        next: "1:05 to bridge · hour stream", walk: { step: 4.2, sin: 1.1, freq: 0.03 } },
+    };
+  }
+  rowColor(cy, h) {
+    const mid = (h - 1) / 2;
+    const norm = mid > 0 ? Math.abs(cy - mid) / mid : 1;
+    const lerp = (a, b) => Math.round(a + (b - a) * norm);
+    return "#" + [lerp(0x5b, 0x5b), lerp(0xfa, 0x4b), lerp(0xff, 0xff)]
+      .map(v => v.toString(16).padStart(2, "0")).join("");
+  }
+  brailleLines(w, h, plot) {
+    const dx = w * 2, dy = h * 4;
+    const g = Array.from({ length: dy }, () => new Uint8Array(dx));
+    plot(g, dx, dy);
+    const bits = [[1, 8], [2, 16], [4, 32], [64, 128]];
+    const lines = [];
+    for (let cy = 0; cy < h; cy++) {
+      let s = "";
+      for (let cx = 0; cx < w; cx++) {
+        let v = 0;
+        for (let ry = 0; ry < 4; ry++) for (let rx = 0; rx < 2; rx++)
+          if (g[cy * 4 + ry][cx * 2 + rx]) v |= bits[ry][rx];
+        s += v ? String.fromCharCode(0x2800 + v) : "\u00a0";
+      }
+      lines.push(s);
+    }
+    return lines;
+  }
+  scopeLines(station, seedNum, h) {
+    const w = 118, wk = station.walk;
+    let seed = seedNum >>> 0 || 1;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+    const lines = this.brailleLines(w, h, (g, dx, dy) => {
+      let y = dy * 0.55;
+      for (let x = 0; x < dx; x += 2) {
+        y += (rnd() - 0.5) * wk.step + Math.sin(x * wk.freq) * wk.sin - (y - dy * 0.52) * 0.012;
+        y = Math.max(2, Math.min(dy - 3, y));
+        g[Math.round(y)][x] = 1;
+      }
+    });
+    return lines.map((t, i) => ({ t, c: this.rowColor(i, h) }));
+  }
+  formSegs(station) {
+    const segs = [];
+    station.sections.forEach((name, i) => {
+      if (i > 0) segs.push({ t: " ─── ", c: "#4a4a6e", w: 400 });
+      if (i === station.cur) segs.push({ t: "● " + name, c: "#5bfaff", w: 700 });
+      else if (i < station.cur) segs.push({ t: name, c: "#a0a0ff", w: 400 });
+      else segs.push({ t: name, c: "#5a5a8c", w: 400 });
+    });
+    return segs;
+  }
+  wordmark() {
+    const F = {
+      T: ["█████", "  █  ", "  █  ", "  █  ", "  █  "],
+      E: ["████ ", "█    ", "███  ", "█    ", "████ "],
+      R: ["████ ", "█   █", "████ ", "█  █ ", "█   █"],
+      M: ["█   █", "██ ██", "█ █ █", "█   █", "█   █"],
+      U: ["█   █", "█   █", "█   █", "█   █", " ███ "],
+      S: [" ████", "█    ", " ███ ", "    █", "████ "],
+    };
+    const rows = [];
+    for (let r = 0; r < 5; r++)
+      rows.push("TERMUS".split("").map(ch => F[ch][r]).join("  ").replace(/ /g, "\u00a0"));
+    return rows.map((t, i) => ({ t, c: this.rowColor(i, 5) }));
+  }
+  loadLines() {
+    const w = 64, h = 3, progress = 0.42, phase = 1.6;
+    const dx = w * 2, dy = h * 4;
+    const g = Array.from({ length: dy }, () => new Uint8Array(dx));
+    const centerY = Math.floor(dy / 2);
+    for (let px = 0; px < dx; px++) g[centerY][px] = 1;
+    const active = Math.floor(progress * (dx - 1));
+    let py = centerY;
+    for (let px = 0; px <= active; px++) {
+      const t = px / (dx - 1);
+      const env = Math.sin(Math.PI * t);
+      const wob = Math.sin(phase * 4.5 + t * 9) * 0.55 + Math.sin(phase * 2.1 + t * 4) * 0.25;
+      const head = Math.exp(-Math.pow((px - active) / 8, 2));
+      let y = centerY - Math.round((wob * env + head * 0.6) * Math.floor(dy / 3));
+      y = Math.max(0, Math.min(dy - 1, y));
+      for (let yy = Math.min(py, y); yy <= Math.max(py, y); yy++) g[yy][px] = 1;
+      py = y;
+    }
+    const bits = [[1, 8], [2, 16], [4, 32], [64, 128]];
+    const activeCell = Math.floor(active / 2);
+    const out = [];
+    for (let cy = 0; cy < h; cy++) {
+      let a = "", b = "";
+      for (let cx = 0; cx < w; cx++) {
+        let v = 0;
+        for (let ry = 0; ry < 4; ry++) for (let rx = 0; rx < 2; rx++)
+          if (g[cy * 4 + ry][cx * 2 + rx]) v |= bits[ry][rx];
+        const ch = v ? String.fromCharCode(0x2800 + v) : "\u00a0";
+        if (cx <= activeCell) a += ch; else b += ch;
+      }
+      out.push([{ t: a, c: this.rowColor(cy, h) }, { t: b, c: "#4a4a6e" }]);
+    }
+    return out;
+  }
+  renderVals() {
+    const name = this.props.station ?? "Night Drift";
+    const st = this.stations()[name] ?? this.stations()["Night Drift"];
+    const seed = this.props.scopeSeed ?? 71001;
+    const zen = this.props.zen ?? false;
+    const h = zen ? 30 : 26;
+    return {
+      chromeVisible: !zen,
+      zenOn: zen,
+      stationName: name.toUpperCase(),
+      stationGlyph: st.glyph,
+      stationAlgo: st.algo,
+      stationMeta: st.meta,
+      narration: st.narr,
+      seedLabel: "seed " + seed + " · A 70992 · B 71001 · keep 2",
+      nextLabel: st.next,
+      scopeLines: this.scopeLines(st, seed, h),
+      formSegs: this.formSegs(st),
+      wordmark: this.wordmark(),
+      loadLines: this.loadLines(),
+    };
+  }
+}
+</script>
+</body>
+</html>

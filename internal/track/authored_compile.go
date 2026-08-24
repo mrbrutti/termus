@@ -239,20 +239,7 @@ func compileTextures(specs []TextureSpec) []gen.AuthoredTexture {
 		level := s.LevelDB
 		if level == 0 {
 			// Default per-texture levels chosen for sit-in-the-background mix.
-			switch name {
-			case "rain":
-				level = -38
-			case "room_tone":
-				level = -42
-			case "vinyl":
-				level = -40
-			case "tape_hiss":
-				level = -48
-			case "cafe":
-				level = -36
-			default:
-				level = -42
-			}
+			level = defaultTextureLevelDB(name)
 		}
 		out = append(out, gen.AuthoredTexture{Name: name, LevelDB: level})
 	}

@@ -583,6 +583,7 @@ func main() {
 				Harmony:   section.Harmony,
 				RoleNames: append([]string(nil), section.RoleNames...),
 				Events:    append([]string(nil), section.Events...),
+				Duration:  section.Duration,
 			})
 		}
 		trackNav = append(trackNav, tui.TrackNavEntry{
@@ -601,6 +602,7 @@ func main() {
 			EventCount:   entry.EventCount,
 			Complexity:   entry.Complexity,
 			Structure:    structure,
+			Textures:     append([]string(nil), entry.Textures...),
 			Engine:       string(entry.RenderEngine),
 		})
 	}

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/mrbrutti/termus/internal/audio"
 	"github.com/mrbrutti/termus/internal/gen"
@@ -59,17 +60,17 @@ func TestBottomBarLeavesRoomForStatus(t *testing.T) {
 		stickyStatus: "audio: starting...",
 		themes:       []ColorTheme{DefaultTheme()},
 	}
-	bar := bottomBar(m, 120, DefaultTheme(), false)
+	bar := bottomBar(m, 120, DefaultTheme())
 	if !strings.Contains(bar, "audio: starting...") {
 		t.Fatalf("bottom bar missing status: %q", bar)
 	}
-	if !strings.Contains(bar, "Ambient") {
-		t.Fatalf("bottom bar should show current music type: %q", bar)
+	if !strings.Contains(bar, "[space] play") || !strings.Contains(bar, "[?] help") {
+		t.Fatalf("bottom bar should name the core keys: %q", bar)
 	}
-	if !strings.Contains(bar, "?  m") {
-		t.Fatalf("bottom bar should expose help entry point: %q", bar)
+	if !strings.Contains(bar, "[z] zen") {
+		t.Fatalf("bottom bar should expose the zen toggle on the right: %q", bar)
 	}
-	if strings.Contains(bar, "[l] library") || strings.Contains(bar, "[i] inspect") || strings.Contains(bar, "[space]") {
+	if strings.Contains(bar, "[l] library") || strings.Contains(bar, "[i] inspect") {
 		t.Fatalf("bottom bar should stay minimal, got: %q", bar)
 	}
 }
@@ -82,8 +83,8 @@ func TestTopBarShowsTitle(t *testing.T) {
 		themes: []ColorTheme{DefaultTheme()},
 	}
 	bar := topBar(m, 120, DefaultTheme(), false)
-	if !strings.Contains(bar, "termus · Jazz") || !strings.Contains(bar, "seed=42") {
-		t.Fatalf("top bar missing title info: %q", bar)
+	if !strings.Contains(bar, "JAZZ") || !strings.Contains(bar, "seed 42") {
+		t.Fatalf("top bar missing station identity: %q", bar)
 	}
 }
 
@@ -97,18 +98,25 @@ func TestTopBarShowsStationAndAlgoNameWhenSpecAvailable(t *testing.T) {
 		themes:   []ColorTheme{DefaultTheme()},
 	}
 	bar := topBar(m, 140, DefaultTheme(), false)
-	if !strings.Contains(bar, "Night Drift · ambient") {
+	if !strings.Contains(bar, "NIGHT DRIFT") || !strings.Contains(bar, "ambient") {
 		t.Fatalf("top bar should surface both station and canonical algo name: %q", bar)
+	}
+	if !strings.Contains(bar, "Cmin") {
+		t.Fatalf("top bar should surface the musical key: %q", bar)
 	}
 }
 
-func TestPlaybackBarShowsTimingAndMeter(t *testing.T) {
+func TestPlaybackBarShowsNarrationAndMeter(t *testing.T) {
 	now := time.Now()
 	m := Model{
 		recording:       true,
 		listeningMode:   "hour stream",
 		startedAt:       now.Add(-95 * time.Second),
 		recordStartedAt: now.Add(-17 * time.Second),
+		debug: gen.DebugStatus{
+			Movement: "develop", Episode: 2, Section: "A'",
+			Bar: 17, Chord: "G7", NextChord: "Cmaj7",
+		},
 		playlist: &gen.Playlist{Tracks: []gen.Track{
 			{Duration: 5 * time.Minute},
 		}},
@@ -120,9 +128,15 @@ func TestPlaybackBarShowsTimingAndMeter(t *testing.T) {
 	}
 	samples := []float64{0.1, 0.3, 0.85, -0.4}
 	bar := playbackBar(m, 120, DefaultTheme(), samples, false)
-	for _, want := range []string{"live 01:35", "hour stream", "track 00:32/05:00", "next 04:28", "fade 00:02", "rec 00:17", "lvl"} {
+	for _, want := range []string{"movement develop", "episode 2", "section A'", "bar 17", "G7 → Cmaj7", "rec 00:17", "lvl"} {
 		if !strings.Contains(bar, want) {
 			t.Fatalf("playback bar missing %q: %q", want, bar)
+		}
+	}
+	// Playlist timing clutter moved off the default chrome.
+	for _, unwanted := range []string{"live ", "track 00:32", "fade "} {
+		if strings.Contains(bar, unwanted) {
+			t.Fatalf("playback bar should drop timing clutter %q: %q", unwanted, bar)
 		}
 	}
 }
@@ -151,17 +165,76 @@ func TestDebugBarShowsDedicatedInspector(t *testing.T) {
 }
 
 func TestHelpPanelShowsCoreControls(t *testing.T) {
-	m := Model{
-		helpVisible: true,
-		genres:      []gen.AlgoSpec{{Name: "ambient", Display: "Ambient"}, {Name: "jazz", Display: "Jazz"}},
-		playlist:    &gen.Playlist{Name: "mix", Tracks: []gen.Track{{Duration: time.Second}}},
-		themes:      []ColorTheme{DefaultTheme()},
-	}
-	panel := helpPanel(m, 90, 18, DefaultTheme())
-	for _, want := range []string{"TERMUS HELP", "Global", "[m] control center", "Inside Control Center", "Sections", "Now   Look   Music", "[?] close help"} {
-		if !strings.Contains(panel, want) {
-			t.Fatalf("help panel missing %q:\n%s", want, panel)
+	m := Model{width: 118, height: 32}
+	out := helpPanel(m, 118, 32, DefaultTheme())
+	for _, want := range []string{
+		"TERMUS HELP", "PLAYBACK", "VIEW", "OPEN", "SEEDS", "INSIDE PANELS", "GLOBAL",
+		"n / p", "[ ]", "a / b", "k / x", "zen — scope only",
+		"every key still works everywhere",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("help panel missing %q", want)
 		}
+	}
+}
+
+// TestHelpPanelNeverExceedsSize sweeps every runnable width at four heights,
+// asserting the bordered help overlay never overflows its allotted body
+// area: every line <= w, total rows <= h. w=40 forces the single-column
+// fallback (innerW = bodyW-6 < 64), so this also exercises that path.
+func TestHelpPanelNeverExceedsSize(t *testing.T) {
+	theme := DefaultTheme()
+	for _, h := range []int{10, 14, 18, 32} {
+		for w := 40; w <= 200; w++ {
+			m := Model{width: w, height: h}
+			out := helpPanel(m, w, h, theme)
+			lines := strings.Split(out, "\n")
+			if len(lines) > h {
+				t.Fatalf("help panel is %d rows tall at w=%d h=%d, want <= %d\n%s",
+					len(lines), w, h, h, out)
+			}
+			for i, line := range lines {
+				if got := lipgloss.Width(line); got > w {
+					t.Fatalf("help panel line %d overflows at w=%d h=%d: rendered %d cols\n%q",
+						i, w, h, got, line)
+				}
+			}
+		}
+	}
+}
+
+// TestHelpPanelKeepsAllGroupsOnSmallTerminals guards against clipLines
+// eating the tail of the group list — and, worse, the quit/close keys —
+// on small-but-common terminal sizes. helpPanel's h argument is the
+// play-view body height, not the raw window height: View() subtracts
+// ~4 rows of chrome (station header, footer, etc.) before calling
+// helpPanel, so an 80x24 stock terminal actually renders the panel at
+// h=20, and a 40x10 terminal at h=8. Using the raw window heights here
+// would understate how tight real terminals get and let this regress
+// again.
+//
+// 80 wide clears the two-column threshold (innerW = bodyW-6 = 74 >=
+// twoColMinInnerW), so all six group headers must render even with the
+// h=20 chrome-adjusted height. 40x8 is small enough to force the
+// single-column fallback and a tight clipLines budget that clips the
+// body's own GLOBAL group; "quit" must still be reachable because
+// helpTitleRow's tiered hint pins at least "[q] quit" into the first
+// line of inner content, which clipLines never trims.
+func TestHelpPanelKeepsAllGroupsOnSmallTerminals(t *testing.T) {
+	theme := DefaultTheme()
+
+	m80 := Model{width: 80, height: 24}
+	out80 := helpPanel(m80, 80, 20, theme)
+	for _, want := range []string{"PLAYBACK", "VIEW", "OPEN", "SEEDS", "INSIDE PANELS", "GLOBAL", "quit", "close"} {
+		if !strings.Contains(out80, want) {
+			t.Fatalf("help panel at 80x20 (80x24 terminal minus chrome) missing %q:\n%s", want, out80)
+		}
+	}
+
+	m40 := Model{width: 40, height: 10}
+	out40 := helpPanel(m40, 40, 8, theme)
+	if !strings.Contains(out40, "quit") {
+		t.Fatalf("help panel at 40x8 (40x10 terminal minus chrome) missing %q:\n%s", "quit", out40)
 	}
 }
 
@@ -174,11 +247,18 @@ func TestControlsPanelShowsTabbedOverlay(t *testing.T) {
 		volume:          70,
 		themes:          []ColorTheme{DefaultTheme()},
 	}
-	panel := controlsPanel(m, 100, 22, DefaultTheme())
-	for _, want := range []string{"CONTROL CENTER", "NOW", "LOOK", "MUSIC", "SEEDS", "LIBRARY", "EXPORT", "AUDIO", "DEBUG", "density", "brightness", "reverb", "[tab] next section"} {
+	panel := controlsPanel(m, 118, 32, DefaultTheme())
+	for _, want := range []string{
+		"CONTROL CENTER", "MUSIC",
+		"▌ music", "  now", "  look", "  seeds", "  library", "  export", "  audio", "  debug",
+		"density", "brightness", "reverb", "[tab] section", "3 of 8",
+	} {
 		if !strings.Contains(panel, want) {
 			t.Fatalf("controls panel missing %q:\n%s", want, panel)
 		}
+	}
+	if strings.ContainsAny(panel, "╭╰│") {
+		t.Fatalf("full-screen control center should not draw a border:\n%s", panel)
 	}
 }
 
@@ -191,8 +271,8 @@ func TestControlsPanelShowsAudioRecoveryActions(t *testing.T) {
 		volume:          70,
 		themes:          []ColorTheme{DefaultTheme()},
 	}
-	panel := controlsPanel(m, 100, 22, DefaultTheme())
-	for _, want := range []string{"CONTROL CENTER", "retry live audio", "render-only fallback", "backend"} {
+	panel := controlsPanel(m, 118, 32, DefaultTheme())
+	for _, want := range []string{"CONTROL CENTER", "AUDIO", "backend health and recovery", "retry live audio", "render-only fallback", "backend", "7 of 8"} {
 		if !strings.Contains(panel, want) {
 			t.Fatalf("audio controls panel missing %q:\n%s", want, panel)
 		}
@@ -223,8 +303,8 @@ func TestControlsPanelShowsTrackStructureInspector(t *testing.T) {
 		}},
 		themes: []ColorTheme{DefaultTheme()},
 	}
-	panel := controlsPanel(m, 100, 24, DefaultTheme())
-	for _, want := range []string{"TRACK FORM", "Demo Track", "live  Intro", "pickup", "ep · bass"} {
+	panel := controlsPanel(m, 118, 32, DefaultTheme())
+	for _, want := range []string{"DEBUG", "TRACK FORM", "Demo Track", "live  Intro", "pickup", "ep · bass", "8 of 8"} {
 		if !strings.Contains(panel, want) {
 			t.Fatalf("track structure inspector missing %q:\n%s", want, panel)
 		}
@@ -233,30 +313,15 @@ func TestControlsPanelShowsTrackStructureInspector(t *testing.T) {
 
 func TestSplashPanelShowsOnboarding(t *testing.T) {
 	m := Model{
+		width:         90,
+		height:        18,
 		splashVisible: true,
 		themes:        []ColorTheme{DefaultTheme()},
 	}
-	panel := splashPanel(m, 90, 18, DefaultTheme())
-	for _, want := range []string{"TERMUS", "Play", "Open", "[m] control center", "Press any key"} {
+	panel := splashScreen(m, 90, 18, DefaultTheme(), time.Unix(0, 0))
+	for _, want := range []string{"█", "a terminal music instrument", "[enter] begin", "[t] authored tracks"} {
 		if !strings.Contains(panel, want) {
 			t.Fatalf("splash panel missing %q:\n%s", want, panel)
-		}
-	}
-}
-
-func TestSplashPanelShowsStartupLoading(t *testing.T) {
-	m := Model{
-		splashVisible:  true,
-		startupLoading: true,
-		startupTitle:   "Loading MAX palette · Dusty Swing · jazz",
-		startupDetail:  "ready 1/2 · last sgm",
-		startupPercent: 0.5,
-		themes:         []ColorTheme{DefaultTheme()},
-	}
-	panel := splashPanel(m, 90, 18, DefaultTheme())
-	for _, want := range []string{"TERMUS", "Play", "Open"} {
-		if !strings.Contains(panel, want) {
-			t.Fatalf("onboarding splash missing %q:\n%s", want, panel)
 		}
 	}
 }
@@ -404,18 +469,22 @@ func TestLoadSelectedTrackUsesStartupLoaderAndSwapsOnResult(t *testing.T) {
 	}
 }
 
-func TestStartupLoadingViewShowsBrailleStyleProgress(t *testing.T) {
+// TestStartupLoadingProgressOnSplashScreen covers the loading half of the
+// merged splash: the wordmark stays, and the braille bar, percent, loader
+// title and current detail all report progress.
+func TestStartupLoadingProgressOnSplashScreen(t *testing.T) {
 	m := Model{
 		width:          90,
 		height:         18,
+		splashVisible:  true,
 		startupLoading: true,
 		startupTitle:   "Loading MAX palette · Dusty Swing · jazz",
 		startupDetail:  "ready 1/2 · last sgm",
 		startupPercent: 0.5,
 		themes:         []ColorTheme{DefaultTheme()},
 	}
-	view := startupLoadingView(m, 90, 18, DefaultTheme(), time.Unix(0, 0))
-	for _, want := range []string{"Loading MAX palette", "50%", "ready 1/2"} {
+	view := splashScreen(m, 90, 18, DefaultTheme(), time.Unix(0, 0))
+	for _, want := range []string{"█", "Loading MAX palette", "50%", "ready 1/2"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("startup loading view missing %q:\n%s", want, view)
 		}
@@ -451,7 +520,7 @@ func TestStartupLoadingViewBypassesChrome(t *testing.T) {
 		themes:         []ColorTheme{DefaultTheme()},
 	}
 	view := m.View()
-	if strings.Contains(view, "?  m") || strings.Contains(view, "termus ·") {
+	if strings.Contains(view, "[space] play") || strings.Contains(view, "seed ") {
 		t.Fatalf("startup loading should bypass normal chrome:\n%s", view)
 	}
 }
@@ -636,9 +705,14 @@ func TestCompactBottomBarUsesMinimalHints(t *testing.T) {
 		volume: 70,
 		themes: []ColorTheme{DefaultTheme()},
 	}
-	bar := bottomBar(m, 64, DefaultTheme(), true)
-	if !strings.Contains(bar, "?  m") || !strings.Contains(bar, "Ambient") {
-		t.Fatalf("compact bottom bar missing minimal hints: %q", bar)
+	// Below w=60 the full hint row cannot fit alongside the status gutter,
+	// so the footer degrades to the minimal pair.
+	bar := bottomBar(m, 58, DefaultTheme())
+	if !strings.Contains(bar, "[?] help") || !strings.Contains(bar, "[z]") {
+		t.Fatalf("narrow bottom bar should keep the minimal hints: %q", bar)
+	}
+	if strings.Contains(bar, "[space] play") || strings.Contains(bar, "[m] control") {
+		t.Fatalf("narrow bottom bar should shed the full hint row: %q", bar)
 	}
 	if strings.Contains(bar, "[l] library") || strings.Contains(bar, "[i] inspect") || strings.Contains(bar, "[q]") {
 		t.Fatalf("compact bottom bar should omit extended chrome: %q", bar)
@@ -652,7 +726,7 @@ func TestReducedChromeBottomBarShowsReturnHint(t *testing.T) {
 		reducedChrome: true,
 		themes:        []ColorTheme{DefaultTheme()},
 	}
-	bar := bottomBar(m, 90, DefaultTheme(), false)
+	bar := bottomBar(m, 90, DefaultTheme())
 	if !strings.Contains(bar, "Ambient") || !strings.Contains(bar, "?") {
 		t.Fatalf("reduced chrome bar missing minimal chrome: %q", bar)
 	}
