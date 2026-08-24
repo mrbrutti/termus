@@ -224,3 +224,26 @@ func TestFooterAdvertisesCoreKeys(t *testing.T) {
 		}
 	}
 }
+
+func TestCompactLayoutDropsNarrationKeepsHeader(t *testing.T) {
+	m := stationTestModel()
+	m.width, m.height = 60, 16 // compact per useCompactLayout
+	m.debug = gen.DebugStatus{Section: "A", Bar: 3, Chord: "Cm"}
+	out := m.View()
+	if !strings.Contains(out, "NIGHT DRIFT") {
+		t.Fatalf("compact view must keep the station header: %q", out)
+	}
+	if strings.Contains(out, "section A · bar 3") {
+		t.Fatalf("compact view should drop the narration row: %q", out)
+	}
+}
+
+func TestTinyLayoutDropsFormRail(t *testing.T) {
+	m := stationTestModel()
+	m.width, m.height = 50, 12
+	m.debug = gen.DebugStatus{FormChain: []string{"intro", "A"}, FormIndex: 0}
+	out := m.View()
+	if strings.Contains(out, "─── ") {
+		t.Fatalf("tiny view should drop the form rail: %q", out)
+	}
+}
