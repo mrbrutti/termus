@@ -230,9 +230,9 @@ func jazzAABA32() FormTemplate {
 			{ID: "head_out", Role: "head_return", Bars: 8, Harmony: aSectionEnd, MotifTreatment: "return", PhraseStructure: "ab", DynamicCurve: "decrescendo", TransitionToNext: "fill", Arrangement: enterAll},
 			{
 				ID: "outro", Role: "outro", Bars: 8,
-				Harmony:          "Cmaj7 | Am7 | Dm7 | G7 | Cmaj7 | Cmaj7 | Cmaj7 | Cmaj7",
-				MotifTreatment:   "fragment",
-				DynamicCurve:     "decrescendo",
+				Harmony:        "Cmaj7 | Am7 | Dm7 | G7 | Cmaj7 | Cmaj7 | Cmaj7 | Cmaj7",
+				MotifTreatment: "fragment",
+				DynamicCurve:   "decrescendo",
 				Arrangement: map[string]RoleSchedule{
 					"kick":   {ExitBar: 5, FadeOutBars: 2},
 					"snare":  {ExitBar: 5, FadeOutBars: 2},
@@ -379,9 +379,9 @@ func lofiLoopForm() FormTemplate {
 			},
 			{
 				ID: "outro", Role: "recede", Bars: 8,
-				Harmony:          outro,
-				MotifTreatment:   "fragment",
-				DynamicCurve:     "decrescendo",
+				Harmony:        outro,
+				MotifTreatment: "fragment",
+				DynamicCurve:   "decrescendo",
 				Arrangement: map[string]RoleSchedule{
 					"kick":   {ExitBar: 5, FadeOutBars: 2},
 					"snare":  {ExitBar: 5, FadeOutBars: 2},
@@ -569,9 +569,9 @@ func ambientEmergeDriftRecede() FormTemplate {
 			},
 			{
 				ID: "recede", Role: "recede", Bars: 40,
-				Harmony:          recede,
-				MotifTreatment:   "fragment",
-				DynamicCurve:     "decrescendo",
+				Harmony:        recede,
+				MotifTreatment: "fragment",
+				DynamicCurve:   "decrescendo",
 				Arrangement: map[string]RoleSchedule{
 					"pad":   {EnterBar: 1, FadeOutBars: 16},
 					"drone": {EnterBar: 1, FadeOutBars: 16},

@@ -22,11 +22,11 @@ import (
 // FFTs with the K IR partition FFTs, sum them in the frequency domain,
 // IFFT, and overlap-add with the previous block's tail.
 type FFTConvolver struct {
-	blockSize int             // N
-	fftSize   int             // 2N
-	irFFT     [][]complex128  // K partitions, each fftSize long, frequency domain
-	histFFT   [][]complex128  // K most recent input-block FFTs (index 0 = newest)
-	overlap   []float64       // length N — tail from previous block
+	blockSize int            // N
+	fftSize   int            // 2N
+	irFFT     [][]complex128 // K partitions, each fftSize long, frequency domain
+	histFFT   [][]complex128 // K most recent input-block FFTs (index 0 = newest)
+	overlap   []float64      // length N — tail from previous block
 
 	inputBuffer  []float64 // length N — input accumulator
 	outputBuffer []float64 // length N — current block output, drained sample by sample

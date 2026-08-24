@@ -162,10 +162,10 @@ func (i *Installer) vendorACEStep() string {
 }
 
 // IsInstalled reports whether the bootstrap appears complete. It checks:
-// - venv python exists
-// - ACE-Step source clone exists
-// - The acestep package is importable from the venv (the surest sign that
-//   model downloads will work).
+//   - venv python exists
+//   - ACE-Step source clone exists
+//   - The acestep package is importable from the venv (the surest sign that
+//     model downloads will work).
 //
 // It deliberately does NOT verify the model weights are downloaded: that
 // check is too slow/expensive. EnsureInstalled re-runs the download step

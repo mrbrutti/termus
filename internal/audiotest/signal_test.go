@@ -87,7 +87,7 @@ func TestModulatedSineWithDepthSpreadsZeroCrossings(t *testing.T) {
 	const seconds = 4.0
 	flat := ModulatedSine(440, 0, 0.7, sr, int(seconds*sr))
 	modded := ModulatedSine(440, 50, 0.7, sr, int(seconds*sr))
-	flatStd := zeroCrossingRateStdDev(flat, int(sr/10))   // 100 ms windows
+	flatStd := zeroCrossingRateStdDev(flat, int(sr/10)) // 100 ms windows
 	moddedStd := zeroCrossingRateStdDev(modded, int(sr/10))
 	if moddedStd <= flatStd*1.5 {
 		t.Fatalf("expected modded stddev (%.3f) > 1.5× flat stddev (%.3f)",

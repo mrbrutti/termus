@@ -299,4 +299,3 @@ func AvailablePort(start, span int) (int, error) {
 	}
 	return 0, fmt.Errorf("no available port in [%d, %d)", start, start+span)
 }
-

@@ -52,7 +52,7 @@ func makeSineWAV(durMs, freqHz, sr int) []byte {
 type mockProducer struct {
 	mu       sync.Mutex
 	called   []int
-	failAt   int  // seq to fail at; -1 = never
+	failAt   int // seq to fail at; -1 = never
 	failErr  error
 	wavBytes func(seq int) []byte
 }
@@ -360,8 +360,8 @@ var (
 // scope sink. Used by TestScopeTap_AttenuatesByHalf to verify the SP25
 // scope-tap gain of 0.5.
 type recordingScopeSink struct {
-	mu       sync.Mutex
-	samples  []float64
+	mu      sync.Mutex
+	samples []float64
 }
 
 func (r *recordingScopeSink) Write(samples []float64) {

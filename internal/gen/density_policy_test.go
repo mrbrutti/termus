@@ -22,4 +22,3 @@ func TestDensityPolicyPrefersSparseTexturesForAmbientFamily(t *testing.T) {
 		t.Fatalf("jazz lead fill count = %d, want positive", got)
 	}
 }
-

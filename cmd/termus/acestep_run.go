@@ -53,8 +53,8 @@ type messageSink interface {
 // headless (non-TTY or --no-tui) code path so scripted callers still see
 // progress, just as before SP23.
 type stderrSink struct {
-	w         io.Writer
-	mu        struct{ lastPhase string }
+	w          io.Writer
+	mu         struct{ lastPhase string }
 	lastRender atomic.Int64
 }
 
@@ -296,12 +296,12 @@ func runACEStepWithTUI(ctx context.Context, opts acestepOptions) error {
 type acestepCommander struct{}
 
 // We satisfy audio.Commander with no-op implementations.
-func (c *acestepCommander) SetVolume(_ int)                              {}
-func (c *acestepCommander) DebugStatus() gen.DebugStatus                 { return gen.DebugStatus{} }
-func (c *acestepCommander) TogglePause()                                 {}
-func (c *acestepCommander) ToggleRecord() (string, error)                { return "", nil }
-func (c *acestepCommander) SwapAlgorithm(_ gen.Algorithm)                {}
-func (c *acestepCommander) SwapAlgorithmFade(_ gen.Algorithm, _ int)     {}
+func (c *acestepCommander) SetVolume(_ int)                          {}
+func (c *acestepCommander) DebugStatus() gen.DebugStatus             { return gen.DebugStatus{} }
+func (c *acestepCommander) TogglePause()                             {}
+func (c *acestepCommander) ToggleRecord() (string, error)            { return "", nil }
+func (c *acestepCommander) SwapAlgorithm(_ gen.Algorithm)            {}
+func (c *acestepCommander) SwapAlgorithmFade(_ gen.Algorithm, _ int) {}
 
 // runACEStepPlayback is kept as a thin shim for any external callers.
 // Internally everything routes through runACEStep, which dispatches between
@@ -723,10 +723,10 @@ func acestepTrackNameFromPath(p string) string {
 // relative to the running binary or current working directory.
 //
 // Resolution order:
-//   1. $TERMUS_ACESTEP_DIR if set
-//   2. <cwd>/services/acestep if it exists
-//   3. <exe-dir>/services/acestep
-//   4. fall back to <cwd>/services/acestep regardless
+//  1. $TERMUS_ACESTEP_DIR if set
+//  2. <cwd>/services/acestep if it exists
+//  3. <exe-dir>/services/acestep
+//  4. fall back to <cwd>/services/acestep regardless
 func defaultACEStepServiceDir() string {
 	if v := strings.TrimSpace(os.Getenv("TERMUS_ACESTEP_DIR")); v != "" {
 		return v
@@ -857,4 +857,3 @@ func isTerminal(f *os.File) bool {
 	}
 	return info.Mode()&os.ModeCharDevice != 0
 }
-

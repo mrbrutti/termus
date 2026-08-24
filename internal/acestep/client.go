@@ -40,13 +40,13 @@ func NewClient(baseURL string, timeout time.Duration) *Client {
 
 // HealthResponse mirrors the JSON shape of GET /health.
 type HealthResponse struct {
-	Loaded            bool    `json:"loaded"`
-	Backend           string  `json:"backend"`
-	ModelName         string  `json:"model_name"`
-	LMModelName       string  `json:"lm_model_name"`
-	MockMode          bool    `json:"mock_mode"`
-	Error             string  `json:"error,omitempty"`
-	LoadTimeSeconds   float64 `json:"load_time_seconds"`
+	Loaded          bool    `json:"loaded"`
+	Backend         string  `json:"backend"`
+	ModelName       string  `json:"model_name"`
+	LMModelName     string  `json:"lm_model_name"`
+	MockMode        bool    `json:"mock_mode"`
+	Error           string  `json:"error,omitempty"`
+	LoadTimeSeconds float64 `json:"load_time_seconds"`
 }
 
 // ProgressResponse mirrors the JSON shape of GET /progress. Active is true

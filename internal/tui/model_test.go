@@ -819,13 +819,13 @@ func TestACEStepRenderingMsgTogglesCornerIndicator(t *testing.T) {
 
 func TestACEStepRenderingMsgShowsInPlaybackBar(t *testing.T) {
 	m := Model{
-		algo:              "ACE-Step",
-		volume:            70,
-		aceRenderActive:   true,
-		aceRenderSeq:      1,
-		aceRenderDetail:   "generating track 2",
-		startedAt:         time.Now().Add(-30 * time.Second),
-		themes:            []ColorTheme{DefaultTheme()},
+		algo:            "ACE-Step",
+		volume:          70,
+		aceRenderActive: true,
+		aceRenderSeq:    1,
+		aceRenderDetail: "generating track 2",
+		startedAt:       time.Now().Add(-30 * time.Second),
+		themes:          []ColorTheme{DefaultTheme()},
 	}
 	bar := playbackBar(m, 100, DefaultTheme(), make([]float64, 200), false)
 	if !strings.Contains(bar, "generating track 2") {

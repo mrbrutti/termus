@@ -13,6 +13,7 @@ import (
 // The field accepts two forms:
 //   - events-list (legacy):     arrangement: { events: [...] }
 //   - role-schedule map (SP18): arrangement: { rhodes: { enter_bar: 1 }, ... }
+//
 // We use this private struct to peek and then route accordingly.
 type arrangementYAML struct {
 	// Events is the legacy SP1-SP16 events list.

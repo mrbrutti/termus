@@ -62,8 +62,8 @@ func TestResolveMotifs_Retrograde(t *testing.T) {
 func TestResolveMotifs_BasedOnChain(t *testing.T) {
 	entries := []MotifEntry{
 		{Name: "core", Pattern: "1 2 3"},
-		{Name: "a", BasedOn: "core", Transpose: 1},     // "2 3 4"
-		{Name: "b", BasedOn: "a", Retrograde: true},    // "4 3 2"
+		{Name: "a", BasedOn: "core", Transpose: 1},  // "2 3 4"
+		{Name: "b", BasedOn: "a", Retrograde: true}, // "4 3 2"
 	}
 	resolved, err := ResolveMotifs(entries)
 	if err != nil {
