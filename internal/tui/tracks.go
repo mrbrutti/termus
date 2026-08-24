@@ -372,9 +372,15 @@ func renderTrackDetailPane(m Model, w, h int, theme ColorTheme) string {
 		tail += 2
 	}
 	if len(entry.Structure) > 0 {
-		lines = append(lines, "", lipgloss.NewStyle().Faint(true).Render(trimToWidth("FORM", w)))
-		budget := maxInt(1, h-len(lines)-tail)
-		lines = append(lines, renderTrackFormMap(m, entry, w, budget, theme)...)
+		// Budget the map before committing to its header: the blank + "FORM"
+		// rows cost two lines, and a header over a lone "…" says nothing while
+		// still pushing the tail off a short pane. A truncated map needs two
+		// rows to show even one real section, since "…" takes one of them.
+		budget := h - len(lines) - tail - 2
+		if budget >= minInt(2, len(entry.Structure)) {
+			lines = append(lines, "", lipgloss.NewStyle().Faint(true).Render(trimToWidth("FORM", w)))
+			lines = append(lines, renderTrackFormMap(m, entry, w, budget, theme)...)
+		}
 	}
 	if len(entry.Ensemble) > 0 {
 		lines = append(lines, lipgloss.NewStyle().Faint(true).Render(trimToWidth("ensemble  "+strings.Join(entry.Ensemble, " · "), w)))
@@ -417,6 +423,9 @@ func renderTrackFormMap(m Model, entry TrackNavEntry, w, budget int, theme Color
 	barMax := clampInt(w-labelW-2-durW, 1, 24)
 	isActive := entry.ID == m.activeTrackID
 	current, hasCurrent := currentTrackStructureSection(entry, m.debug.Section)
+	// Two sections can carry the same label ("a", "a"), and the playhead is
+	// only ever in one of them: highlight the first match and no other.
+	highlighted := false
 	// The "…" row costs a line of its own, so a truncated form shows one
 	// section fewer. Spending budget+1 rows here would push the tail
 	// ("● currently loaded") off the bottom of a short pane.
@@ -438,8 +447,9 @@ func renderTrackFormMap(m Model, entry TrackNavEntry, w, budget int, theme Color
 		}
 		cells = minInt(cells, barMax)
 		labelStyle := lipgloss.NewStyle().Foreground(theme.BarFg)
-		if isActive && hasCurrent && sectionsMatch(s, current) {
+		if !highlighted && isActive && hasCurrent && sectionsMatch(s, current) {
 			labelStyle = lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true)
+			highlighted = true
 		}
 		// An undated section still pays for the duration column so the
 		// harmony that follows stays in line with its neighbours.

@@ -242,6 +242,25 @@ func TestTrackPanelKeepsTailAndActiveFilter(t *testing.T) {
 		t.Fatalf("truncated form map pushed the textures row off the pane: %q", out)
 	}
 
+	// A short terminal has no room for the form map at all. Spending two rows
+	// on "FORM" plus a lone "…" conveys nothing and costs the tail its place,
+	// so the whole block drops instead.
+	short := m
+	short.width, short.height = 120, 18
+	shortOut := trackPanel(short, 120, 18, theme)
+	if !strings.Contains(shortOut, "● currently loaded") {
+		t.Fatalf("h=18 detail pane dropped the tail instead of the form map: %q", shortOut)
+	}
+	shortLines := strings.Split(shortOut, "\n")
+	if len(shortLines) > 18 {
+		t.Fatalf("h=18 track panel is %d rows tall, want <= 18\n%s", len(shortLines), shortOut)
+	}
+	for i, line := range shortLines {
+		if got := lipgloss.Width(line); got > 120 {
+			t.Fatalf("h=18 track panel line %d rendered %d cols, want <= 120\n%q", i, got, line)
+		}
+	}
+
 	// Seven styles at the narrowest supported width: the filter row cannot
 	// show them all, and the active one is well past the head.
 	var wide []TrackNavEntry
