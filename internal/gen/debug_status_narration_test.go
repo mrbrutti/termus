@@ -56,7 +56,9 @@ func TestEpisodePlanFormStatusMultiEpisode(t *testing.T) {
 		}
 		movement, episode, chain, idx = plan.FormStatus(samples)
 	}
-	_ = movement
+	if movement == "" {
+		t.Fatalf("movement not populated at episode 2")
+	}
 
 	if episode != 2 {
 		t.Fatalf("episode = %d, want 2", episode)
@@ -89,9 +91,13 @@ func TestChillDebugStatusNarrationWiring(t *testing.T) {
 	algo := NewChill(nil)
 	algo.barSamples = barSamples
 	algo.form = NewEpisodePlan(rng, barSamples, "lofi")
-	algo.section = algo.form.SectionAt(0)
+	// Bar 10 lands past the (fixed-length) intro section for every profile
+	// used across these three wiring tests, so FormIndex points at a
+	// non-zero entry in FormChain — exercising the index, not just its
+	// zero value.
+	algo.samplesElapsed = 10 * barSamples
+	algo.section = algo.form.SectionAt(algo.samplesElapsed)
 	algo.progression = []chillChord{{label: "I"}, {label: "vi"}, {label: "IV"}, {label: "V"}}
-	algo.samplesElapsed = 0
 
 	status := algo.DebugStatus()
 	if status.Movement == "" {
@@ -105,6 +111,12 @@ func TestChillDebugStatusNarrationWiring(t *testing.T) {
 	}
 	if status.NextChord == "" {
 		t.Fatalf("NextChord not populated")
+	}
+	if status.FormIndex < 0 || status.FormIndex >= len(status.FormChain) {
+		t.Fatalf("FormIndex = %d out of range [0, %d)", status.FormIndex, len(status.FormChain))
+	}
+	if status.FormChain[status.FormIndex] != status.Section {
+		t.Fatalf("FormChain[FormIndex] = %q, want Section %q", status.FormChain[status.FormIndex], status.Section)
 	}
 }
 
@@ -117,9 +129,13 @@ func TestJazzDebugStatusNarrationWiring(t *testing.T) {
 	algo := NewJazz(nil)
 	algo.barSamples = barSamples
 	algo.form = NewEpisodePlan(rng, barSamples, "jazz")
-	algo.section = algo.form.SectionAt(0)
+	// Bar 10 lands past the (fixed-length) intro section for every profile
+	// used across these three wiring tests, so FormIndex points at a
+	// non-zero entry in FormChain — exercising the index, not just its
+	// zero value.
+	algo.samplesElapsed = 10 * barSamples
+	algo.section = algo.form.SectionAt(algo.samplesElapsed)
 	algo.progression = []jazzChord{{label: "iim7"}, {label: "V7"}, {label: "Imaj7"}, {label: "VI7"}}
-	algo.samplesElapsed = 0
 
 	status := algo.DebugStatus()
 	if status.Movement == "" {
@@ -133,6 +149,12 @@ func TestJazzDebugStatusNarrationWiring(t *testing.T) {
 	}
 	if status.NextChord == "" {
 		t.Fatalf("NextChord not populated")
+	}
+	if status.FormIndex < 0 || status.FormIndex >= len(status.FormChain) {
+		t.Fatalf("FormIndex = %d out of range [0, %d)", status.FormIndex, len(status.FormChain))
+	}
+	if status.FormChain[status.FormIndex] != status.Section {
+		t.Fatalf("FormChain[FormIndex] = %q, want Section %q", status.FormChain[status.FormIndex], status.Section)
 	}
 }
 
@@ -145,9 +167,13 @@ func TestSF2MarkovDebugStatusNarrationWiring(t *testing.T) {
 	algo := NewSF2Markov(nil)
 	algo.barSamples = barSamples
 	algo.form = NewEpisodePlan(rng, barSamples, "classical")
-	algo.section = algo.form.SectionAt(0)
+	// Bar 10 lands past the (fixed-length) intro section for every profile
+	// used across these three wiring tests, so FormIndex points at a
+	// non-zero entry in FormChain — exercising the index, not just its
+	// zero value.
+	algo.samplesElapsed = 10 * barSamples
+	algo.section = algo.form.SectionAt(algo.samplesElapsed)
 	algo.progression = []classicalChord{{label: "I"}, {label: "IV"}, {label: "V"}, {label: "I"}}
-	algo.samplesElapsed = 0
 
 	status := algo.DebugStatus()
 	if status.Movement == "" {
@@ -161,5 +187,11 @@ func TestSF2MarkovDebugStatusNarrationWiring(t *testing.T) {
 	}
 	if status.NextChord == "" {
 		t.Fatalf("NextChord not populated")
+	}
+	if status.FormIndex < 0 || status.FormIndex >= len(status.FormChain) {
+		t.Fatalf("FormIndex = %d out of range [0, %d)", status.FormIndex, len(status.FormChain))
+	}
+	if status.FormChain[status.FormIndex] != status.Section {
+		t.Fatalf("FormChain[FormIndex] = %q, want Section %q", status.FormChain[status.FormIndex], status.Section)
 	}
 }
