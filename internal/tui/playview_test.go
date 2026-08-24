@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 
@@ -59,7 +60,7 @@ func TestStationHeaderFitsNarrowWidth(t *testing.T) {
 
 func TestFooterFitsNarrowWidth(t *testing.T) {
 	m := stationTestModel()
-	out := bottomBar(m, 40, DefaultTheme(), true)
+	out := bottomBar(m, 40, DefaultTheme())
 	if got := lipgloss.Width(out); got > 40 {
 		t.Fatalf("footer overflows w=40: width %d, %q", got, out)
 	}
@@ -70,35 +71,95 @@ func TestFooterFitsNarrowWidth(t *testing.T) {
 
 // TestPlayChromeNeverExceedsWidth sweeps every width the app can run at.
 // View's chromeH math assumes one row per bar, so a bar that overflows wraps
-// and silently shifts the whole layout. This caught an off-by-one in the
-// footer at w=59 that the fixed-width cases above miss.
+// and silently shifts the whole layout. Fixed-width cases miss these: this
+// sweep caught an off-by-one in the footer at w=59, an unbounded form-rail
+// right side, and a narration budget that ignored the meter's "clip" state.
 func TestPlayChromeNeverExceedsWidth(t *testing.T) {
 	theme := DefaultTheme()
-	for _, recording := range []bool{false, true} {
-		for _, slots := range []bool{false, true} {
-			for _, compact := range []bool{false, true} {
-				for w := 40; w <= 200; w++ {
-					m := stationTestModel()
-					m.recording = recording
-					m.stickyStatus = "audio: no default device; use --out file.wav"
-					if slots {
-						// Worst case: max-width int64 seeds in both slots.
-						m.seedA = &seedBookmark{Seed: 9223372036854775807}
-						m.seedB = &seedBookmark{Seed: 9223372036854775806}
-						m.kept = map[string]seedBookmark{"a": {}, "b": {}}
-					}
-					m.debug.FormChain = []string{"intro", "statement", "development", "recapitulation", "coda"}
-					m.debug.FormIndex = 2
 
-					if got := lipgloss.Width(topBar(m, w, theme, compact)); got > w {
-						t.Fatalf("topBar w=%d compact=%v recording=%v slots=%v rendered %d cols",
-							w, compact, recording, slots, got)
-					}
-					if got := lipgloss.Width(bottomBar(m, w, theme, compact)); got > w {
-						t.Fatalf("bottomBar w=%d compact=%v rendered %d cols", w, compact, got)
-					}
-					if got := lipgloss.Width(formRailBar(m, w, theme)); got > w {
-						t.Fatalf("formRailBar w=%d rendered %d cols", w, got)
+	longTitle := "the long slow return of the opening figure, heard now in the parallel minor"
+	if len(longTitle) < 70 {
+		t.Fatalf("fixture should exercise an over-wide section label, got %d chars", len(longTitle))
+	}
+	quiet := []float64{0.1, 0.3, -0.4}
+	// >= 0.985 drives meterSummary into the clipped state, whose "clip"
+	// label is two columns wider than "ok".
+	clipping := []float64{0.1, 0.99, -0.4}
+
+	scenarios := []struct {
+		name    string
+		samples []float64
+		mutate  func(m *Model)
+	}{
+		{name: "bare", samples: quiet, mutate: func(m *Model) {}},
+		{
+			name:    "full narration + clipping",
+			samples: clipping,
+			mutate: func(m *Model) {
+				m.recording = true
+				m.recordStartedAt = time.Now().Add(-17 * time.Second)
+				m.debug = gen.DebugStatus{
+					Movement: "recapitulation", Episode: 12, Section: "development",
+					Bar: 129, Chord: "Dm9", NextChord: "Gm7",
+					FormChain: []string{"intro", "statement", "development", "recapitulation", "coda"},
+					FormIndex: 2,
+				}
+				m.aceRenderActive = true
+				m.aceRenderDetail = "generating next track"
+			},
+		},
+		{
+			name:    "long rail right side",
+			samples: clipping,
+			mutate: func(m *Model) {
+				m.listeningMode = "hour stream"
+				m.nextSectionAt = time.Now().Add(3*time.Minute + 42*time.Second)
+				m.debug.FormChain = []string{"intro", "statement", "development", "coda"}
+				m.debug.FormIndex = 1
+			},
+		},
+		{
+			name:    "over-wide section label",
+			samples: quiet,
+			mutate: func(m *Model) {
+				m.listeningMode = "hour stream"
+				m.nextSectionAt = time.Now().Add(90 * time.Second)
+				m.debug.FormChain = []string{"intro", longTitle, "coda"}
+				m.debug.FormIndex = 1
+			},
+		},
+		{
+			name:    "max seeds + recording",
+			samples: clipping,
+			mutate: func(m *Model) {
+				m.recording = true
+				m.seedA = &seedBookmark{Seed: 9223372036854775807}
+				m.seedB = &seedBookmark{Seed: 9223372036854775806}
+				m.kept = map[string]seedBookmark{"a": {}, "b": {}}
+				m.debug.FormChain = []string{"intro", "A", "B"}
+				m.debug.FormIndex = 0
+			},
+		},
+	}
+
+	for _, sc := range scenarios {
+		for _, compact := range []bool{false, true} {
+			for w := 40; w <= 200; w++ {
+				m := stationTestModel()
+				m.stickyStatus = "audio: no default device; use --out file.wav"
+				sc.mutate(&m)
+
+				bars := map[string]string{
+					"topBar":      topBar(m, w, theme, compact),
+					"playbackBar": playbackBar(m, w, theme, sc.samples, compact),
+					"formRailBar": formRailBar(m, w, theme),
+					"debugBar":    debugBar(m, w, theme),
+					"bottomBar":   bottomBar(m, w, theme),
+				}
+				for name, row := range bars {
+					if got := lipgloss.Width(row); got > w {
+						t.Fatalf("%s overflows in scenario %q: w=%d compact=%v rendered %d cols\n%q",
+							name, sc.name, w, compact, got, row)
 					}
 				}
 			}
@@ -156,7 +217,7 @@ func TestFormRailEmptyWithoutSource(t *testing.T) {
 
 func TestFooterAdvertisesCoreKeys(t *testing.T) {
 	m := stationTestModel()
-	out := bottomBar(m, 118, DefaultTheme(), false)
+	out := bottomBar(m, 118, DefaultTheme())
 	for _, want := range []string{"[space] play", "[m] control", "[t] tracks", "[?] help", "[z] zen"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("footer missing %q: %q", want, out)

@@ -59,7 +59,7 @@ func TestBottomBarLeavesRoomForStatus(t *testing.T) {
 		stickyStatus: "audio: starting...",
 		themes:       []ColorTheme{DefaultTheme()},
 	}
-	bar := bottomBar(m, 120, DefaultTheme(), false)
+	bar := bottomBar(m, 120, DefaultTheme())
 	if !strings.Contains(bar, "audio: starting...") {
 		t.Fatalf("bottom bar missing status: %q", bar)
 	}
@@ -649,9 +649,14 @@ func TestCompactBottomBarUsesMinimalHints(t *testing.T) {
 		volume: 70,
 		themes: []ColorTheme{DefaultTheme()},
 	}
-	bar := bottomBar(m, 64, DefaultTheme(), true)
-	if !strings.Contains(bar, "[space] play") || !strings.Contains(bar, "[z] zen") {
-		t.Fatalf("compact bottom bar missing minimal hints: %q", bar)
+	// Below w=60 the full hint row cannot fit alongside the status gutter,
+	// so the footer degrades to the minimal pair.
+	bar := bottomBar(m, 58, DefaultTheme())
+	if !strings.Contains(bar, "[?] help") || !strings.Contains(bar, "[z]") {
+		t.Fatalf("narrow bottom bar should keep the minimal hints: %q", bar)
+	}
+	if strings.Contains(bar, "[space] play") || strings.Contains(bar, "[m] control") {
+		t.Fatalf("narrow bottom bar should shed the full hint row: %q", bar)
 	}
 	if strings.Contains(bar, "[l] library") || strings.Contains(bar, "[i] inspect") || strings.Contains(bar, "[q]") {
 		t.Fatalf("compact bottom bar should omit extended chrome: %q", bar)
@@ -665,7 +670,7 @@ func TestReducedChromeBottomBarShowsReturnHint(t *testing.T) {
 		reducedChrome: true,
 		themes:        []ColorTheme{DefaultTheme()},
 	}
-	bar := bottomBar(m, 90, DefaultTheme(), false)
+	bar := bottomBar(m, 90, DefaultTheme())
 	if !strings.Contains(bar, "Ambient") || !strings.Contains(bar, "?") {
 		t.Fatalf("reduced chrome bar missing minimal chrome: %q", bar)
 	}

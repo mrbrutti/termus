@@ -1409,7 +1409,7 @@ func (m Model) View() string {
 	compact := useCompactLayout(m.width, m.height)
 	showNarration := !compact
 	rail := ""
-	if !m.reducedChrome && m.height >= 14 {
+	if !m.reducedChrome && showFormRail(m.height) {
 		rail = formRailBar(m, m.width, theme)
 	}
 	chromeH := 2 // station header + footer
@@ -1451,9 +1451,7 @@ func (m Model) View() string {
 		scopeStr = blendVisualFrames(prev, scopeStr, clamp01(progress))
 	}
 
-	top := topBar(m, innerW, theme, compact)
-	playback := playbackBar(m, innerW, theme, samples, compact)
-	bottom := bottomBar(m, innerW, theme, compact)
+	bottom := bottomBar(m, innerW, theme)
 	volumeLine := ""
 	if m.volumeOverlayVisible(now) {
 		volumeLine = renderVolumeLine(m, innerW, theme)
@@ -1480,9 +1478,11 @@ func (m Model) View() string {
 		}
 		return lipgloss.JoinVertical(lipgloss.Left, body, bottom)
 	}
-	rows := []string{top}
+	// Zen mode has already returned, so the header and the narration row are
+	// only rendered on the path that actually shows them.
+	rows := []string{topBar(m, innerW, theme, compact)}
 	if showNarration {
-		rows = append(rows, playback)
+		rows = append(rows, playbackBar(m, innerW, theme, samples, compact))
 	}
 	if volumeLine != "" {
 		rows = append(rows, volumeLine)
@@ -1662,7 +1662,7 @@ func (m *Model) applyACEStepReady(msg ACEStepReadyMsg) {
 func topBar(m Model, w int, theme ColorTheme, compact bool) string {
 	spec, hasSpec := m.activeSpec()
 	station := m.algo
-	glyph := "•"
+	glyph := stationGlyph("")
 	metaParts := make([]string, 0, 3)
 	if hasSpec {
 		station = spec.Label()
@@ -1776,13 +1776,16 @@ func playbackBar(m Model, w int, theme ColorTheme, samples []float64, compact bo
 		}
 		leftParts = append(leftParts, "AI: "+label)
 	}
-	leftText := trimToWidth(strings.Join(leftParts, " · "), maxInt(0, w-22))
+	// Render the meter first and budget the narration off its measured width:
+	// the "clip" label is two columns wider than "ok", so a fixed reserve
+	// overflows exactly when the signal is hottest.
 	meter, clipped := meterSummary(samples)
 	meterWidth := 14
 	if compact {
 		meterWidth = 8
 	}
 	right := renderCompactMeter(theme, meter, clipped, meterWidth)
+	leftText := trimToWidth(strings.Join(leftParts, " · "), maxInt(0, w-lipgloss.Width(right)-1))
 	left := lipgloss.NewStyle().Faint(true).Render(leftText)
 	pad := w - lipgloss.Width(left) - lipgloss.Width(right)
 	if pad < 1 {
@@ -1892,7 +1895,7 @@ func inspectorDebugLabel(status gen.DebugStatus) string {
 	return text
 }
 
-func bottomBar(m Model, w int, theme ColorTheme, compact bool) string {
+func bottomBar(m Model, w int, theme ColorTheme) string {
 	if m.reducedChrome {
 		left := lipgloss.NewStyle().Foreground(theme.BarFg).Render(m.algo)
 		right := lipgloss.NewStyle().Faint(true).Render("?")
@@ -2286,6 +2289,18 @@ func shortDuration(d time.Duration) string {
 
 func useCompactLayout(w, h int) bool {
 	return w < 72 || h < 18
+}
+
+// showFormRail reports whether the play view has the vertical room for the
+// form-rail row above the footer.
+//
+// The play view sheds chrome in a fixed order as the terminal shrinks, so the
+// scope keeps as many rows as possible: the narration row drops first (at the
+// compact threshold), then the form rail (below this height), then the debug
+// row when it is toggled off. The station header and footer never drop —
+// only zen mode removes the header.
+func showFormRail(h int) bool {
+	return h >= 14
 }
 
 func maxInt(a, b int) int {

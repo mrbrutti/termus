@@ -8,16 +8,24 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// baseAlgoName normalizes an algorithm name for presentation lookups:
+// trimmed, lower-cased, with the "-synth" variant suffix removed so those
+// variants share the base algorithm's glyph and character.
+func baseAlgoName(algoName string) string {
+	return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(algoName)), "-synth")
+}
+
 // stationGlyph maps an algorithm's canonical name to its style glyph.
-// -synth variants share the base algorithm's glyph.
+// trackStyleGlyph returns the neutral "•" for anything unknown, including
+// the empty name, so callers without a spec can ask for stationGlyph("").
 func stationGlyph(algoName string) string {
-	return trackStyleGlyph(strings.TrimSuffix(strings.ToLower(strings.TrimSpace(algoName)), "-synth"))
+	return trackStyleGlyph(baseAlgoName(algoName))
 }
 
 // stationCharacter is the short tempo/character descriptor shown in the
 // station header (presentation-only vocabulary, one entry per algorithm).
 func stationCharacter(algoName string) string {
-	switch strings.TrimSuffix(strings.ToLower(strings.TrimSpace(algoName)), "-synth") {
+	switch baseAlgoName(algoName) {
 	case "ambient":
 		return "slow drift"
 	case "drone":
@@ -103,39 +111,80 @@ func formRailBar(m Model, w int, theme ColorTheme) string {
 	if mode == "" {
 		mode = "endless"
 	}
-	rightParts := make([]string, 0, 2)
+	countdown := ""
 	if !m.nextSectionAt.IsZero() {
-		rightParts = append(rightParts, shortDuration(time.Until(m.nextSectionAt))+" to next section")
+		countdown = shortDuration(time.Until(m.nextSectionAt)) + " to next section"
 	}
-	rightParts = append(rightParts, mode)
-	right := lipgloss.NewStyle().Faint(true).Render(strings.Join(rightParts, " · "))
 
-	connector := lipgloss.NewStyle().Foreground(theme.BarFg).Faint(true).Render(" ─── ")
-	plainWidth := 0
-	rendered := make([]string, 0, len(segments))
+	// Everything is measured as PLAIN text first: styled (ANSI) strings must
+	// never be trimmed. Degrade in listening priority — the full chain, then
+	// a compact "current · position", then the countdown, then the mode, and
+	// only as a last resort trim the section label itself.
+	rightPlain := func() string {
+		parts := make([]string, 0, 2)
+		if countdown != "" {
+			parts = append(parts, countdown)
+		}
+		if mode != "" {
+			parts = append(parts, mode)
+		}
+		return strings.Join(parts, " · ")
+	}
+	fits := func(leftWidth int) bool {
+		return leftWidth+lipgloss.Width(rightPlain())+1 <= w
+	}
+
+	const connectorPlain = " ─── "
+	connectorWidth := lipgloss.Width(connectorPlain)
+	displays := make([]string, len(segments))
+	chainWidth := 0
 	for i, label := range segments {
 		display := label
 		if i == current {
 			display = "● " + label
 		}
-		plainWidth += lipgloss.Width(display)
+		displays[i] = display
 		if i > 0 {
-			plainWidth += 5 // " ─── "
+			chainWidth += connectorWidth
 		}
-		switch {
-		case i == current:
-			rendered = append(rendered, lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render(display))
-		case i < current:
-			rendered = append(rendered, lipgloss.NewStyle().Foreground(theme.BarFg).Render(display))
-		default:
-			rendered = append(rendered, lipgloss.NewStyle().Foreground(theme.BarFg).Faint(true).Render(display))
+		chainWidth += lipgloss.Width(display)
+	}
+
+	useChain := fits(chainWidth)
+	compactPlain := fmt.Sprintf("● %s · %d/%d", segments[current], current+1, len(segments))
+	if !useChain {
+		if !fits(lipgloss.Width(compactPlain)) && countdown != "" {
+			countdown = ""
+		}
+		if !fits(lipgloss.Width(compactPlain)) && mode != "" {
+			mode = ""
+		}
+		if !fits(lipgloss.Width(compactPlain)) {
+			compactPlain = trimToWidth(compactPlain, maxInt(0, w-lipgloss.Width(rightPlain())-1))
 		}
 	}
-	left := strings.Join(rendered, connector)
-	if plainWidth > w-lipgloss.Width(right)-1 {
-		// Compact fallback: current section + position, never a mid-ANSI trim.
-		left = lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).
-			Render(fmt.Sprintf("● %s · %d/%d", segments[current], current+1, len(segments)))
+
+	right := ""
+	if text := rightPlain(); text != "" {
+		right = lipgloss.NewStyle().Faint(true).Render(text)
+	}
+	var left string
+	if useChain {
+		connector := lipgloss.NewStyle().Foreground(theme.BarFg).Faint(true).Render(connectorPlain)
+		rendered := make([]string, 0, len(displays))
+		for i, display := range displays {
+			switch {
+			case i == current:
+				rendered = append(rendered, lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render(display))
+			case i < current:
+				rendered = append(rendered, lipgloss.NewStyle().Foreground(theme.BarFg).Render(display))
+			default:
+				rendered = append(rendered, lipgloss.NewStyle().Foreground(theme.BarFg).Faint(true).Render(display))
+			}
+		}
+		left = strings.Join(rendered, connector)
+	} else {
+		left = lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render(compactPlain)
 	}
 	pad := w - lipgloss.Width(left) - lipgloss.Width(right)
 	if pad < 1 {
