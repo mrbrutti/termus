@@ -1961,33 +1961,126 @@ func bottomBar(m Model, w int, theme ColorTheme) string {
 	return leftText + spaces(leftPad+1) + centerText + spaces(rightPad+1) + rightText
 }
 
-func helpPanel(m Model, w, h int, theme ColorTheme) string {
-	bodyW := maxInt(24, minInt(w-6, 76))
-	bodyH := maxInt(10, minInt(h-2, 18))
-	lines := []string{
-		styleHelpLine(theme, false, "Global", "[space] play / pause   [↑↓] volume   [m] control center   [t] tracks"),
-		styleHelpLine(theme, false, "View", "The main screen stays minimal. Use the control center for everything deeper."),
-		styleHelpLine(theme, false, "Track Library", "[t] open library   [←→] style   [↑↓] browse   [enter] play"),
-		styleHelpLine(theme, false, "Inside Control Center", "[↑↓] browse   [←→] adjust   [enter] apply / open   [tab] next section"),
-		styleHelpLine(theme, false, "Sections", "Now   Look   Music   Seeds   Library   Export   Audio   Debug"),
-		styleHelpLine(theme, false, "Close", "[?] close help   [q] quit"),
+// helpGroup is one titled cluster of key/action rows in the help overlay.
+type helpGroup struct {
+	Title string
+	Rows  [][2]string
+}
+
+// helpColumns returns the two logical columns of groups shown by the help
+// overlay. Split out so both the two-column and single-column layouts share
+// the same source of truth.
+func helpColumns() ([]helpGroup, []helpGroup) {
+	col1 := []helpGroup{
+		{"PLAYBACK", [][2]string{
+			{"space", "play / pause"},
+			{"↑ ↓ + −", "volume"},
+			{"n / p", "next / previous algorithm"},
+			{"r", "record to ./exports"},
+		}},
+		{"VIEW", [][2]string{
+			{"c / C", "theme / visual"},
+			{"z", "zen — scope only"},
+			{"d", "debug narration bar"},
+		}},
+		{"OPEN", [][2]string{
+			{"m", "control center"},
+			{"t", "track library"},
+			{"e", "export drawer"},
+		}},
 	}
-	content := strings.Join(lines, "\n")
+	col2 := []helpGroup{
+		{"SEEDS", [][2]string{
+			{"[ ]", "browse seeds"},
+			{"a / b", "store slot A / B"},
+			{"tab", "compare A/B"},
+			{"k / x", "keep / reject take"},
+		}},
+		{"INSIDE PANELS", [][2]string{
+			{"↑ ↓", "browse rows"},
+			{"← →", "adjust value"},
+			{"enter", "apply / open"},
+			{"tab", "next section"},
+		}},
+		{"GLOBAL", [][2]string{
+			{"?", "this help"},
+			{"q", "quit"},
+		}},
+	}
+	return col1, col2
+}
+
+// helpPanel renders the full grouped key reference shown by the `?` overlay.
+// It re-advertises the hidden power-user keys (seed browsing, A/B compare,
+// keep/reject, zen mode) alongside the core transport controls. It is an
+// overlay in the play-view body area — not full-screen — so it must fit
+// within the given w×h: a two-column layout when there's room, a single
+// stacked column otherwise, with clipLines bounding the height as a last
+// resort.
+func helpPanel(m Model, w, h int, theme ColorTheme) string {
+	col1, col2 := helpColumns()
+	bodyW := maxInt(30, minInt(w-4, 96))
+	innerW := maxInt(1, bodyW-6) // minus 2×3 horizontal padding
+
+	titleStyle := lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true)
+	footerStyle := lipgloss.NewStyle().Faint(true)
+	footerText := "every key still works everywhere — the footer just stopped shouting about it"
+
+	var columns string
+	const gap = 6
+	if innerW >= 76 {
+		colW := (innerW - gap) / 2
+		left := renderHelpColumn(col1, colW, theme)
+		right := renderHelpColumn(col2, colW, theme)
+		columns = lipgloss.JoinHorizontal(lipgloss.Top, left, spaces(gap), right)
+	} else {
+		all := append(append([]helpGroup(nil), col1...), col2...)
+		columns = renderHelpColumn(all, innerW, theme)
+	}
+
+	inner := lipgloss.JoinVertical(
+		lipgloss.Left,
+		titleStyle.Render("TERMUS HELP"),
+		"",
+		columns,
+		"",
+		footerStyle.Render(trimToWidth(footerText, innerW)),
+	)
+	// Border (2 rows) + vertical padding (2 rows) must also fit within h.
+	inner = clipLines(inner, maxInt(1, h-4))
+	// lipgloss.Style.Width(), when Padding is also set, sizes the
+	// content+padding box together — so the Width argument here must be
+	// bodyW (content + padding), not innerW (content alone), or the padding
+	// eats into the space we already budgeted for innerW and wraps lines
+	// that were sized to fit exactly.
 	panel := lipgloss.NewStyle().
 		Width(bodyW).
-		Height(bodyH).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(theme.BarFg).
-		Padding(1, 2).
-		Render(
-			lipgloss.JoinVertical(
-				lipgloss.Left,
-				lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render("TERMUS HELP"),
-				"",
-				content,
-			),
-		)
+		Padding(1, 3).
+		Render(inner)
 	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, panel)
+}
+
+// renderHelpColumn lays out a stack of help groups as "key   action" rows,
+// key-column padded to a fixed width and the action text trimmed to fit w.
+func renderHelpColumn(groups []helpGroup, w int, theme ColorTheme) string {
+	const keyW = 11
+	keyStyle := lipgloss.NewStyle().Foreground(theme.BarFg)
+	titleStyle := lipgloss.NewStyle().Foreground(theme.BarHi)
+	lines := make([]string, 0, 16)
+	for gi, group := range groups {
+		if gi > 0 {
+			lines = append(lines, "")
+		}
+		lines = append(lines, titleStyle.Render(group.Title))
+		for _, row := range group.Rows {
+			key := keyStyle.Render(padRight(row[0], keyW))
+			action := trimToWidth(row[1], maxInt(0, w-keyW))
+			lines = append(lines, key+action)
+		}
+	}
+	return lipgloss.NewStyle().Width(w).Render(strings.Join(lines, "\n"))
 }
 
 func styleHelpLine(theme ColorTheme, dim bool, title, text string) string {
@@ -1997,10 +2090,6 @@ func styleHelpLine(theme ColorTheme, dim bool, title, text string) string {
 		valueStyle = valueStyle.Faint(true)
 	}
 	return label + "  " + valueStyle.Render(text)
-}
-
-func filterHelpLines(lines []string, m Model) []string {
-	return append([]string(nil), lines...)
 }
 
 // composingContextBlock renders the .tm track's compositional metadata

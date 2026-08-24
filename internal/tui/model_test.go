@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/mrbrutti/termus/internal/audio"
 	"github.com/mrbrutti/termus/internal/gen"
@@ -164,16 +165,40 @@ func TestDebugBarShowsDedicatedInspector(t *testing.T) {
 }
 
 func TestHelpPanelShowsCoreControls(t *testing.T) {
-	m := Model{
-		helpVisible: true,
-		genres:      []gen.AlgoSpec{{Name: "ambient", Display: "Ambient"}, {Name: "jazz", Display: "Jazz"}},
-		playlist:    &gen.Playlist{Name: "mix", Tracks: []gen.Track{{Duration: time.Second}}},
-		themes:      []ColorTheme{DefaultTheme()},
+	m := Model{width: 118, height: 32}
+	out := helpPanel(m, 118, 32, DefaultTheme())
+	for _, want := range []string{
+		"TERMUS HELP", "PLAYBACK", "VIEW", "OPEN", "SEEDS", "INSIDE PANELS", "GLOBAL",
+		"n / p", "[ ]", "a / b", "k / x", "zen — scope only",
+		"every key still works everywhere",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("help panel missing %q", want)
+		}
 	}
-	panel := helpPanel(m, 90, 18, DefaultTheme())
-	for _, want := range []string{"TERMUS HELP", "Global", "[m] control center", "Inside Control Center", "Sections", "Now   Look   Music", "[?] close help"} {
-		if !strings.Contains(panel, want) {
-			t.Fatalf("help panel missing %q:\n%s", want, panel)
+}
+
+// TestHelpPanelNeverExceedsSize sweeps every runnable width at four heights,
+// asserting the bordered help overlay never overflows its allotted body
+// area: every line <= w, total rows <= h. w=40 forces the single-column
+// fallback (bodyW-4 < 76), so this also exercises that path.
+func TestHelpPanelNeverExceedsSize(t *testing.T) {
+	theme := DefaultTheme()
+	for _, h := range []int{10, 14, 18, 32} {
+		for w := 40; w <= 200; w++ {
+			m := Model{width: w, height: h}
+			out := helpPanel(m, w, h, theme)
+			lines := strings.Split(out, "\n")
+			if len(lines) > h {
+				t.Fatalf("help panel is %d rows tall at w=%d h=%d, want <= %d\n%s",
+					len(lines), w, h, h, out)
+			}
+			for i, line := range lines {
+				if got := lipgloss.Width(line); got > w {
+					t.Fatalf("help panel line %d overflows at w=%d h=%d: rendered %d cols\n%q",
+						i, w, h, got, line)
+				}
+			}
 		}
 	}
 }
