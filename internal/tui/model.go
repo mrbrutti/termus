@@ -2022,24 +2022,25 @@ func helpPanel(m Model, w, h int, theme ColorTheme) string {
 	bodyW := maxInt(30, minInt(w-4, 96))
 	innerW := maxInt(1, bodyW-6) // minus 2×3 horizontal padding
 
-	titleStyle := lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true)
 	footerStyle := lipgloss.NewStyle().Faint(true)
 	footerText := "every key still works everywhere — the footer just stopped shouting about it"
 
 	var columns string
 	const gap = 6
 	// twoColMinInnerW is the smallest content width where a two-column
-	// layout stays worth it: colW works out to (64-6)/2 = 29, wide enough
-	// that only the longest row ("n / p" + "next/previous algorithm", 34
-	// cols) gets a light trimToWidth ellipsis — all six group headers still
-	// render. Below this we fall back to a single stacked column instead,
-	// because splitting further would start clipping whole groups instead
-	// of just trimming a few action strings.
+	// layout stays worth it: colW works out to (64-6)/2 = 29, so the action
+	// column gets 29-keyW=18 cols. The longest rows (e.g.
+	// "next/previous algorithm", "record to ./exports", "debug narration
+	// bar") get a light trimToWidth ellipsis at that width, but all six
+	// group headers still render. Below this we fall back to a single
+	// stacked column instead, because splitting further would start
+	// clipping whole groups instead of just trimming a few action strings.
 	//
-	// Note this threshold is also, not coincidentally, the point below
-	// which the 76-col footer text starts getting ellipsized by the
-	// trimToWidth(footerText, innerW) call below — the footer and the
-	// two-column layout both stop fitting comfortably in the same range.
+	// This is a different, lower threshold than the footer text: the
+	// footer (76 cols) starts getting ellipsized by trimToWidth(footerText,
+	// innerW) below innerW 76, while the two-column layout keeps working
+	// all the way down to innerW 64 — the footer is the first thing to give
+	// ground, well before the columns collapse.
 	const twoColMinInnerW = 64
 	if innerW >= twoColMinInnerW {
 		colW := (innerW - gap) / 2
@@ -2057,7 +2058,7 @@ func helpPanel(m Model, w, h int, theme ColorTheme) string {
 
 	inner := lipgloss.JoinVertical(
 		lipgloss.Left,
-		titleStyle.Render("TERMUS HELP"),
+		helpTitleRow(innerW, theme),
 		"",
 		columns,
 		"",
@@ -2077,6 +2078,28 @@ func helpPanel(m Model, w, h int, theme ColorTheme) string {
 		Padding(1, 3).
 		Render(inner)
 	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, panel)
+}
+
+// helpTitleRow renders "TERMUS HELP" left-aligned with a right-aligned
+// "[?] close · [q] quit" reminder. clipLines can cut the bottom of the
+// two-column body (the GLOBAL group, where q and ? are also listed) well
+// before it reaches h's limit on real terminal sizes, since helpPanel's h is
+// the play-view's body height minus chrome, not the raw window height. Quit
+// and close are pinned here, in the first line of inner content, so
+// clipLines — which only ever trims from the bottom — can never remove them.
+func helpTitleRow(innerW int, theme ColorTheme) string {
+	label := "TERMUS HELP"
+	left := lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render(label)
+	hint := "[?] close · [q] quit"
+	// Measured on the plain strings, before styling — trimToWidth and
+	// lipgloss.Width can't see through ANSI sequences reliably for layout
+	// math, so all the arithmetic below happens on unstyled text.
+	if lipgloss.Width(label)+1+lipgloss.Width(hint) > innerW {
+		return left
+	}
+	right := lipgloss.NewStyle().Faint(true).Render(hint)
+	pad := innerW - lipgloss.Width(left) - lipgloss.Width(right)
+	return left + spaces(pad) + right
 }
 
 // renderHelpColumn lays out a stack of help groups as "key   action" rows,

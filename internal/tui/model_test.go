@@ -204,29 +204,35 @@ func TestHelpPanelNeverExceedsSize(t *testing.T) {
 }
 
 // TestHelpPanelKeepsAllGroupsOnSmallTerminals guards against clipLines
-// eating the tail of the group list on small-but-common terminal sizes.
-// 80x24 is a stock terminal size: it must clear the two-column threshold
-// (innerW = bodyW-6 = 74 >= twoColMinInnerW) so every group header renders.
-// 40x14 is small enough to force the single-column fallback and a tight
-// clipLines budget; GLOBAL is reordered to the front of that fallback
-// specifically so q and ? survive the clip.
+// eating the tail of the group list — and, worse, the quit/close keys —
+// on small-but-common terminal sizes. helpPanel's h argument is the
+// play-view body height, not the raw window height: View() subtracts
+// ~4 rows of chrome (station header, footer, etc.) before calling
+// helpPanel, so an 80x24 stock terminal actually renders the panel at
+// h=20. Using the raw 24 here would understate how tight real terminals
+// get and let this regress again.
+//
+// 80 wide clears the two-column threshold (innerW = bodyW-6 = 74 >=
+// twoColMinInnerW), so all six group headers must render even with the
+// h=20 chrome-adjusted height. 40x10 is small enough to force the
+// single-column fallback and a tight clipLines budget; "quit" must still
+// be reachable because helpTitleRow pins [q] quit (and [?] close) into
+// the first line of inner content, which clipLines never trims.
 func TestHelpPanelKeepsAllGroupsOnSmallTerminals(t *testing.T) {
 	theme := DefaultTheme()
 
 	m80 := Model{width: 80, height: 24}
-	out80 := helpPanel(m80, 80, 24, theme)
-	for _, want := range []string{"PLAYBACK", "VIEW", "OPEN", "SEEDS", "INSIDE PANELS", "GLOBAL"} {
+	out80 := helpPanel(m80, 80, 20, theme)
+	for _, want := range []string{"PLAYBACK", "VIEW", "OPEN", "SEEDS", "INSIDE PANELS", "GLOBAL", "quit", "close"} {
 		if !strings.Contains(out80, want) {
-			t.Fatalf("help panel at 80x24 missing group %q:\n%s", want, out80)
+			t.Fatalf("help panel at 80x20 (80x24 terminal minus chrome) missing %q:\n%s", want, out80)
 		}
 	}
 
-	m40 := Model{width: 40, height: 14}
-	out40 := helpPanel(m40, 40, 14, theme)
-	for _, want := range []string{"GLOBAL", "q"} {
-		if !strings.Contains(out40, want) {
-			t.Fatalf("help panel at 40x14 missing %q:\n%s", want, out40)
-		}
+	m40 := Model{width: 40, height: 10}
+	out40 := helpPanel(m40, 40, 10, theme)
+	if !strings.Contains(out40, "quit") {
+		t.Fatalf("help panel at 40x10 missing %q:\n%s", "quit", out40)
 	}
 }
 
