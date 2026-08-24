@@ -1677,28 +1677,85 @@ func topBar(m Model, w int, theme ColorTheme, compact bool) string {
 			metaParts = append(metaParts, character)
 		}
 	}
-	identity := lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).
-		Render(glyph + " " + strings.ToUpper(station))
-	left := identity
-	if len(metaParts) > 0 && !compact {
-		left += "   " + lipgloss.NewStyle().Foreground(theme.BarFg).Render(strings.Join(metaParts, " · "))
+	if compact {
+		metaParts = metaParts[:0]
 	}
 
-	rightParts := []string{fmt.Sprintf("seed %d", m.seed)}
+	seedPart := fmt.Sprintf("seed %d", m.seed)
+	slotParts := make([]string, 0, 2)
 	if !compact {
 		if m.seedA != nil {
-			rightParts = append(rightParts, fmt.Sprintf("A %d", m.seedA.Seed))
+			slotParts = append(slotParts, fmt.Sprintf("A %d", m.seedA.Seed))
 		}
 		if m.seedB != nil {
-			rightParts = append(rightParts, fmt.Sprintf("B %d", m.seedB.Seed))
+			slotParts = append(slotParts, fmt.Sprintf("B %d", m.seedB.Seed))
 		}
 	}
+	keepPart := ""
 	if len(m.kept) > 0 {
-		rightParts = append(rightParts, fmt.Sprintf("keep %d", len(m.kept)))
+		keepPart = fmt.Sprintf("keep %d", len(m.kept))
 	}
-	right := lipgloss.NewStyle().Faint(true).Render(strings.Join(rightParts, " · "))
+	recPart := ""
 	if m.recording {
-		right += "  " + lipgloss.NewStyle().Foreground(lipgloss.Color("#ff5b5b")).Render("● REC")
+		recPart = "● REC"
+	}
+
+	// Lay the row out in PLAIN text first and degrade until it fits: styled
+	// (ANSI) strings must never be trimmed.
+	identityPlain := glyph + " " + strings.ToUpper(station)
+	rightPlain := func() string {
+		parts := append([]string{seedPart}, slotParts...)
+		if keepPart != "" {
+			parts = append(parts, keepPart)
+		}
+		out := strings.Join(parts, " · ")
+		if recPart != "" {
+			out += "  " + recPart
+		}
+		return out
+	}
+	leftPlain := func() string {
+		if len(metaParts) == 0 {
+			return identityPlain
+		}
+		return identityPlain + "   " + strings.Join(metaParts, " · ")
+	}
+	fits := func() bool {
+		return lipgloss.Width(leftPlain())+lipgloss.Width(rightPlain())+1 <= w
+	}
+	// (a) shed meta from the right: character, then key, then algo name.
+	for !fits() && len(metaParts) > 0 {
+		metaParts = metaParts[:len(metaParts)-1]
+	}
+	// (b) shed right-side detail: seed slots first, then the keep count.
+	for !fits() && len(slotParts) > 0 {
+		slotParts = slotParts[:len(slotParts)-1]
+	}
+	if !fits() && keepPart != "" {
+		keepPart = ""
+	}
+	// (c) last resort: drop the REC badge, then trim the station text itself.
+	if !fits() && recPart != "" {
+		recPart = ""
+	}
+	if !fits() {
+		identityPlain = trimToWidth(identityPlain, maxInt(0, w-lipgloss.Width(rightPlain())-1))
+	}
+
+	left := lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render(identityPlain)
+	if len(metaParts) > 0 {
+		left += "   " + lipgloss.NewStyle().Foreground(theme.BarFg).Render(strings.Join(metaParts, " · "))
+	}
+	rightText := seedPart
+	if len(slotParts) > 0 {
+		rightText += " · " + strings.Join(slotParts, " · ")
+	}
+	if keepPart != "" {
+		rightText += " · " + keepPart
+	}
+	right := lipgloss.NewStyle().Faint(true).Render(rightText)
+	if recPart != "" {
+		right += "  " + lipgloss.NewStyle().Foreground(lipgloss.Color("#ff5b5b")).Render(recPart)
 	}
 	pad := w - lipgloss.Width(left) - lipgloss.Width(right)
 	if pad < 1 {
@@ -1845,9 +1902,18 @@ func bottomBar(m Model, w int, theme ColorTheme, compact bool) string {
 		}
 		return left + spaces(pad) + right
 	}
-	leftText := lipgloss.NewStyle().Faint(true).
-		Render("[space] play   [m] control   [t] tracks   [?] help")
-	rightText := lipgloss.NewStyle().Faint(true).Render("[z] zen")
+	// Pick the hint strings as PLAIN text and measure before styling: the
+	// full footer needs 59 columns, but the app runs down to w=40.
+	leftPlain := "[space] play   [m] control   [t] tracks   [?] help"
+	rightPlain := "[z] zen"
+	// +3, not +2: the status gutter below is clamped to a minimum of one
+	// column, so the hints must leave room for it or the row runs one over.
+	if lipgloss.Width(leftPlain)+lipgloss.Width(rightPlain)+3 > w {
+		leftPlain = "[?] help"
+		rightPlain = "[z]"
+	}
+	leftText := lipgloss.NewStyle().Faint(true).Render(leftPlain)
+	rightText := lipgloss.NewStyle().Faint(true).Render(rightPlain)
 	status := m.currentStatus(time.Now())
 	statusStyle := lipgloss.NewStyle().Foreground(theme.BarHi)
 	if status == "" {
