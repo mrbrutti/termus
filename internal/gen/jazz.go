@@ -1294,14 +1294,22 @@ func (a *Jazz) SectionGain() float64 {
 func (a *Jazz) DebugStatus() DebugStatus {
 	bar := 0
 	chord := ""
+	next := ""
 	if len(a.progression) > 0 {
 		bar = a.currentBar()
 		chord = a.progression[bar].label
+		next = a.progression[(bar+1)%len(a.progression)].label
 	}
+	movement, episode, chain, idx := a.form.FormStatus(a.samplesElapsed)
 	return DebugStatus{
-		Chord:   chord,
-		Section: string(a.section.Kind),
-		Bar:     a.form.BarAt(a.samplesElapsed),
+		Chord:     chord,
+		Section:   string(a.section.Kind),
+		Bar:       a.form.BarAt(a.samplesElapsed),
+		Movement:  movement,
+		Episode:   episode,
+		NextChord: next,
+		FormChain: chain,
+		FormIndex: idx,
 	}
 }
 

@@ -9,6 +9,14 @@ type DebugStatus struct {
 	Section string
 	Bar     int
 	Preset  string
+
+	// Narration fields (TUI redesign). Optional: zero values mean "not
+	// exposed by this algorithm" and the TUI omits those narration parts.
+	Movement  string   // long-form movement name, e.g. "develop"
+	Episode   int      // 1-based episode number
+	NextChord string   // label of the chord after the current one
+	FormChain []string // section-kind chain of the current episode
+	FormIndex int      // index of the current section within FormChain
 }
 
 // DebugStatusProvider lets algorithms expose a lock-free status snapshot to

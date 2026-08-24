@@ -309,6 +309,29 @@ func (p *EpisodePlan) EpisodeIndexAt(samples int64) int {
 	return idx
 }
 
+// FormStatus reports the narration view of the plan at a sample position:
+// the movement name, 1-based episode number, the episode's section-kind
+// chain, and the index of the current section within that chain.
+func (p *EpisodePlan) FormStatus(samples int64) (movement string, episode int, chain []string, idx int) {
+	if p == nil || p.barSamples <= 0 {
+		return "", 0, nil, 0
+	}
+	bar := sampleBarIndex(samples, p.barSamples)
+	ep, epIdx := p.locateEpisode(bar)
+	chain = make([]string, 0, len(ep.Sections))
+	relative := bar - ep.StartBar
+	idx = maxInt(0, len(ep.Sections)-1)
+	acc := 0
+	for i, section := range ep.Sections {
+		chain = append(chain, string(section.Kind))
+		if relative >= acc && relative < acc+section.Bars {
+			idx = i
+		}
+		acc += section.Bars
+	}
+	return string(ep.Movement), epIdx + 1, chain, idx
+}
+
 func (p *EpisodePlan) ListeningMarkers(episodes int) []ListeningMarker {
 	if p == nil || p.barSamples <= 0 {
 		return nil
