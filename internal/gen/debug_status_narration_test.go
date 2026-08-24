@@ -36,3 +36,130 @@ func TestEpisodePlanFormStatusNilSafe(t *testing.T) {
 		t.Fatalf("nil plan should return zero values, got %q %d %v %d", movement, episode, chain, idx)
 	}
 }
+
+// TestEpisodePlanFormStatusMultiEpisode advances well past the first episode
+// and checks that FormStatus keeps agreeing with SectionAt once episodes
+// have rolled over — in particular that later episodes' chains no longer
+// carry the "intro" section (planSections strips it for every movement
+// after the first).
+func TestEpisodePlanFormStatusMultiEpisode(t *testing.T) {
+	const barSamples = 1000
+	rng := rand.New(rand.NewSource(1))
+	plan := NewEpisodePlan(rng, barSamples, "jazz")
+
+	var samples int64
+	movement, episode, chain, idx := plan.FormStatus(samples)
+	for episode < 2 {
+		samples += barSamples
+		if samples > 10_000_000 {
+			t.Fatalf("did not reach episode 2 within search bound (last episode=%d)", episode)
+		}
+		movement, episode, chain, idx = plan.FormStatus(samples)
+	}
+	_ = movement
+
+	if episode != 2 {
+		t.Fatalf("episode = %d, want 2", episode)
+	}
+	if len(chain) == 0 {
+		t.Fatalf("chain is empty at episode 2")
+	}
+	if chain[0] == string(FormIntro) {
+		t.Fatalf("chain[0] = %q, want non-intro: episodes after the first strip the intro section", chain[0])
+	}
+	if idx < 0 || idx >= len(chain) {
+		t.Fatalf("idx = %d out of range [0, %d)", idx, len(chain))
+	}
+	wantSection := string(plan.SectionAt(samples).Kind)
+	if chain[idx] != wantSection {
+		t.Fatalf("chain[idx] = %q, want %q (from SectionAt)", chain[idx], wantSection)
+	}
+}
+
+// TestChillDebugStatusNarrationWiring checks that Chill.DebugStatus wires
+// the form-plan narration fields through. Chill requires a *meltysynth.
+// SoundFont to Seed (which drives real synthesis setup), but DebugStatus
+// itself only reads the form/section/progression/samplesElapsed fields, so
+// we construct via the exported constructor with a nil SoundFont (never
+// calling Seed) and set just those fields directly — a minimal in-package
+// fake rather than a full algorithm bring-up.
+func TestChillDebugStatusNarrationWiring(t *testing.T) {
+	const barSamples = 1000
+	rng := rand.New(rand.NewSource(1))
+	algo := NewChill(nil)
+	algo.barSamples = barSamples
+	algo.form = NewEpisodePlan(rng, barSamples, "lofi")
+	algo.section = algo.form.SectionAt(0)
+	algo.progression = []chillChord{{label: "I"}, {label: "vi"}, {label: "IV"}, {label: "V"}}
+	algo.samplesElapsed = 0
+
+	status := algo.DebugStatus()
+	if status.Movement == "" {
+		t.Fatalf("Movement not populated")
+	}
+	if status.Episode == 0 {
+		t.Fatalf("Episode not populated")
+	}
+	if len(status.FormChain) == 0 {
+		t.Fatalf("FormChain not populated")
+	}
+	if status.NextChord == "" {
+		t.Fatalf("NextChord not populated")
+	}
+}
+
+// TestJazzDebugStatusNarrationWiring mirrors
+// TestChillDebugStatusNarrationWiring for Jazz. See that test for why a nil
+// SoundFont + direct field assignment is used instead of Seed.
+func TestJazzDebugStatusNarrationWiring(t *testing.T) {
+	const barSamples = 1000
+	rng := rand.New(rand.NewSource(1))
+	algo := NewJazz(nil)
+	algo.barSamples = barSamples
+	algo.form = NewEpisodePlan(rng, barSamples, "jazz")
+	algo.section = algo.form.SectionAt(0)
+	algo.progression = []jazzChord{{label: "iim7"}, {label: "V7"}, {label: "Imaj7"}, {label: "VI7"}}
+	algo.samplesElapsed = 0
+
+	status := algo.DebugStatus()
+	if status.Movement == "" {
+		t.Fatalf("Movement not populated")
+	}
+	if status.Episode == 0 {
+		t.Fatalf("Episode not populated")
+	}
+	if len(status.FormChain) == 0 {
+		t.Fatalf("FormChain not populated")
+	}
+	if status.NextChord == "" {
+		t.Fatalf("NextChord not populated")
+	}
+}
+
+// TestSF2MarkovDebugStatusNarrationWiring mirrors
+// TestChillDebugStatusNarrationWiring for SF2Markov. See that test for why a
+// nil SoundFont + direct field assignment is used instead of Seed.
+func TestSF2MarkovDebugStatusNarrationWiring(t *testing.T) {
+	const barSamples = 1000
+	rng := rand.New(rand.NewSource(1))
+	algo := NewSF2Markov(nil)
+	algo.barSamples = barSamples
+	algo.form = NewEpisodePlan(rng, barSamples, "classical")
+	algo.section = algo.form.SectionAt(0)
+	algo.progression = []classicalChord{{label: "I"}, {label: "IV"}, {label: "V"}, {label: "I"}}
+	algo.samplesElapsed = 0
+
+	status := algo.DebugStatus()
+	if status.Movement == "" {
+		t.Fatalf("Movement not populated")
+	}
+	if status.Episode == 0 {
+		t.Fatalf("Episode not populated")
+	}
+	if len(status.FormChain) == 0 {
+		t.Fatalf("FormChain not populated")
+	}
+	if status.NextChord == "" {
+		t.Fatalf("NextChord not populated")
+	}
+}

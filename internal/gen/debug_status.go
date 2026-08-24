@@ -12,11 +12,18 @@ type DebugStatus struct {
 
 	// Narration fields (TUI redesign). Optional: zero values mean "not
 	// exposed by this algorithm" and the TUI omits those narration parts.
-	Movement  string   // long-form movement name, e.g. "develop"
-	Episode   int      // 1-based episode number
-	NextChord string   // label of the chord after the current one
-	FormChain []string // section-kind chain of the current episode
-	FormIndex int      // index of the current section within FormChain
+	Movement string // long-form movement name, e.g. "develop"
+	Episode  int    // 1-based episode number
+	// NextChord is a display-only prediction of the chord after the current
+	// one. Progressions can be rebuilt at episode/texture boundaries, so the
+	// last bar of a loop may advertise a chord that never actually plays.
+	NextChord string
+	// FormChain is the section-kind chain of the current episode. It crosses
+	// the audio -> UI thread boundary on each snapshot, so it must stay
+	// freshly allocated per snapshot and must never be mutated after
+	// publish.
+	FormChain []string
+	FormIndex int // index of the current section within FormChain
 }
 
 // DebugStatusProvider lets algorithms expose a lock-free status snapshot to

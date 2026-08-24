@@ -386,13 +386,16 @@ func (a *Phase) advance() {
 
 func (a *Phase) DebugStatus() DebugStatus {
 	chord := ""
+	next := ""
 	if len(a.chordRoots) > 0 {
 		chord = chordOffsetLabel(a.chordRoots[a.currentChordIdx])
+		next = chordOffsetLabel(a.chordRoots[(a.currentChordIdx+1)%len(a.chordRoots)])
 	}
 	return DebugStatus{
-		Chord:   chord,
-		Section: string(a.section.Kind),
-		Bar:     a.currentChordIdx + 1,
+		Chord:     chord,
+		Section:   string(a.section.Kind),
+		Bar:       a.currentChordIdx + 1,
+		NextChord: next,
 	}
 }
 

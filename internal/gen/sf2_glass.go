@@ -458,13 +458,16 @@ func (a *SF2Glass) SetReverbIR(ir []float64, wet float64) {
 
 func (a *SF2Glass) DebugStatus() DebugStatus {
 	chord := ""
+	next := ""
 	if len(a.chordOffsets) > 0 {
 		chord = chordOffsetLabel(a.chordOffsets[a.currentChordIdx])
+		next = chordOffsetLabel(a.chordOffsets[(a.currentChordIdx+1)%len(a.chordOffsets)])
 	}
 	return DebugStatus{
-		Chord:   chord,
-		Section: string(a.section.Kind),
-		Bar:     a.currentChordIdx + 1,
+		Chord:     chord,
+		Section:   string(a.section.Kind),
+		Bar:       a.currentChordIdx + 1,
+		NextChord: next,
 	}
 }
 

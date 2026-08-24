@@ -443,13 +443,16 @@ func (a *SF2Pentatonic) advance() {
 
 func (a *SF2Pentatonic) DebugStatus() DebugStatus {
 	chord := ""
+	next := ""
 	if len(a.progression) > 0 {
 		chord = a.progression[a.currentBar()].label
+		next = a.progression[(a.currentBar()+1)%len(a.progression)].label
 	}
 	return DebugStatus{
-		Chord:   chord,
-		Section: string(a.section.Kind),
-		Bar:     a.currentBar() + 1,
+		Chord:     chord,
+		Section:   string(a.section.Kind),
+		Bar:       a.currentBar() + 1,
+		NextChord: next,
 	}
 }
 
