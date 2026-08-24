@@ -2081,20 +2081,29 @@ func helpPanel(m Model, w, h int, theme ColorTheme) string {
 }
 
 // helpTitleRow renders "TERMUS HELP" left-aligned with a right-aligned
-// "[?] close · [q] quit" reminder. clipLines can cut the bottom of the
-// two-column body (the GLOBAL group, where q and ? are also listed) well
-// before it reaches h's limit on real terminal sizes, since helpPanel's h is
-// the play-view's body height minus chrome, not the raw window height. Quit
-// and close are pinned here, in the first line of inner content, so
-// clipLines — which only ever trims from the bottom — can never remove them.
+// quit/close reminder. clipLines can cut the bottom of the two-column body
+// (the GLOBAL group, where q and ? are also listed) well before it reaches
+// h's limit on real terminal sizes, since helpPanel's h is the play-view's
+// body height minus chrome, not the raw window height. Quit and close are
+// pinned here, in the first line of inner content, so clipLines — which
+// only ever trims from the bottom — can never remove them.
 func helpTitleRow(innerW int, theme ColorTheme) string {
 	label := "TERMUS HELP"
 	left := lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render(label)
-	hint := "[?] close · [q] quit"
-	// Measured on the plain strings, before styling — trimToWidth and
-	// lipgloss.Width can't see through ANSI sequences reliably for layout
-	// math, so all the arithmetic below happens on unstyled text.
-	if lipgloss.Width(label)+1+lipgloss.Width(hint) > innerW {
+	// Tiered so the reminder still fits down to the smallest innerW helpPanel
+	// actually reaches (30, at w=40/41 where bodyW is clamped to its w-4
+	// floor). Measured on the plain strings, before styling — trimToWidth
+	// and lipgloss.Width can't see through ANSI sequences reliably for
+	// layout math, so all the arithmetic below happens on unstyled text.
+	hints := []string{"[?] close · [q] quit", "[?] close [q] quit", "[q] quit"}
+	hint := ""
+	for _, h := range hints {
+		if lipgloss.Width(label)+1+lipgloss.Width(h) <= innerW {
+			hint = h
+			break
+		}
+	}
+	if hint == "" {
 		return left
 	}
 	right := lipgloss.NewStyle().Faint(true).Render(hint)

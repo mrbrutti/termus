@@ -209,15 +209,17 @@ func TestHelpPanelNeverExceedsSize(t *testing.T) {
 // play-view body height, not the raw window height: View() subtracts
 // ~4 rows of chrome (station header, footer, etc.) before calling
 // helpPanel, so an 80x24 stock terminal actually renders the panel at
-// h=20. Using the raw 24 here would understate how tight real terminals
-// get and let this regress again.
+// h=20, and a 40x10 terminal at h=8. Using the raw window heights here
+// would understate how tight real terminals get and let this regress
+// again.
 //
 // 80 wide clears the two-column threshold (innerW = bodyW-6 = 74 >=
 // twoColMinInnerW), so all six group headers must render even with the
-// h=20 chrome-adjusted height. 40x10 is small enough to force the
-// single-column fallback and a tight clipLines budget; "quit" must still
-// be reachable because helpTitleRow pins [q] quit (and [?] close) into
-// the first line of inner content, which clipLines never trims.
+// h=20 chrome-adjusted height. 40x8 is small enough to force the
+// single-column fallback and a tight clipLines budget that clips the
+// body's own GLOBAL group; "quit" must still be reachable because
+// helpTitleRow's tiered hint pins at least "[q] quit" into the first
+// line of inner content, which clipLines never trims.
 func TestHelpPanelKeepsAllGroupsOnSmallTerminals(t *testing.T) {
 	theme := DefaultTheme()
 
@@ -230,9 +232,9 @@ func TestHelpPanelKeepsAllGroupsOnSmallTerminals(t *testing.T) {
 	}
 
 	m40 := Model{width: 40, height: 10}
-	out40 := helpPanel(m40, 40, 10, theme)
+	out40 := helpPanel(m40, 40, 8, theme)
 	if !strings.Contains(out40, "quit") {
-		t.Fatalf("help panel at 40x10 missing %q:\n%s", "quit", out40)
+		t.Fatalf("help panel at 40x8 (40x10 terminal minus chrome) missing %q:\n%s", "quit", out40)
 	}
 }
 
