@@ -63,13 +63,13 @@ func TestBottomBarLeavesRoomForStatus(t *testing.T) {
 	if !strings.Contains(bar, "audio: starting...") {
 		t.Fatalf("bottom bar missing status: %q", bar)
 	}
-	if !strings.Contains(bar, "Ambient") {
-		t.Fatalf("bottom bar should show current music type: %q", bar)
+	if !strings.Contains(bar, "[space] play") || !strings.Contains(bar, "[?] help") {
+		t.Fatalf("bottom bar should name the core keys: %q", bar)
 	}
-	if !strings.Contains(bar, "?  m") {
-		t.Fatalf("bottom bar should expose help entry point: %q", bar)
+	if !strings.Contains(bar, "[z] zen") {
+		t.Fatalf("bottom bar should expose the zen toggle on the right: %q", bar)
 	}
-	if strings.Contains(bar, "[l] library") || strings.Contains(bar, "[i] inspect") || strings.Contains(bar, "[space]") {
+	if strings.Contains(bar, "[l] library") || strings.Contains(bar, "[i] inspect") {
 		t.Fatalf("bottom bar should stay minimal, got: %q", bar)
 	}
 }
@@ -82,8 +82,8 @@ func TestTopBarShowsTitle(t *testing.T) {
 		themes: []ColorTheme{DefaultTheme()},
 	}
 	bar := topBar(m, 120, DefaultTheme(), false)
-	if !strings.Contains(bar, "termus · Jazz") || !strings.Contains(bar, "seed=42") {
-		t.Fatalf("top bar missing title info: %q", bar)
+	if !strings.Contains(bar, "JAZZ") || !strings.Contains(bar, "seed 42") {
+		t.Fatalf("top bar missing station identity: %q", bar)
 	}
 }
 
@@ -97,18 +97,25 @@ func TestTopBarShowsStationAndAlgoNameWhenSpecAvailable(t *testing.T) {
 		themes:   []ColorTheme{DefaultTheme()},
 	}
 	bar := topBar(m, 140, DefaultTheme(), false)
-	if !strings.Contains(bar, "Night Drift · ambient") {
+	if !strings.Contains(bar, "NIGHT DRIFT") || !strings.Contains(bar, "ambient") {
 		t.Fatalf("top bar should surface both station and canonical algo name: %q", bar)
+	}
+	if !strings.Contains(bar, "Cmin") {
+		t.Fatalf("top bar should surface the musical key: %q", bar)
 	}
 }
 
-func TestPlaybackBarShowsTimingAndMeter(t *testing.T) {
+func TestPlaybackBarShowsNarrationAndMeter(t *testing.T) {
 	now := time.Now()
 	m := Model{
 		recording:       true,
 		listeningMode:   "hour stream",
 		startedAt:       now.Add(-95 * time.Second),
 		recordStartedAt: now.Add(-17 * time.Second),
+		debug: gen.DebugStatus{
+			Movement: "develop", Episode: 2, Section: "A'",
+			Bar: 17, Chord: "G7", NextChord: "Cmaj7",
+		},
 		playlist: &gen.Playlist{Tracks: []gen.Track{
 			{Duration: 5 * time.Minute},
 		}},
@@ -120,9 +127,15 @@ func TestPlaybackBarShowsTimingAndMeter(t *testing.T) {
 	}
 	samples := []float64{0.1, 0.3, 0.85, -0.4}
 	bar := playbackBar(m, 120, DefaultTheme(), samples, false)
-	for _, want := range []string{"live 01:35", "hour stream", "track 00:32/05:00", "next 04:28", "fade 00:02", "rec 00:17", "lvl"} {
+	for _, want := range []string{"movement develop", "episode 2", "section A'", "bar 17", "G7 → Cmaj7", "rec 00:17", "lvl"} {
 		if !strings.Contains(bar, want) {
 			t.Fatalf("playback bar missing %q: %q", want, bar)
+		}
+	}
+	// Playlist timing clutter moved off the default chrome.
+	for _, unwanted := range []string{"live ", "track 00:32", "fade "} {
+		if strings.Contains(bar, unwanted) {
+			t.Fatalf("playback bar should drop timing clutter %q: %q", unwanted, bar)
 		}
 	}
 }
@@ -451,7 +464,7 @@ func TestStartupLoadingViewBypassesChrome(t *testing.T) {
 		themes:         []ColorTheme{DefaultTheme()},
 	}
 	view := m.View()
-	if strings.Contains(view, "?  m") || strings.Contains(view, "termus ·") {
+	if strings.Contains(view, "[space] play") || strings.Contains(view, "seed ") {
 		t.Fatalf("startup loading should bypass normal chrome:\n%s", view)
 	}
 }
@@ -637,7 +650,7 @@ func TestCompactBottomBarUsesMinimalHints(t *testing.T) {
 		themes: []ColorTheme{DefaultTheme()},
 	}
 	bar := bottomBar(m, 64, DefaultTheme(), true)
-	if !strings.Contains(bar, "?  m") || !strings.Contains(bar, "Ambient") {
+	if !strings.Contains(bar, "[space] play") || !strings.Contains(bar, "[z] zen") {
 		t.Fatalf("compact bottom bar missing minimal hints: %q", bar)
 	}
 	if strings.Contains(bar, "[l] library") || strings.Contains(bar, "[i] inspect") || strings.Contains(bar, "[q]") {

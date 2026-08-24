@@ -1407,11 +1407,24 @@ func (m Model) View() string {
 		return startupLoadingView(m, m.width, m.height, theme, now)
 	}
 	compact := useCompactLayout(m.width, m.height)
-	chromeH := 3 // top + now-playing + bottom bars
+	showNarration := !compact
+	rail := ""
+	if !m.reducedChrome && m.height >= 14 {
+		rail = formRailBar(m, m.width, theme)
+	}
+	chromeH := 2 // station header + footer
 	if m.reducedChrome {
 		chromeH = 1
-	} else if m.debugVisible {
-		chromeH++
+	} else {
+		if showNarration {
+			chromeH++
+		}
+		if rail != "" {
+			chromeH++
+		}
+		if m.debugVisible {
+			chromeH++
+		}
 	}
 	if m.volumeOverlayVisible(now) {
 		chromeH++
@@ -1467,17 +1480,22 @@ func (m Model) View() string {
 		}
 		return lipgloss.JoinVertical(lipgloss.Left, body, bottom)
 	}
-	if m.debugVisible {
-		debug := debugBar(m, innerW, theme)
-		if volumeLine != "" {
-			return lipgloss.JoinVertical(lipgloss.Left, top, playback, volumeLine, debug, body, bottom)
-		}
-		return lipgloss.JoinVertical(lipgloss.Left, top, playback, debug, body, bottom)
+	rows := []string{top}
+	if showNarration {
+		rows = append(rows, playback)
 	}
 	if volumeLine != "" {
-		return lipgloss.JoinVertical(lipgloss.Left, top, playback, volumeLine, body, bottom)
+		rows = append(rows, volumeLine)
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, top, playback, body, bottom)
+	if m.debugVisible {
+		rows = append(rows, debugBar(m, innerW, theme))
+	}
+	rows = append(rows, body)
+	if rail != "" {
+		rows = append(rows, rail)
+	}
+	rows = append(rows, bottom)
+	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
 func (m Model) activeTheme() ColorTheme {
@@ -1642,60 +1660,46 @@ func (m *Model) applyACEStepReady(msg ACEStepReadyMsg) {
 }
 
 func topBar(m Model, w int, theme ColorTheme, compact bool) string {
-	currentAlgo := m.currentAlgoIdentity()
-	var label string
-	if m.playlist != nil {
-		// SP17: when the active track is a single seamless composition
-		// (Sections > 1), show the section name; otherwise keep the
-		// "playlist-position" fraction display for true multi-track
-		// playlists (radio mode, mixed playlists).
-		positionLabel := playlistPositionLabel(&m)
-		if compact {
-			label = fmt.Sprintf("termus · %s · %s · %d", currentAlgo, positionLabel, m.seed)
-		} else {
-			label = fmt.Sprintf("termus · %s · %s %s · seed=%d",
-				m.playlist.Name, positionLabel,
-				currentAlgo, m.seed)
-		}
-	} else {
-		if compact {
-			label = fmt.Sprintf("termus · %s · %d", currentAlgo, m.seed)
-		} else {
-			label = fmt.Sprintf("termus · %s · %s · seed=%d",
-				currentAlgo, m.keyName, m.seed)
+	spec, hasSpec := m.activeSpec()
+	station := m.algo
+	glyph := "•"
+	metaParts := make([]string, 0, 3)
+	if hasSpec {
+		station = spec.Label()
+		glyph = stationGlyph(spec.Name)
+		metaParts = append(metaParts, spec.Name)
+	}
+	if m.keyName != "" {
+		metaParts = append(metaParts, m.keyName)
+	}
+	if hasSpec {
+		if character := stationCharacter(spec.Name); character != "" {
+			metaParts = append(metaParts, character)
 		}
 	}
-	right := ""
-	if m.recording {
-		rec := lipgloss.NewStyle().Foreground(lipgloss.Color("#ff5b5b")).Render("● REC")
-		if right == "" {
-			right = rec
-		} else {
-			right += "  " + rec
-		}
+	identity := lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).
+		Render(glyph + " " + strings.ToUpper(station))
+	left := identity
+	if len(metaParts) > 0 && !compact {
+		left += "   " + lipgloss.NewStyle().Foreground(theme.BarFg).Render(strings.Join(metaParts, " · "))
 	}
+
+	rightParts := []string{fmt.Sprintf("seed %d", m.seed)}
 	if !compact {
-		if seeds := m.seedSlotsLabel(); seeds != "" {
-			seeds = lipgloss.NewStyle().Faint(true).Render(seeds)
-			if right == "" {
-				right = seeds
-			} else {
-				right = seeds + "  " + right
-			}
+		if m.seedA != nil {
+			rightParts = append(rightParts, fmt.Sprintf("A %d", m.seedA.Seed))
+		}
+		if m.seedB != nil {
+			rightParts = append(rightParts, fmt.Sprintf("B %d", m.seedB.Seed))
 		}
 	}
-	if compact && len(m.kept) > 0 {
-		kept := lipgloss.NewStyle().Faint(true).Render(fmt.Sprintf("keep=%d", len(m.kept)))
-		if right == "" {
-			right = kept
-		} else {
-			right = kept + "  " + right
-		}
+	if len(m.kept) > 0 {
+		rightParts = append(rightParts, fmt.Sprintf("keep %d", len(m.kept)))
 	}
-	if right != "" {
-		label = trimToWidth(label, maxInt(0, w-lipgloss.Width(right)-1))
+	right := lipgloss.NewStyle().Faint(true).Render(strings.Join(rightParts, " · "))
+	if m.recording {
+		right += "  " + lipgloss.NewStyle().Foreground(lipgloss.Color("#ff5b5b")).Render("● REC")
 	}
-	left := lipgloss.NewStyle().Foreground(theme.BarFg).Render(label)
 	pad := w - lipgloss.Width(left) - lipgloss.Width(right)
 	if pad < 1 {
 		pad = 1
@@ -1703,53 +1707,8 @@ func topBar(m Model, w int, theme ColorTheme, compact bool) string {
 	return left + spaces(pad) + right
 }
 
-func (m Model) seedSlotsLabel() string {
-	parts := make([]string, 0, 3)
-	if m.seedA != nil {
-		parts = append(parts, fmt.Sprintf("A=%d", m.seedA.Seed))
-	}
-	if m.seedB != nil {
-		parts = append(parts, fmt.Sprintf("B=%d", m.seedB.Seed))
-	}
-	if len(m.kept) > 0 {
-		parts = append(parts, fmt.Sprintf("keep=%d", len(m.kept)))
-	}
-	switch len(parts) {
-	case 0:
-		return ""
-	case 1:
-		return parts[0]
-	}
-	out := parts[0]
-	for _, part := range parts[1:] {
-		out += " · " + part
-	}
-	return out
-}
-
 func playbackBar(m Model, w int, theme ColorTheme, samples []float64, compact bool) string {
-	leftParts := []string{formatElapsed("live", time.Since(m.startedAt))}
-	if m.listeningMode != "" {
-		leftParts = append(leftParts, m.listeningMode)
-	}
-	if m.playlist != nil && m.playlistIdx < len(m.playlist.Tracks) {
-		track := m.playlist.Tracks[m.playlistIdx]
-		if compact {
-			leftParts = append(leftParts,
-				fmt.Sprintf("%s/%s", shortDuration(time.Since(m.trackStartedAt)), shortDuration(track.Duration)),
-				fmt.Sprintf("next %s", shortDuration(time.Until(m.nextTrackAt))),
-			)
-		} else {
-			leftParts = append(leftParts,
-				fmt.Sprintf("track %s/%s", shortDuration(time.Since(m.trackStartedAt)), shortDuration(track.Duration)),
-				fmt.Sprintf("next %s", shortDuration(time.Until(m.nextTrackAt))),
-				fmt.Sprintf("fade %s", shortDuration(time.Duration(m.playlistFade)*time.Second/44100)),
-			)
-		}
-		if pos := playlistPositionLabel(&m); pos != "" {
-			leftParts = append(leftParts, pos)
-		}
-	}
+	leftParts := narrationParts(m)
 	if m.recording && !m.recordStartedAt.IsZero() {
 		leftParts = append(leftParts, formatElapsed("rec", time.Since(m.recordStartedAt)))
 	}
@@ -1886,12 +1845,10 @@ func bottomBar(m Model, w int, theme ColorTheme, compact bool) string {
 		}
 		return left + spaces(pad) + right
 	}
-	leftText := lipgloss.NewStyle().Foreground(theme.BarFg).Render(m.algo)
-	rightText := lipgloss.NewStyle().Faint(true).Render("?  m")
+	leftText := lipgloss.NewStyle().Faint(true).
+		Render("[space] play   [m] control   [t] tracks   [?] help")
+	rightText := lipgloss.NewStyle().Faint(true).Render("[z] zen")
 	status := m.currentStatus(time.Now())
-	if status == "" && compact {
-		status = " "
-	}
 	statusStyle := lipgloss.NewStyle().Foreground(theme.BarHi)
 	if status == "" {
 		statusStyle = lipgloss.NewStyle().Faint(true)
