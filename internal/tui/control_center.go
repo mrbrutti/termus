@@ -25,8 +25,10 @@ const (
 )
 
 type controlItem struct {
-	Title    string
-	Value    string
+	Title string
+	Value string
+	// Hint is not rendered for rows that carry a Scale — the pip cluster and
+	// the word ladder take its place.
 	Hint     string
 	Disabled bool
 	// Scale/ScaleValue drive the ●●●○○ pip cluster and the faint word
@@ -277,119 +279,69 @@ func (m Model) lookControlItems() []controlItem {
 	}
 }
 
+// macroItem builds one 5-step macro row: the ladder supplies both the current
+// value word and the faint scale drawn after the pips.
+func macroItem(title string, ladder []string, value int, hint string, adjust func(*Model, int)) controlItem {
+	return controlItem{
+		Title:      title,
+		Value:      macroLabel(value, ladder),
+		Hint:       hint,
+		Scale:      ladder,
+		ScaleValue: value,
+		Adjust:     adjust,
+	}
+}
+
 func (m Model) musicControlItems() []controlItem {
 	profile := gen.DefaultControlProfile()
 	if m.musicProfile != nil {
 		profile = *m.musicProfile
 	}
 	return []controlItem{
-		{
-			Title:      "density",
-			Value:      macroLabel(profile.Density, densityLadder),
-			Hint:       "left/right rebuild",
-			Scale:      densityLadder,
-			ScaleValue: profile.Density,
-			Adjust: func(m *Model, delta int) {
-				m.updateMusicProfile("density", func(profile *gen.ControlProfile) {
-					profile.Density += delta
-				})
-			},
-		},
-		{
-			Title:      "brightness",
-			Value:      macroLabel(profile.Brightness, brightnessLadder),
-			Hint:       "left/right rebuild",
-			Scale:      brightnessLadder,
-			ScaleValue: profile.Brightness,
-			Adjust: func(m *Model, delta int) {
-				m.updateMusicProfile("brightness", func(profile *gen.ControlProfile) {
-					profile.Brightness += delta
-				})
-			},
-		},
-		{
-			Title:      "motion",
-			Value:      macroLabel(profile.Motion, motionLadder),
-			Hint:       "left/right rebuild",
-			Scale:      motionLadder,
-			ScaleValue: profile.Motion,
-			Adjust: func(m *Model, delta int) {
-				m.updateMusicProfile("motion", func(profile *gen.ControlProfile) {
-					profile.Motion += delta
-				})
-			},
-		},
-		{
-			Title:      "reverb",
-			Value:      macroLabel(profile.Reverb, reverbLadder),
-			Hint:       "left/right rebuild",
-			Scale:      reverbLadder,
-			ScaleValue: profile.Reverb,
-			Adjust: func(m *Model, delta int) {
-				m.updateMusicProfile("reverb", func(profile *gen.ControlProfile) {
-					profile.Reverb += delta
-				})
-			},
-		},
-		{
-			Title:      "swing",
-			Value:      macroLabel(profile.Swing, swingLadder),
-			Hint:       "left/right rebuild",
-			Scale:      swingLadder,
-			ScaleValue: profile.Swing,
-			Adjust: func(m *Model, delta int) {
-				m.updateMusicProfile("swing", func(profile *gen.ControlProfile) {
-					profile.Swing += delta
-				})
-			},
-		},
-		{
-			Title:      "drone depth",
-			Value:      macroLabel(profile.DroneDepth, droneLadder),
-			Hint:       "left/right rebuild",
-			Scale:      droneLadder,
-			ScaleValue: profile.DroneDepth,
-			Adjust: func(m *Model, delta int) {
-				m.updateMusicProfile("drone depth", func(profile *gen.ControlProfile) {
-					profile.DroneDepth += delta
-				})
-			},
-		},
-		{
-			Title:      "tempo",
-			Value:      macroLabel(profile.Tempo, tempoLadder),
-			Hint:       "rhythmic genres",
-			Scale:      tempoLadder,
-			ScaleValue: profile.Tempo,
-			Adjust: func(m *Model, delta int) {
-				m.updateMusicProfile("tempo", func(profile *gen.ControlProfile) {
-					profile.Tempo += delta
-				})
-			},
-		},
-		{
-			Title:      "phrase length",
-			Value:      macroLabel(profile.Phrase, phraseLadder),
-			Hint:       "ambient textures",
-			Scale:      phraseLadder,
-			ScaleValue: profile.Phrase,
-			Adjust: func(m *Model, delta int) {
-				m.updateMusicProfile("phrase length", func(profile *gen.ControlProfile) {
-					profile.Phrase += delta
-				})
-			},
-		},
-		{
-			Title:      "seed morph",
-			Value:      macroLabel(m.morphMode, morphLadder),
-			Hint:       "seed and algo swaps",
-			Scale:      morphLadder,
-			ScaleValue: m.morphMode,
-			Adjust: func(m *Model, delta int) {
-				m.morphMode = clampInt(m.morphMode+delta, 0, 4)
-				m.flashStatus("seed morph: "+macroLabel(m.morphMode, morphLadder), 2*time.Second)
-			},
-		},
+		macroItem("density", densityLadder, profile.Density, "left/right rebuild", func(m *Model, delta int) {
+			m.updateMusicProfile("density", func(profile *gen.ControlProfile) {
+				profile.Density += delta
+			})
+		}),
+		macroItem("brightness", brightnessLadder, profile.Brightness, "left/right rebuild", func(m *Model, delta int) {
+			m.updateMusicProfile("brightness", func(profile *gen.ControlProfile) {
+				profile.Brightness += delta
+			})
+		}),
+		macroItem("motion", motionLadder, profile.Motion, "left/right rebuild", func(m *Model, delta int) {
+			m.updateMusicProfile("motion", func(profile *gen.ControlProfile) {
+				profile.Motion += delta
+			})
+		}),
+		macroItem("reverb", reverbLadder, profile.Reverb, "left/right rebuild", func(m *Model, delta int) {
+			m.updateMusicProfile("reverb", func(profile *gen.ControlProfile) {
+				profile.Reverb += delta
+			})
+		}),
+		macroItem("swing", swingLadder, profile.Swing, "left/right rebuild", func(m *Model, delta int) {
+			m.updateMusicProfile("swing", func(profile *gen.ControlProfile) {
+				profile.Swing += delta
+			})
+		}),
+		macroItem("drone depth", droneLadder, profile.DroneDepth, "left/right rebuild", func(m *Model, delta int) {
+			m.updateMusicProfile("drone depth", func(profile *gen.ControlProfile) {
+				profile.DroneDepth += delta
+			})
+		}),
+		macroItem("tempo", tempoLadder, profile.Tempo, "rhythmic genres", func(m *Model, delta int) {
+			m.updateMusicProfile("tempo", func(profile *gen.ControlProfile) {
+				profile.Tempo += delta
+			})
+		}),
+		macroItem("phrase length", phraseLadder, profile.Phrase, "ambient textures", func(m *Model, delta int) {
+			m.updateMusicProfile("phrase length", func(profile *gen.ControlProfile) {
+				profile.Phrase += delta
+			})
+		}),
+		macroItem("seed morph", morphLadder, m.morphMode, "seed and algo swaps", func(m *Model, delta int) {
+			m.morphMode = clampInt(m.morphMode+delta, 0, 4)
+			m.flashStatus("seed morph: "+macroLabel(m.morphMode, morphLadder), 2*time.Second)
+		}),
 	}
 }
 
@@ -777,6 +729,9 @@ func controlsPanel(m Model, w, h int, theme ColorTheme) string {
 	// the terminal height.
 	innerW := maxInt(1, w-4)
 	sidebarW := 14
+	// View refuses to draw below m.width 40, so innerW is never under 36 and
+	// the 12-column floor only guards against a pathological direct call: at
+	// w=40 the natural right pane is 18 columns.
 	rightW := maxInt(12, innerW-sidebarW-4)
 	sections := []controlTab{
 		controlTabNow, controlTabLook, controlTabMusic, controlTabSeeds,
@@ -812,23 +767,70 @@ func controlsPanel(m Model, w, h int, theme ColorTheme) string {
 	main := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, spaces(4), content)
 
 	header := controlHeaderRow(m, theme, innerW)
-	hint := "[tab] section   [↑↓] row   [←→] adjust   [enter] apply   [m] close"
-	index := fmt.Sprintf("%d of 8", int(m.controlTab)+1)
-	// Narrow terminals: trim the hint while it is plain text. Letting lipgloss
-	// wrap it instead would push the pane a row past the terminal height.
-	hint = trimToWidth(hint, maxInt(0, innerW-lipgloss.Width(index)-1))
-	footerLeft := lipgloss.NewStyle().Faint(true).Render(hint)
-	footerRight := lipgloss.NewStyle().Faint(true).Render(index)
-	footerPad := innerW - lipgloss.Width(footerLeft) - lipgloss.Width(footerRight)
-	if footerPad < 1 {
-		footerPad = 1
-	}
-	footer := footerLeft + spaces(footerPad) + footerRight
+	footer := controlFooterRow(m.controlTab, theme, innerW, m.currentStatus(time.Now()))
 
 	bodyH := maxInt(1, h-2-3) // padding rows + header + blank + footer
-	body := lipgloss.NewStyle().Height(bodyH).Render(main)
+	// Clip vertically as well as horizontally: the debug tab's structure
+	// preview can outrun a short terminal, and an unclipped body would push the
+	// footer off screen instead of being cut.
+	body := lipgloss.NewStyle().Height(bodyH).Render(clipLines(main, bodyH))
 	return lipgloss.NewStyle().Width(w).Height(h).Padding(1, 2).
 		Render(lipgloss.JoinVertical(lipgloss.Left, header, "", body, footer))
+}
+
+const controlFooterHint = "[tab] section   [↑↓] row   [←→] adjust   [enter] apply   [m] close"
+
+// controlFooterRow draws the key hints, the section index, and — centered
+// between them — the transient status line. flashStatus feedback (export
+// results and failures, "rec → path", session saves) is otherwise only drawn
+// by bottomBar, which this full-screen pane replaces, so an export could fail
+// silently while the control center is open.
+func controlFooterRow(tab controlTab, theme ColorTheme, w int, status string) string {
+	index := fmt.Sprintf("%d of 8", int(tab)+1)
+	status = strings.TrimSpace(status)
+	if status != "" {
+		status = trimToWidth(status, maxInt(1, w/3))
+	}
+	hint := controlFooterHint
+	if status != "" {
+		// Status feedback outranks the key hints when the pane is narrow.
+		for _, candidate := range []string{controlFooterHint, "[tab] section   [m] close", "[m] close", ""} {
+			hint = candidate
+			if lipgloss.Width(candidate)+lipgloss.Width(index)+lipgloss.Width(status)+4 <= w {
+				break
+			}
+		}
+	}
+	// Trim the hint while it is plain text. Letting lipgloss wrap it instead
+	// would push the pane a row past the terminal height.
+	hint = trimToWidth(hint, maxInt(0, w-lipgloss.Width(index)-1))
+	left := lipgloss.NewStyle().Faint(true).Render(hint)
+	right := lipgloss.NewStyle().Faint(true).Render(index)
+	pad := w - lipgloss.Width(left) - lipgloss.Width(right)
+	if pad < 1 {
+		pad = 1
+	}
+	available := pad - 2
+	if status == "" || available < 1 {
+		return left + spaces(pad) + right
+	}
+	center := lipgloss.NewStyle().Foreground(theme.BarHi).Render(trimToWidth(status, available))
+	centerWidth := lipgloss.Width(center)
+	leftPad := (available - centerWidth) / 2
+	rightPad := available - centerWidth - leftPad
+	return left + spaces(leftPad+1) + center + spaces(rightPad+1) + right
+}
+
+// clipLines truncates a rendered block to at most n lines.
+func clipLines(text string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	rows := strings.Split(text, "\n")
+	if len(rows) <= n {
+		return text
+	}
+	return strings.Join(rows[:n], "\n")
 }
 
 func controlHeaderRow(m Model, theme ColorTheme, w int) string {
@@ -904,7 +906,7 @@ func renderControlItem(theme ColorTheme, active bool, item controlItem, w int) s
 func controlCenterSummary(m Model) string {
 	parts := []string{m.algo}
 	if spec, ok := m.activeSpec(); ok {
-		parts = []string{spec.Label(), spec.Name}
+		parts = []string{algoIdentity(spec)}
 	}
 	parts = append(parts, fmt.Sprintf("seed %d", m.seed))
 	if m.paused {
@@ -964,7 +966,9 @@ func renderControlTrackStructure(m Model, theme ColorTheme, width, budget int) s
 		lines = append(lines, lipgloss.NewStyle().Faint(true).Render(trimToWidth("ensemble  "+strings.Join(entry.Ensemble, " · "), width)))
 	}
 	if budget <= 0 {
-		return strings.Join(lines, "\n")
+		// No room for the section list, and possibly not even for every header
+		// line: keep only the rows the caller can actually show.
+		return clipLines(strings.Join(lines, "\n"), len(lines)+budget)
 	}
 	remaining := budget
 	for i, section := range entry.Structure {
