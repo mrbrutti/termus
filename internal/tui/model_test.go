@@ -187,11 +187,18 @@ func TestControlsPanelShowsTabbedOverlay(t *testing.T) {
 		volume:          70,
 		themes:          []ColorTheme{DefaultTheme()},
 	}
-	panel := controlsPanel(m, 100, 22, DefaultTheme())
-	for _, want := range []string{"CONTROL CENTER", "NOW", "LOOK", "MUSIC", "SEEDS", "LIBRARY", "EXPORT", "AUDIO", "DEBUG", "density", "brightness", "reverb", "[tab] next section"} {
+	panel := controlsPanel(m, 118, 32, DefaultTheme())
+	for _, want := range []string{
+		"CONTROL CENTER", "MUSIC",
+		"▌ music", "  now", "  look", "  seeds", "  library", "  export", "  audio", "  debug",
+		"density", "brightness", "reverb", "[tab] section", "3 of 8",
+	} {
 		if !strings.Contains(panel, want) {
 			t.Fatalf("controls panel missing %q:\n%s", want, panel)
 		}
+	}
+	if strings.ContainsAny(panel, "╭╰│") {
+		t.Fatalf("full-screen control center should not draw a border:\n%s", panel)
 	}
 }
 
@@ -204,8 +211,8 @@ func TestControlsPanelShowsAudioRecoveryActions(t *testing.T) {
 		volume:          70,
 		themes:          []ColorTheme{DefaultTheme()},
 	}
-	panel := controlsPanel(m, 100, 22, DefaultTheme())
-	for _, want := range []string{"CONTROL CENTER", "retry live audio", "render-only fallback", "backend"} {
+	panel := controlsPanel(m, 118, 32, DefaultTheme())
+	for _, want := range []string{"CONTROL CENTER", "AUDIO", "backend health and recovery", "retry live audio", "render-only fallback", "backend", "7 of 8"} {
 		if !strings.Contains(panel, want) {
 			t.Fatalf("audio controls panel missing %q:\n%s", want, panel)
 		}
@@ -236,8 +243,8 @@ func TestControlsPanelShowsTrackStructureInspector(t *testing.T) {
 		}},
 		themes: []ColorTheme{DefaultTheme()},
 	}
-	panel := controlsPanel(m, 100, 24, DefaultTheme())
-	for _, want := range []string{"TRACK FORM", "Demo Track", "live  Intro", "pickup", "ep · bass"} {
+	panel := controlsPanel(m, 118, 32, DefaultTheme())
+	for _, want := range []string{"DEBUG", "TRACK FORM", "Demo Track", "live  Intro", "pickup", "ep · bass", "8 of 8"} {
 		if !strings.Contains(panel, want) {
 			t.Fatalf("track structure inspector missing %q:\n%s", want, panel)
 		}

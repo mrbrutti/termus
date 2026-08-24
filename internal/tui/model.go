@@ -1406,6 +1406,11 @@ func (m Model) View() string {
 	if m.startupLoading {
 		return startupLoadingView(m, m.width, m.height, theme, now)
 	}
+	// The control center is a full-screen pane, not a floating box inside the
+	// play-view chrome.
+	if m.controlsVisible {
+		return controlsPanel(m, m.width, m.height, theme)
+	}
 	compact := useCompactLayout(m.width, m.height)
 	showNarration := !compact
 	rail := ""
@@ -1467,8 +1472,6 @@ func (m Model) View() string {
 		body = inspectorPanel(m, innerW, innerH, theme)
 	} else if m.exportVisible {
 		body = exportPanel(m, innerW, innerH, theme)
-	} else if m.controlsVisible {
-		body = controlsPanel(m, innerW, innerH, theme)
 	} else if m.splashVisible {
 		body = splashPanel(m, innerW, innerH, theme)
 	}
