@@ -36,4 +36,3 @@ func TestBuildPhraseMotifs(t *testing.T) {
 		t.Fatalf("B signature = %s, want %s", got, want)
 	}
 }
-

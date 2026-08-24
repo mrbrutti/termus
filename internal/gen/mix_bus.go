@@ -168,7 +168,7 @@ func chillProfile() MixBusProfile {
 		WowFlutter: &synth.WowFlutterConfig{
 			WowRateHz:         0.5,
 			WowDepthCents:     8,
-			FlutterRateHz:     0,   // no fast flutter
+			FlutterRateHz:     0, // no fast flutter
 			FlutterDepthCents: 0,
 		},
 		Vinyl:         nil,

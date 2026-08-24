@@ -32,7 +32,7 @@ func TestResolveEngineForTrack_AutoReadsTM(t *testing.T) {
 		want string
 	}{
 		{acePath, "auto", "acestep"},
-		{acePath, "sf2", "sf2"},     // flag overrides .tm
+		{acePath, "sf2", "sf2"}, // flag overrides .tm
 		{acePath, "acestep", "acestep"},
 		{sfPath, "auto", "sf2"},
 		{sfPath, "acestep", "acestep"}, // flag forces acestep even on sf2 .tm

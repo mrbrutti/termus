@@ -55,8 +55,8 @@ type mockFS struct {
 	paths map[string]bool
 }
 
-func (m mockFS) Exists(path string) bool                       { return m.paths[path] }
-func (m mockFS) MkdirAll(path string, perm os.FileMode) error  { m.paths[path] = true; return nil }
+func (m mockFS) Exists(path string) bool                      { return m.paths[path] }
+func (m mockFS) MkdirAll(path string, perm os.FileMode) error { m.paths[path] = true; return nil }
 
 func TestIsInstalled_FalseWhenVenvMissing(t *testing.T) {
 	i := &Installer{
@@ -86,8 +86,8 @@ func TestIsInstalled_TrueWhenBothPresent(t *testing.T) {
 	i := &Installer{
 		ServiceDir: "/svc",
 		fs: mockFS{paths: map[string]bool{
-			filepath.Join("/svc", "venv", "bin", "python"):     true,
-			filepath.Join("/svc", "vendor", "ace-step"):        true,
+			filepath.Join("/svc", "venv", "bin", "python"):      true,
+			filepath.Join("/svc", "vendor", "ace-step"):         true,
 			filepath.Join("/svc", "vendor", "ace-step", ".git"): true,
 		}},
 		runner: &mockRunner{},

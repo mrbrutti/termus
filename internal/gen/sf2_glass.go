@@ -190,7 +190,7 @@ func (a *SF2Glass) Seed(seedVal int64) {
 		ResolveDetuneCents: slotDetunePattern(0, 2, -2, 3),
 		Gate:               0.62,
 		VelocityJitter:     12, TimingJitterSec: 0.08,
-		FireProbability:    0.84,
+		FireProbability: 0.84,
 	})
 
 	// --- Celesta counter-phrase: a second coherent phrase one octave up,
@@ -204,7 +204,7 @@ func (a *SF2Glass) Seed(seedVal int64) {
 		ResolveDetuneCents: slotDetunePattern(1, -1, 2, -2),
 		Gate:               0.50,
 		VelocityJitter:     10, TimingJitterSec: 0.08,
-		FireProbability:    0.76,
+		FireProbability: 0.76,
 	})
 
 	// --- Glockenspiel: 1 voice, very high, very sparse — only one note per
@@ -220,7 +220,7 @@ func (a *SF2Glass) Seed(seedVal int64) {
 		Gate:               0.92,
 		Legato:             true,
 		VelocityJitter:     8, TimingJitterSec: 0.10,
-		FireProbability:    0.58,
+		FireProbability: 0.58,
 	})
 
 	// --- Music box ornament: nostalgic answering fragment that drops in/out
@@ -240,8 +240,8 @@ func (a *SF2Glass) Seed(seedVal int64) {
 		ResolveDetuneCents: slotDetunePattern(-2, 1, -1, 2),
 		Gate:               0.44,
 		VelocityJitter:     8, TimingJitterSec: 0.10,
-		FireProbability:    0.62,
-		Enabled: a.musicBoxOn,
+		FireProbability: 0.62,
+		Enabled:         a.musicBoxOn,
 	})
 
 	// --- Warm pad bed: 2 voices spread, sustained, slow retrigger.

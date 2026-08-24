@@ -184,7 +184,7 @@ sections:
 	slotsPerBeat := eventSlotsPerBeat
 	slot0 := 0
 	slot24 := int(1.5 * float64(slotsPerBeat)) // beat 2.5 - 1.0 = 1.5 beats
-	slot32 := 2 * slotsPerBeat                  // beat 3.0 - 1.0 = 2.0 beats
+	slot32 := 2 * slotsPerBeat                 // beat 3.0 - 1.0 = 2.0 beats
 
 	checkSlot := func(slot int, desc string) {
 		if slot >= len(piano.Notes) {

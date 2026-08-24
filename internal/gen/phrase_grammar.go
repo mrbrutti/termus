@@ -24,4 +24,3 @@ func buildPhraseMotifs(aQuestion, aAnswer PhraseShape, aprimeSub map[int]int, bQ
 		Outro:   outro.Phrase(),
 	}
 }
-

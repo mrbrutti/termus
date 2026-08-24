@@ -68,11 +68,11 @@ func (r *Reverb) Tick(x float64) float64 {
 //	z[n] = (1-d) * y[n] + d * z[n-1]      (lowpass smoothing)
 //	buf[n] = x[n] + g * z[n]
 type lpfCombFilter struct {
-	buf      []float64
-	w        int
-	gain     float64
-	damping  float64
-	store    float64
+	buf     []float64
+	w       int
+	gain    float64
+	damping float64
+	store   float64
 }
 
 func newLPFCombFilter(delay int, gain, damping float64) lpfCombFilter {
@@ -99,13 +99,15 @@ func (c *lpfCombFilter) tick(x float64) float64 {
 }
 
 // schroederAllpass is a Schroeder allpass:
-//   y[n] = -g*x[n] + (1-g²)*v[n-N], where v[n] = x[n] + g*v[n-N]
+//
+//	y[n] = -g*x[n] + (1-g²)*v[n-N], where v[n] = x[n] + g*v[n-N]
 //
 // Implemented as:
-//   delayed = buf[n-N]
-//   v       = x + g*delayed
-//   buf[n]  = v
-//   y       = delayed - g*v
+//
+//	delayed = buf[n-N]
+//	v       = x + g*delayed
+//	buf[n]  = v
+//	y       = delayed - g*v
 type schroederAllpass struct {
 	buf  []float64
 	w    int

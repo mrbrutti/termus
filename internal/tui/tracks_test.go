@@ -104,6 +104,48 @@ func TestTrackDetailShowsFormMap(t *testing.T) {
 	}
 }
 
+// TestTrackDetailDurationPrecedence covers the meta-line total's precedence
+// between the summed section durations and the authored total_duration
+// (TotalDuration). Nothing in the compile path consumes total_duration for
+// sectioned (SF2/procedural) tracks — the section-duration sum is the real
+// playback length there, so it must win even when total_duration disagrees.
+// TotalDuration is only authoritative for ACE-Step tracks, which have no
+// sections (prompt_compiler.go genuinely uses it as the render length).
+func TestTrackDetailDurationPrecedence(t *testing.T) {
+	t.Run("sections present: sum wins over advisory total_duration", func(t *testing.T) {
+		m := Model{width: 118, height: 32}
+		m.tracks = []TrackNavEntry{{
+			ID: "lofi/rainy", Style: "lofi", Title: "Rainy Cafe",
+			TotalDuration: 5 * time.Minute,
+			Structure: []TrackNavSection{
+				{ID: "intro", Label: "intro", Duration: 30 * time.Second},
+				{ID: "body", Label: "body", Duration: 30 * time.Second},
+			},
+		}}
+		m.trackVisible = true
+		out := trackPanel(m, 118, 32, DefaultTheme())
+		if !strings.Contains(out, "1:00") {
+			t.Fatalf("detail missing summed section duration 1:00: %q", out)
+		}
+		if strings.Contains(out, "5:00") {
+			t.Fatalf("detail shows advisory total_duration 5:00 instead of section sum: %q", out)
+		}
+	})
+
+	t.Run("no sections: authored total_duration is the real length", func(t *testing.T) {
+		m := Model{width: 118, height: 32}
+		m.tracks = []TrackNavEntry{{
+			ID: "acestep/rainy", Style: "lofi", Title: "Rainy Cafe",
+			TotalDuration: 5 * time.Minute,
+		}}
+		m.trackVisible = true
+		out := trackPanel(m, 118, 32, DefaultTheme())
+		if !strings.Contains(out, "5:00") {
+			t.Fatalf("detail missing authored total duration 5:00: %q", out)
+		}
+	})
+}
+
 func TestTrackHeaderShowsCountAndFilters(t *testing.T) {
 	m := formMapTestModel()
 	out := trackPanel(m, 118, 32, DefaultTheme())

@@ -751,10 +751,40 @@ func controlsPanel(m Model, w, h int, theme ColorTheme) string {
 		Render(trimToWidth(controlSectionAnnotation(m.controlTab), maxInt(0, rightW-lipgloss.Width(titleText)-2)))
 	lines := []string{title + "  " + annotation, ""}
 	items := m.controlItems()
-	for i, item := range items {
-		lines = append(lines, renderControlItem(theme, i == m.controlRow, item, rightW))
+
+	bodyH := maxInt(1, h-2-3) // padding rows + header + blank + footer
+	explainer := controlSectionExplainer(m.controlTab)
+	// The item list gets whatever rows are left once the title, its blank
+	// spacer, and the explainer have taken theirs. Without this window the
+	// tail of a long list is simply clipped away, so the cursor can sit on a
+	// row nobody can see — arrow keys then drive an invisible selection.
+	itemBudget := bodyH - len(lines)
+	if explainer != "" {
+		itemBudget -= 2
 	}
-	if explainer := controlSectionExplainer(m.controlTab); explainer != "" {
+	itemBudget = maxInt(1, itemBudget)
+	start, end, moreAbove, moreBelow := controlItemWindow(len(items), m.controlRow, itemBudget)
+	// The ladder decision is per-pane, not per-row: at widths where one macro's
+	// cluster does not fit, every macro drops its ladder so the column stays
+	// even instead of going ragged row by row.
+	showLadders := true
+	for _, item := range items {
+		if !controlItemFitsLadder(theme, item, rightW) {
+			showLadders = false
+			break
+		}
+	}
+	ellipsis := lipgloss.NewStyle().Faint(true).Render("  …")
+	if moreAbove {
+		lines = append(lines, ellipsis)
+	}
+	for i := start; i < end; i++ {
+		lines = append(lines, renderControlItem(theme, i == m.controlRow, items[i], rightW, showLadders))
+	}
+	if moreBelow {
+		lines = append(lines, ellipsis)
+	}
+	if explainer != "" {
 		lines = append(lines, "", lipgloss.NewStyle().Faint(true).Render(trimToWidth(explainer, rightW)))
 	}
 	if m.controlTab == controlTabDebug {
@@ -770,7 +800,6 @@ func controlsPanel(m Model, w, h int, theme ColorTheme) string {
 	header := controlHeaderRow(m, theme, innerW)
 	footer := controlFooterRow(m.controlTab, theme, innerW, m.currentStatus(time.Now()))
 
-	bodyH := maxInt(1, h-2-3) // padding rows + header + blank + footer
 	// Clip vertically as well as horizontally: the debug tab's structure
 	// preview can outrun a short terminal, and an unclipped body would push the
 	// footer off screen instead of being cut.
@@ -788,10 +817,11 @@ const controlFooterHint = "[tab] section   [↑↓] row   [←→] adjust   [ent
 // silently while the control center is open.
 func controlFooterRow(tab controlTab, theme ColorTheme, w int, status string) string {
 	index := fmt.Sprintf("%d of 8", int(tab)+1)
+	// The status is measured at full length here on purpose: capping it before
+	// the shedding ladder runs would cut a long export error to a third of the
+	// row even when dropping the hints would have left room for all of it. The
+	// only limit is the gutter that survives the shedding, applied below.
 	status = strings.TrimSpace(status)
-	if status != "" {
-		status = trimToWidth(status, maxInt(1, w/3))
-	}
 	hint := controlFooterHint
 	if status != "" {
 		// Status feedback outranks the key hints when the pane is narrow.
@@ -820,6 +850,60 @@ func controlFooterRow(tab controlTab, theme ColorTheme, w int, status string) st
 	leftPad := (available - centerWidth) / 2
 	rightPad := available - centerWidth - leftPad
 	return left + spaces(leftPad+1) + center + spaces(rightPad+1) + right
+}
+
+// controlItemWindow picks the contiguous run of item rows to draw for a list
+// of total rows with the cursor on row cursor and only budget rows of screen
+// to spend. The returned range always contains the cursor; moreAbove/moreBelow
+// report that a faint "…" stands in for the hidden rows, and each marker costs
+// one row out of the same budget.
+func controlItemWindow(total, cursor, budget int) (start, end int, moreAbove, moreBelow bool) {
+	if total <= 0 || budget <= 0 {
+		return 0, 0, false, false
+	}
+	if total <= budget {
+		return 0, total, false, false
+	}
+	cursor = clampInt(cursor, 0, total-1)
+	if budget <= 2 {
+		// Only room for the cursor row itself, plus at most one marker.
+		start, end = cursor, cursor+1
+		if budget > 1 {
+			if end < total {
+				moreBelow = true
+			} else if start > 0 {
+				moreAbove = true
+			}
+		}
+		return start, end, moreAbove, moreBelow
+	}
+	if cursor <= budget-2 {
+		// Anchored at the top: one marker at the bottom.
+		return 0, budget - 1, false, true
+	}
+	if cursor >= total-budget+1 {
+		// Anchored at the bottom: one marker at the top.
+		return total - budget + 1, total, true, false
+	}
+	// Somewhere in the middle: both markers, cursor centred in what is left.
+	inner := budget - 2
+	start = clampInt(cursor-inner/2, 1, total-1-inner)
+	return start, start + inner, true, true
+}
+
+// controlItemFitsLadder reports whether one macro row has room for its whole
+// cluster — pips, value, and the faint word ladder — beside its title. Rows
+// without a Scale never constrain the pane.
+func controlItemFitsLadder(theme ColorTheme, item controlItem, w int) bool {
+	if len(item.Scale) == 0 {
+		return true
+	}
+	// Mirrors renderControlItem's measurements exactly, on plain text.
+	title := trimToWidth(item.Title, maxInt(0, w-controlItemCursorW-1))
+	availRight := maxInt(0, w-controlItemCursorW-lipgloss.Width(title)-1)
+	pipsW := lipgloss.Width(renderPips(theme, item.ScaleValue, len(item.Scale)))
+	ladderW := lipgloss.Width(strings.Join(item.Scale, " · "))
+	return pipsW+2+lipgloss.Width(item.Value)+2+ladderW <= availRight
 }
 
 // clipLines truncates a rendered block to at most n lines.
@@ -855,7 +939,13 @@ func renderControlSection(theme ColorTheme, active bool, label string) string {
 	return lipgloss.NewStyle().Faint(true).Render("  " + label)
 }
 
-func renderControlItem(theme ColorTheme, active bool, item controlItem, w int) string {
+// controlItemCursorW is the width of the "› " / "  " gutter every item row
+// starts with — measured once so the fit probe and the renderer agree.
+const controlItemCursorW = 2
+
+// showLadder is decided once for the whole pane (see controlsPanel) so macro
+// rows either all carry their word ladder or none do.
+func renderControlItem(theme ColorTheme, active bool, item controlItem, w int, showLadder bool) string {
 	cursor := "  "
 	if active {
 		cursor = "› "
@@ -878,10 +968,10 @@ func renderControlItem(theme ColorTheme, active bool, item controlItem, w int) s
 		pipsW := lipgloss.Width(pips)
 		value := item.Value
 		ladder := strings.Join(item.Scale, " · ")
-		if pipsW+2+lipgloss.Width(value)+2+lipgloss.Width(ladder) <= availRight {
+		if showLadder && pipsW+2+lipgloss.Width(value)+2+lipgloss.Width(ladder) <= availRight {
 			right = pips + "  " + valueStyle.Render(value) + "  " + hintStyle.Render(ladder)
 		} else {
-			// Not enough room for the ladder — drop it, keep pips + value.
+			// No ladder for this pane, or none that fits — keep pips + value.
 			value = trimToWidth(value, maxInt(0, availRight-pipsW-2))
 			right = pips + "  " + valueStyle.Render(value)
 		}

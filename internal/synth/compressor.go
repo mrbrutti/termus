@@ -22,12 +22,13 @@ type Compressor struct {
 }
 
 // NewCompressor builds a compressor.
-//   thresholdDB: signal above this gets compressed (e.g. -12)
-//   ratio:       compression ratio above the threshold (e.g. 3.0 = 3:1)
-//   attackMs:    how fast the compressor reacts to peaks (e.g. 10)
-//   releaseMs:   how fast it lets go after a peak (e.g. 200)
-//   kneeDB:      width of the soft transition around the threshold (e.g. 6)
-//   makeupDB:    fixed makeup gain applied after compression (e.g. 4)
+//
+//	thresholdDB: signal above this gets compressed (e.g. -12)
+//	ratio:       compression ratio above the threshold (e.g. 3.0 = 3:1)
+//	attackMs:    how fast the compressor reacts to peaks (e.g. 10)
+//	releaseMs:   how fast it lets go after a peak (e.g. 200)
+//	kneeDB:      width of the soft transition around the threshold (e.g. 6)
+//	makeupDB:    fixed makeup gain applied after compression (e.g. 4)
 func NewCompressor(thresholdDB, ratio, attackMs, releaseMs, kneeDB, makeupDB float64) *Compressor {
 	c := &Compressor{
 		thresholdDB: thresholdDB,

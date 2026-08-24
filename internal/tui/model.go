@@ -35,6 +35,11 @@ type TrackNavEntry struct {
 	Complexity   string
 	Structure    []TrackNavSection
 
+	// TotalDuration mirrors track.Entry.TotalDuration: the authored
+	// total_duration for the track, zero when unset. Preferred over the
+	// summed Structure durations for the library meta line.
+	TotalDuration time.Duration
+
 	// Textures are pre-formatted texture labels ("rain -36 dB") shown in
 	// the track-library detail pane.
 	Textures []string
@@ -122,10 +127,10 @@ type ACEStepStatusMsg struct {
 // that appears in the playback bar while AI tracks are being rendered in the
 // background after playback has started. Done=true clears the indicator.
 type ACEStepRenderingMsg struct {
-	Seq      int
-	Detail   string
-	Done     bool
-	Err      error
+	Seq    int
+	Detail string
+	Done   bool
+	Err    error
 }
 
 // ACEStepReadyMsg dismisses the startup-loading overlay and transitions the
@@ -173,23 +178,23 @@ type Model struct {
 	keyName string
 	seed    int64
 
-	volume             int
-	paused             bool
-	recording          bool
-	debugVisible       bool
-	helpVisible        bool
-	trackVisible       bool
-	libraryVisible     bool
-	inspectorVisible   bool
-	exportVisible      bool
-	controlsVisible    bool
-	exportBusy         bool
-	reducedChrome      bool
-	splashVisible      bool
-	startupLoading     bool
-	startupTitle       string
-	startupDetail      string
-	startupPercent     float64
+	volume           int
+	paused           bool
+	recording        bool
+	debugVisible     bool
+	helpVisible      bool
+	trackVisible     bool
+	libraryVisible   bool
+	inspectorVisible bool
+	exportVisible    bool
+	controlsVisible  bool
+	exportBusy       bool
+	reducedChrome    bool
+	splashVisible    bool
+	startupLoading   bool
+	startupTitle     string
+	startupDetail    string
+	startupPercent   float64
 
 	// SP30C: compositional context shown beneath the loader bar so the
 	// ~30-45s ACE-Step render feels informative. Set by
@@ -202,9 +207,9 @@ type Model struct {
 	// SP23 ACE-Step background rendering indicator. Drives the small
 	// "generating next track…" badge that appears in the playback bar while
 	// AI tracks render in the background.
-	aceRenderActive bool
-	aceRenderSeq    int
-	aceRenderDetail string
+	aceRenderActive    bool
+	aceRenderSeq       int
+	aceRenderDetail    string
 	status             string
 	statusTTL          time.Time
 	stickyStatus       string

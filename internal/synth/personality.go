@@ -20,10 +20,10 @@ import (
 type NoiseColor int
 
 const (
-	NoiseWhite     NoiseColor = iota
-	NoiseLowpass              // one-pole LP at CutoffHz
-	NoiseBandpass             // simple bandpass via LP + HP
-	NoiseHighpass             // one-pole HP at CutoffHz
+	NoiseWhite    NoiseColor = iota
+	NoiseLowpass             // one-pole LP at CutoffHz
+	NoiseBandpass            // simple bandpass via LP + HP
+	NoiseHighpass            // one-pole HP at CutoffHz
 )
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -39,7 +39,7 @@ type NoiseBurst struct {
 	active bool
 
 	// envelope state
-	envPhase    int     // sample counter
+	envPhase    int // sample counter
 	attackSamps int
 	decaySamps  int
 	envValue    float64
@@ -189,7 +189,7 @@ func onePoleLP(x, cutoffHz, sr float64, z *float64) float64 {
 func onePoleHP(x, cutoffHz, sr float64, zY, zX *float64) float64 {
 	wc := 2 * math.Pi * cutoffHz / sr
 	a := 1 / (wc + 1)
-	y := a*(*zY + x - *zX)
+	y := a * (*zY + x - *zX)
 	*zX = x
 	*zY = y
 	return y
@@ -205,7 +205,7 @@ func onePoleHP(x, cutoffHz, sr float64, zY, zX *float64) float64 {
 type PitchSag struct {
 	cfg        PitchSagConfig
 	active     bool
-	elapsed    int    // samples since trigger
+	elapsed    int // samples since trigger
 	tauSamples float64
 }
 

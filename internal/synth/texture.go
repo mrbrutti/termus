@@ -82,7 +82,7 @@ func NewTextureLayer(sampleRate float64, cfg TextureConfig) *TextureLayer {
 		// LP at 8 kHz to remove the harshest highs.
 		t.lpCoeff = 1.0 - math.Exp(-2*math.Pi*8000/sampleRate)
 		// HP at 1.5 kHz so the "patter" sits above mids.
-		t.hpCoeff = math.Exp(-2*math.Pi*1500/sampleRate)
+		t.hpCoeff = math.Exp(-2 * math.Pi * 1500 / sampleRate)
 		// Density: ~300 drops/sec is a steady rain.
 		t.impulseProb = 300.0 / sampleRate
 		t.impulseAmp = 0.4
@@ -102,11 +102,11 @@ func NewTextureLayer(sampleRate float64, cfg TextureConfig) *TextureLayer {
 		t.impulseAmp = 0.05
 	case TextureTapeHiss:
 		// HP at 2 kHz so it sits as "air".
-		t.hpCoeff = math.Exp(-2*math.Pi*2000/sampleRate)
+		t.hpCoeff = math.Exp(-2 * math.Pi * 2000 / sampleRate)
 		t.lpCoeff = 1.0 - math.Exp(-2*math.Pi*14000/sampleRate)
 	case TextureCafe:
 		// Bandpass: HP 200 Hz + LP 5 kHz approximated by serial filters.
-		t.hpCoeff = math.Exp(-2*math.Pi*200/sampleRate)
+		t.hpCoeff = math.Exp(-2 * math.Pi * 200 / sampleRate)
 		t.lpCoeff = 1.0 - math.Exp(-2*math.Pi*5000/sampleRate)
 		// Sparse "clatter": short bandpass clicks ~3/sec.
 		t.impulseProb = 3.0 / sampleRate

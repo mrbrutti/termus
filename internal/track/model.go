@@ -109,11 +109,11 @@ type AcestepSection struct {
 }
 
 type File struct {
-	Title           string          `yaml:"title"`
-	Description     string          `yaml:"description,omitempty"`
-	Style           string          `yaml:"style"`
-	Substyle        string          `yaml:"substyle,omitempty"`
-	ListenMode      string          `yaml:"listen_mode,omitempty"`
+	Title       string `yaml:"title"`
+	Description string `yaml:"description,omitempty"`
+	Style       string `yaml:"style"`
+	Substyle    string `yaml:"substyle,omitempty"`
+	ListenMode  string `yaml:"listen_mode,omitempty"`
 	// RenderEngine (SP21) selects which engine renders this track.
 	// Empty or "sf2" keeps the existing procedural path; "acestep" routes
 	// through the AI generator (Acestep block must be set).
@@ -121,10 +121,10 @@ type File struct {
 	// Acestep (SP21) holds v3 ACE-Step authoring data. Only consumed when
 	// RenderEngine == "acestep".
 	Acestep *AcestepSpec `yaml:"acestep,omitempty"`
-	Seed            int64           `yaml:"seed,omitempty"`
-	Tags            []string        `yaml:"tags,omitempty"`
-	Key             string          `yaml:"key,omitempty"`
-	Tempo           string          `yaml:"tempo,omitempty"`
+	Seed    int64        `yaml:"seed,omitempty"`
+	Tags    []string     `yaml:"tags,omitempty"`
+	Key     string       `yaml:"key,omitempty"`
+	Tempo   string       `yaml:"tempo,omitempty"`
 	// Form (SP18) names a built-in form template. When set, the form library
 	// expands the template into a default Sections list; if Sections is non-empty
 	// the explicit list wins (override). Form templates also seed sensible
@@ -132,31 +132,31 @@ type File struct {
 	// Known templates: jazz_aaba_32bar, jazz_blues_12bar, jazz_head_solo_head,
 	// lofi_loop_form, chill_ababcb, chill_journey, ambient_emerge_drift_recede,
 	// ambient_palindrome.
-	Form           string          `yaml:"form,omitempty"`
+	Form string `yaml:"form,omitempty"`
 	// TotalDuration (SP18) is the explicit total composition length (e.g. "5m",
 	// "12m30s"). When the form template defines section bar counts, the engine
 	// uses tempo to satisfy this duration by scaling section lengths.
 	// Currently advisory — used by form expansion for sizing only when sections
 	// are not explicit.
-	TotalDuration  string          `yaml:"total_duration,omitempty"`
+	TotalDuration string `yaml:"total_duration,omitempty"`
 	// MotifLibrary (SP18) is the SP18 motif library — distinct from the
 	// SP7 Motifs list (which carries textual transforms). Each entry is named
 	// and referenced by Section.Motif. The engine applies motif-treatment
 	// transformations per section via motif_engine.go.
-	MotifLibrary   map[string]MotifDef `yaml:"motif_library,omitempty"`
+	MotifLibrary map[string]MotifDef `yaml:"motif_library,omitempty"`
 	// MixBus is an optional top-level mix-bus profile selector (SP6).
 	// One of: lofi, jazz, chill, ambient. Resolved via gen.MixBusByName.
 	// If absent, no profile is applied (behavior unchanged).
-	MixBus          string          `yaml:"mix_bus,omitempty"`
+	MixBus string `yaml:"mix_bus,omitempty"`
 	// Textures (SP19-D) is an optional list of procedural ambient texture
 	// layers (rain, room_tone, vinyl, tape_hiss, cafe). Layers are summed
 	// into the master bus alongside the music. Each texture has an
 	// independent gain (level_db).
-	Textures        []TextureSpec   `yaml:"textures,omitempty"`
+	Textures []TextureSpec `yaml:"textures,omitempty"`
 	// Motifs is an optional library of named motifs (SP7).
 	// Each entry may reference others via based_on and apply textual
 	// transforms (transpose, retrograde, invert, augment, diminish).
-	Motifs          []MotifEntry    `yaml:"motifs,omitempty"`
+	Motifs []MotifEntry `yaml:"motifs,omitempty"`
 	// ChordMarkov is an optional file-level Markov table for chord progressions
 	// (SP7). Weights per state should sum to ~1.0; a warning is emitted if not.
 	ChordMarkov     *ChordMarkov    `yaml:"chord_markov,omitempty"`
@@ -168,8 +168,9 @@ type File struct {
 }
 
 // TextureSpec (SP19-D) describes one procedural ambient texture layer.
-//   Name is one of: rain, room_tone, vinyl, tape_hiss, cafe.
-//   LevelDB is the per-layer gain in dBFS (typically -36..-46).
+//
+//	Name is one of: rain, room_tone, vinyl, tape_hiss, cafe.
+//	LevelDB is the per-layer gain in dBFS (typically -36..-46).
 type TextureSpec struct {
 	Name    string  `yaml:"name"`
 	LevelDB float64 `yaml:"level_db,omitempty"`
@@ -213,38 +214,38 @@ type NotePool struct {
 }
 
 type Section struct {
-	ID            string          `yaml:"id,omitempty"`
-	Title         string          `yaml:"title,omitempty"`
-	Derive        string          `yaml:"derive,omitempty"`
-	Transforms    []string        `yaml:"transforms,omitempty"`
-	Duration      string          `yaml:"duration"`
-	Seed          *int64          `yaml:"seed,omitempty"`
-	SeedOffset    *int64          `yaml:"seed_offset,omitempty"`
-	Key           string          `yaml:"key,omitempty"`
-	Tempo         string          `yaml:"tempo,omitempty"`
-	Harmony       string          `yaml:"harmony,omitempty"`
-	Scene         string          `yaml:"scene,omitempty"`
-	Variation     string          `yaml:"variation,omitempty"`
+	ID         string   `yaml:"id,omitempty"`
+	Title      string   `yaml:"title,omitempty"`
+	Derive     string   `yaml:"derive,omitempty"`
+	Transforms []string `yaml:"transforms,omitempty"`
+	Duration   string   `yaml:"duration"`
+	Seed       *int64   `yaml:"seed,omitempty"`
+	SeedOffset *int64   `yaml:"seed_offset,omitempty"`
+	Key        string   `yaml:"key,omitempty"`
+	Tempo      string   `yaml:"tempo,omitempty"`
+	Harmony    string   `yaml:"harmony,omitempty"`
+	Scene      string   `yaml:"scene,omitempty"`
+	Variation  string   `yaml:"variation,omitempty"`
 	// Groove is an optional named groove template (SP6). References a
 	// GrooveTemplate by name via gen.GrooveByName. If absent, no template
 	// is applied (existing behaviour).
-	Groove        string          `yaml:"groove,omitempty"`
+	Groove string `yaml:"groove,omitempty"`
 	// HarmonyChords holds voice-leading-aware chord specs (SP6).
 	// Accepts both plain string and map form per entry; see ChordSpec.
 	// When present it augments the plain Harmony string with voicing hints.
-	HarmonyChords []ChordSpec     `yaml:"harmony_chords,omitempty"`
+	HarmonyChords []ChordSpec `yaml:"harmony_chords,omitempty"`
 	// Automation holds per-section breakpoint curves for parameters like
 	// cutoff, pan, expression (SP7). Inert at render time; consumed by
 	// future compile-time rewriters.
-	Automation    []AutomationLane `yaml:"automation,omitempty"`
+	Automation []AutomationLane `yaml:"automation,omitempty"`
 	// Substitutions holds harmonic substitution directives for this section
 	// (SP7). Applied deterministically via a seed when compiling.
 	Substitutions []SubstitutionRule `yaml:"substitutions,omitempty"`
-	Profile       Profile         `yaml:"profile,omitempty"`
-	Roles         map[string]Role `yaml:"roles,omitempty"`
-	Orchestration Orchestration   `yaml:"orchestration,omitempty"`
-	Arrangement   Arrangement     `yaml:"arrangement,omitempty"`
-	Events        []Event         `yaml:"events,omitempty"`
+	Profile       Profile            `yaml:"profile,omitempty"`
+	Roles         map[string]Role    `yaml:"roles,omitempty"`
+	Orchestration Orchestration      `yaml:"orchestration,omitempty"`
+	Arrangement   Arrangement        `yaml:"arrangement,omitempty"`
+	Events        []Event            `yaml:"events,omitempty"`
 	// RoleEvents (SP14) is a per-section explicit event list keyed by role
 	// name. When set, completely replaces both the role's default Events and
 	// the algorithm's pattern logic for that role in this section.
@@ -409,13 +410,13 @@ type Bkpt struct {
 // ApplySubstitutions compile-time rewriter in internal/gen.
 type SubstitutionRule struct {
 	// Rule is one of: tritone_sub, ii_V_chain, secondary_dominant, deceptive.
-	Rule        string  `yaml:"rule"`
+	Rule string `yaml:"rule"`
 	// ApplyTo constrains which chord role triggers the rule (e.g. "V", "I").
-	ApplyTo     string  `yaml:"apply_to"`
+	ApplyTo string `yaml:"apply_to"`
 	// Before is an optional anchor chord for ii_V_chain insertion.
-	Before      string  `yaml:"before"`
+	Before string `yaml:"before"`
 	// Of is the target chord for secondary_dominant (e.g. "ii").
-	Of          string  `yaml:"of"`
+	Of string `yaml:"of"`
 	// Probability is 0..1; when < 1 the rule is applied probabilistically.
 	Probability float64 `yaml:"probability"`
 }
@@ -445,37 +446,37 @@ type WowOverride struct {
 }
 
 type Role struct {
-	Family       string                 `yaml:"family,omitempty"`
-	Tone         []string               `yaml:"tone,omitempty"`
-	Articulation string                 `yaml:"articulation,omitempty"`
-	Register     string                 `yaml:"register,omitempty"`
-	Prominence   string                 `yaml:"prominence,omitempty"`
-	Pattern      string                 `yaml:"pattern,omitempty"`
-	Motif        string                 `yaml:"motif,omitempty"`
+	Family       string   `yaml:"family,omitempty"`
+	Tone         []string `yaml:"tone,omitempty"`
+	Articulation string   `yaml:"articulation,omitempty"`
+	Register     string   `yaml:"register,omitempty"`
+	Prominence   string   `yaml:"prominence,omitempty"`
+	Pattern      string   `yaml:"pattern,omitempty"`
+	Motif        string   `yaml:"motif,omitempty"`
 	// Harmony was the v1 per-role harmony string. Removed in SP8; it was never
 	// consumed by the render pipeline. Use Section.Harmony or Section.HarmonyChords.
-	Phrases      map[string]PhraseBlock `yaml:"phrases,omitempty"`
-	Active       *bool                  `yaml:"active,omitempty"`
+	Phrases map[string]PhraseBlock `yaml:"phrases,omitempty"`
+	Active  *bool                  `yaml:"active,omitempty"`
 	// Character knobs (SP6) — all optional; zero = use default.
 	// Personality selects a synth.PersonalityPreset by name.
-	Personality string      `yaml:"personality,omitempty"`
+	Personality string `yaml:"personality,omitempty"`
 	// Room selects a synth.IRPreset by name for the per-role reverb.
-	Room        string      `yaml:"room,omitempty"`
+	Room string `yaml:"room,omitempty"`
 	// ReverbSendDB is the wet level into the reverb bus in dBFS (e.g. -12).
-	ReverbSendDB *float64   `yaml:"reverb_send_db,omitempty"`
+	ReverbSendDB *float64 `yaml:"reverb_send_db,omitempty"`
 	// Wow is an optional per-role wow modulator override.
-	Wow         *WowOverride `yaml:"wow,omitempty"`
+	Wow *WowOverride `yaml:"wow,omitempty"`
 	// VelocityCurve is a string identifier for a velocity mapping preset.
-	VelocityCurve string    `yaml:"velocity_curve,omitempty"`
+	VelocityCurve string `yaml:"velocity_curve,omitempty"`
 	// Notes is an optional weighted-random note pool (SP7).
 	// When present the role's generator draws from these scale degrees
 	// according to their relative weights.
-	Notes         *NotePool `yaml:"notes,omitempty"`
+	Notes *NotePool `yaml:"notes,omitempty"`
 	// Events (SP14) is the role's default explicit event list. When non-empty
 	// it overrides the role's pattern/motif logic for any section that does
 	// not have its own per-section RoleEvents entry for this role. The engine
 	// repeats the event sequence across the section.
-	Events        []NoteEvent `yaml:"events,omitempty"`
+	Events []NoteEvent `yaml:"events,omitempty"`
 	// LoopBars (SP15) is the role's explicit loop length in bars (4 beats each).
 	// When set, the Events list is repeated every LoopBars bars across the
 	// section. 0 = auto-detect from the max event beat (rounded up to nearest bar).
@@ -629,6 +630,11 @@ type Entry struct {
 	EventCount   int
 	Complexity   string
 	Structure    []EntrySection
+
+	// TotalDuration is parsed from the file's total_duration field. Zero
+	// when unset. Authored intent, so the TUI library meta line prefers
+	// this over the sum of Structure durations when both are present.
+	TotalDuration time.Duration
 
 	// RenderEngine mirrors File.RenderEngine for the discovered track, so
 	// callers can render an engine badge ("AI" vs "SF2") in the TUI

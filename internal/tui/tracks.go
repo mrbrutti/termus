@@ -352,6 +352,9 @@ func renderTrackDetailPane(m Model, w, h int, theme ColorTheme) string {
 	for _, s := range entry.Structure {
 		total += s.Duration
 	}
+	if total <= 0 {
+		total = entry.TotalDuration // ACE-Step: no sections, authored total is the real length
+	}
 	if total > 0 {
 		meta = append(meta, formMapDuration(total))
 	}

@@ -39,9 +39,9 @@ type LFO struct {
 	fadeCurrent int     // samples elapsed since fade started
 
 	// SampleHold state
-	holdVal    float64
-	prevPhase  float64
-	rng        lcgRand
+	holdVal   float64
+	prevPhase float64
+	rng       lcgRand
 
 	// RandomWalk state
 	walkVal float64

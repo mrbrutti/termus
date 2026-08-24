@@ -148,8 +148,8 @@ func TestNoiseBurstColorAffectsSpectrum(t *testing.T) {
 // TestPitchSagPeaksAtZeroAndDecays verifies that immediately after Trigger the
 // output is very close to PeakSemitones and after 5×TauSec it is < 1% of peak.
 func TestPitchSagPeaksAtZeroAndDecays(t *testing.T) {
-	const peak = 0.5   // semitones
-	const tau = 0.030  // 30 ms
+	const peak = 0.5  // semitones
+	const tau = 0.030 // 30 ms
 	ps := synth.NewPitchSag(synth.PitchSagConfig{
 		PeakSemitones: peak,
 		TauSec:        tau,

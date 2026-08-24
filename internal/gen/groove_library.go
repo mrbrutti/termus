@@ -53,9 +53,9 @@ func GrooveLibrary() []GrooveTemplate {
 			Name: "dilla_late",
 			TimingOffsetsSamples: [16]int{
 				-3, 0, 0, 0, // beat 1: kick early
-				8, 0, 0, 0,  // beat 2: snare late
+				8, 0, 0, 0, // beat 2: snare late
 				-3, 0, 0, 0, // beat 3: kick early
-				8, 0, 0, 0,  // beat 4: snare late
+				8, 0, 0, 0, // beat 4: snare late
 			},
 			VelocityMultipliers: [16]float64{
 				1.10, 0.85, 0.90, 0.80,
