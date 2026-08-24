@@ -35,6 +35,10 @@ type TrackNavEntry struct {
 	Complexity   string
 	Structure    []TrackNavSection
 
+	// Textures are pre-formatted texture labels ("rain -36 dB") shown in
+	// the track-library detail pane.
+	Textures []string
+
 	// Engine is "sf2" or "acestep". Drives the per-row badge in the track
 	// browser. Empty string is treated the same as "sf2" so legacy .tm
 	// files without an explicit render_engine continue to render cleanly.
@@ -47,6 +51,7 @@ type TrackNavSection struct {
 	Harmony   string
 	RoleNames []string
 	Events    []string
+	Duration  time.Duration
 }
 
 type TrackLoader func(id string) (*gen.Playlist, string, error)
