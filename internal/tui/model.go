@@ -2028,14 +2028,31 @@ func helpPanel(m Model, w, h int, theme ColorTheme) string {
 
 	var columns string
 	const gap = 6
-	if innerW >= 76 {
+	// twoColMinInnerW is the smallest content width where a two-column
+	// layout stays worth it: colW works out to (64-6)/2 = 29, wide enough
+	// that only the longest row ("n / p" + "next/previous algorithm", 34
+	// cols) gets a light trimToWidth ellipsis — all six group headers still
+	// render. Below this we fall back to a single stacked column instead,
+	// because splitting further would start clipping whole groups instead
+	// of just trimming a few action strings.
+	//
+	// Note this threshold is also, not coincidentally, the point below
+	// which the 76-col footer text starts getting ellipsized by the
+	// trimToWidth(footerText, innerW) call below — the footer and the
+	// two-column layout both stop fitting comfortably in the same range.
+	const twoColMinInnerW = 64
+	if innerW >= twoColMinInnerW {
 		colW := (innerW - gap) / 2
 		left := renderHelpColumn(col1, colW, theme)
 		right := renderHelpColumn(col2, colW, theme)
 		columns = lipgloss.JoinHorizontal(lipgloss.Top, left, spaces(gap), right)
 	} else {
-		all := append(append([]helpGroup(nil), col1...), col2...)
-		columns = renderHelpColumn(all, innerW, theme)
+		// Single column: real estate is tight enough that clipLines below
+		// may cut the tail of the group list. Put GLOBAL (q, ?) first so the
+		// keys to quit or close help are never the clipping casualty, then
+		// the rest in roughly descending importance.
+		single := []helpGroup{col2[2], col1[0], col1[2], col1[1], col2[0], col2[1]}
+		columns = renderHelpColumn(single, innerW, theme)
 	}
 
 	inner := lipgloss.JoinVertical(
@@ -2065,10 +2082,17 @@ func helpPanel(m Model, w, h int, theme ColorTheme) string {
 // renderHelpColumn lays out a stack of help groups as "key   action" rows,
 // key-column padded to a fixed width and the action text trimmed to fit w.
 func renderHelpColumn(groups []helpGroup, w int, theme ColorTheme) string {
+	// keyW is the fixed key-column width (README: "~11 cols"). At the
+	// twoColMinInnerW threshold in helpPanel (colW == 29), the widest
+	// action string ("next/previous algorithm", 23 cols) only just
+	// overflows w-keyW == 18 and picks up a trimToWidth ellipsis — the key
+	// column itself never needs to shrink.
 	const keyW = 11
 	keyStyle := lipgloss.NewStyle().Foreground(theme.BarFg)
 	titleStyle := lipgloss.NewStyle().Foreground(theme.BarHi)
-	lines := make([]string, 0, 16)
+	// Capacity covers the single-column fallback's worst case: 6 group
+	// titles + 20 rows + 5 blank separators = 31 lines.
+	lines := make([]string, 0, 32)
 	for gi, group := range groups {
 		if gi > 0 {
 			lines = append(lines, "")

@@ -181,7 +181,7 @@ func TestHelpPanelShowsCoreControls(t *testing.T) {
 // TestHelpPanelNeverExceedsSize sweeps every runnable width at four heights,
 // asserting the bordered help overlay never overflows its allotted body
 // area: every line <= w, total rows <= h. w=40 forces the single-column
-// fallback (bodyW-4 < 76), so this also exercises that path.
+// fallback (innerW = bodyW-6 < 64), so this also exercises that path.
 func TestHelpPanelNeverExceedsSize(t *testing.T) {
 	theme := DefaultTheme()
 	for _, h := range []int{10, 14, 18, 32} {
@@ -199,6 +199,33 @@ func TestHelpPanelNeverExceedsSize(t *testing.T) {
 						i, w, h, got, line)
 				}
 			}
+		}
+	}
+}
+
+// TestHelpPanelKeepsAllGroupsOnSmallTerminals guards against clipLines
+// eating the tail of the group list on small-but-common terminal sizes.
+// 80x24 is a stock terminal size: it must clear the two-column threshold
+// (innerW = bodyW-6 = 74 >= twoColMinInnerW) so every group header renders.
+// 40x14 is small enough to force the single-column fallback and a tight
+// clipLines budget; GLOBAL is reordered to the front of that fallback
+// specifically so q and ? survive the clip.
+func TestHelpPanelKeepsAllGroupsOnSmallTerminals(t *testing.T) {
+	theme := DefaultTheme()
+
+	m80 := Model{width: 80, height: 24}
+	out80 := helpPanel(m80, 80, 24, theme)
+	for _, want := range []string{"PLAYBACK", "VIEW", "OPEN", "SEEDS", "INSIDE PANELS", "GLOBAL"} {
+		if !strings.Contains(out80, want) {
+			t.Fatalf("help panel at 80x24 missing group %q:\n%s", want, out80)
+		}
+	}
+
+	m40 := Model{width: 40, height: 14}
+	out40 := helpPanel(m40, 40, 14, theme)
+	for _, want := range []string{"GLOBAL", "q"} {
+		if !strings.Contains(out40, want) {
+			t.Fatalf("help panel at 40x14 missing %q:\n%s", want, out40)
 		}
 	}
 }
