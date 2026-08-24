@@ -5,9 +5,11 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/mrbrutti/termus/internal/gen"
+	"github.com/mrbrutti/termus/internal/scope"
 )
 
 func controlsTestModel() Model {
@@ -44,6 +46,44 @@ func TestControlsPanelShowsPipScalesAndLadders(t *testing.T) {
 	}
 	if !strings.Contains(out, "▌ music") {
 		t.Fatalf("missing active-section marker in rail: %q", out)
+	}
+}
+
+// TestActivatingSavedLibraryClosesControlCenter guards against the SP30/SP31
+// regression where opening the saved library from the control center left
+// BOTH controlsVisible and libraryVisible true: View() renders the control
+// center full-screen whenever controlsVisible wins (it is checked before
+// libraryVisible there), but Update() checks libraryVisible first, so every
+// keystroke — including "x" (delete saved seed) — silently drove the
+// invisible library list underneath a frozen-looking control center.
+func TestActivatingSavedLibraryClosesControlCenter(t *testing.T) {
+	spec, _ := gen.Resolve("ambient")
+	m := Model{width: 118, height: 32, keyName: "Cmin", seed: 71001, algo: spec.Label()}
+	m.genres = []gen.AlgoSpec{spec}
+	m.ring = scope.NewRing(1024)
+	m.cmd = &tuiCommanderStub{}
+	m.controlsVisible = true
+	m.controlTab = controlTabLibrary
+	m.controlRow = 0 // "saved library" row
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	next, ok := updated.(Model)
+	if !ok {
+		t.Fatalf("Update returned unexpected type %T", updated)
+	}
+	if next.controlsVisible {
+		t.Fatalf("controlsVisible still true after opening saved library")
+	}
+	if !next.libraryVisible {
+		t.Fatalf("libraryVisible still false after opening saved library")
+	}
+
+	out := next.View()
+	if !strings.Contains(out, "SAVED SEEDS") {
+		t.Fatalf("expected library panel header in view: %q", out)
+	}
+	if strings.Contains(out, "CONTROL CENTER") {
+		t.Fatalf("control center still rendered after opening saved library: %q", out)
 	}
 }
 

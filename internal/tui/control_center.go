@@ -462,6 +462,7 @@ func (m Model) libraryControlItems() []controlItem {
 			Hint:  "enter open",
 			Activate: func(m *Model) tea.Cmd {
 				m.toggleLibrary()
+				m.controlsVisible = false
 				return nil
 			},
 		},
