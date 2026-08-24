@@ -1411,6 +1411,10 @@ func (m Model) View() string {
 	if m.controlsVisible {
 		return controlsPanel(m, m.width, m.height, theme)
 	}
+	// The track library is full screen too: the form map needs the rows.
+	if m.trackVisible {
+		return trackPanel(m, m.width, m.height, theme)
+	}
 	compact := useCompactLayout(m.width, m.height)
 	showNarration := !compact
 	rail := ""
@@ -1464,8 +1468,6 @@ func (m Model) View() string {
 	body := scopeStr
 	if m.helpVisible {
 		body = helpPanel(m, innerW, innerH, theme)
-	} else if m.trackVisible {
-		body = trackPanel(m, innerW, innerH, theme)
 	} else if m.libraryVisible {
 		body = libraryPanel(m, innerW, innerH, theme)
 	} else if m.inspectorVisible {
