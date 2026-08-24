@@ -253,11 +253,13 @@ func TestControlsPanelShowsTrackStructureInspector(t *testing.T) {
 
 func TestSplashPanelShowsOnboarding(t *testing.T) {
 	m := Model{
+		width:         90,
+		height:        18,
 		splashVisible: true,
 		themes:        []ColorTheme{DefaultTheme()},
 	}
-	panel := splashPanel(m, 90, 18, DefaultTheme())
-	for _, want := range []string{"TERMUS", "Play", "Open", "[m] control center", "Press any key"} {
+	panel := splashScreen(m, 90, 18, DefaultTheme(), time.Unix(0, 0))
+	for _, want := range []string{"█", "a terminal music instrument", "[enter] begin", "[t] authored tracks"} {
 		if !strings.Contains(panel, want) {
 			t.Fatalf("splash panel missing %q:\n%s", want, panel)
 		}
@@ -266,6 +268,8 @@ func TestSplashPanelShowsOnboarding(t *testing.T) {
 
 func TestSplashPanelShowsStartupLoading(t *testing.T) {
 	m := Model{
+		width:          90,
+		height:         18,
 		splashVisible:  true,
 		startupLoading: true,
 		startupTitle:   "Loading MAX palette · Dusty Swing · jazz",
@@ -273,8 +277,8 @@ func TestSplashPanelShowsStartupLoading(t *testing.T) {
 		startupPercent: 0.5,
 		themes:         []ColorTheme{DefaultTheme()},
 	}
-	panel := splashPanel(m, 90, 18, DefaultTheme())
-	for _, want := range []string{"TERMUS", "Play", "Open"} {
+	panel := splashScreen(m, 90, 18, DefaultTheme(), time.Unix(0, 0))
+	for _, want := range []string{"█", "50%", "Loading MAX palette", "ready 1/2"} {
 		if !strings.Contains(panel, want) {
 			t.Fatalf("onboarding splash missing %q:\n%s", want, panel)
 		}
@@ -434,7 +438,7 @@ func TestStartupLoadingViewShowsBrailleStyleProgress(t *testing.T) {
 		startupPercent: 0.5,
 		themes:         []ColorTheme{DefaultTheme()},
 	}
-	view := startupLoadingView(m, 90, 18, DefaultTheme(), time.Unix(0, 0))
+	view := splashScreen(m, 90, 18, DefaultTheme(), time.Unix(0, 0))
 	for _, want := range []string{"Loading MAX palette", "50%", "ready 1/2"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("startup loading view missing %q:\n%s", want, view)

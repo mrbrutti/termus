@@ -1199,6 +1199,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.splashVisible {
+			// Station dial: ←/→ browse stations without dismissing the
+			// splash (playback is already running — this rides the normal
+			// switchAlgo path). Any other key dismisses as before.
+			switch msg.String() {
+			case "left":
+				m.switchAlgo(-1)
+				m.splashUntil = time.Now().Add(5 * time.Second)
+				return m, nil
+			case "right":
+				m.switchAlgo(1)
+				m.splashUntil = time.Now().Add(5 * time.Second)
+				return m, nil
+			}
 			m.splashVisible = false
 		}
 		if m.trackVisible {
@@ -1403,8 +1416,10 @@ func (m Model) View() string {
 	}
 	now := time.Now()
 	theme := m.activeTheme()
-	if m.startupLoading {
-		return startupLoadingView(m, m.width, m.height, theme, now)
+	// One screen covers both startup states: the loader takes precedence over
+	// the onboarding splash, and both render as the same centered full screen.
+	if m.startupLoading || m.splashVisible {
+		return splashScreen(m, m.width, m.height, theme, now)
 	}
 	// The control center is a full-screen pane, not a floating box inside the
 	// play-view chrome.
@@ -1474,8 +1489,6 @@ func (m Model) View() string {
 		body = inspectorPanel(m, innerW, innerH, theme)
 	} else if m.exportVisible {
 		body = exportPanel(m, innerW, innerH, theme)
-	} else if m.splashVisible {
-		body = splashPanel(m, innerW, innerH, theme)
 	}
 	if m.reducedChrome {
 		if volumeLine != "" {
@@ -1983,51 +1996,6 @@ func styleHelpLine(theme ColorTheme, dim bool, title, text string) string {
 
 func filterHelpLines(lines []string, m Model) []string {
 	return append([]string(nil), lines...)
-}
-
-func splashPanel(m Model, w, h int, theme ColorTheme) string {
-	bodyW := maxInt(30, minInt(w-6, 72))
-	bodyH := maxInt(12, minInt(h-2, 16))
-	lines := []string{
-		lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render("TERMUS"),
-		"",
-		styleHelpLine(theme, false, "Play", "[space] pause / resume   [↑↓] volume"),
-		styleHelpLine(theme, false, "Open", "[m] control center   [t] tracks   [?] help"),
-		styleHelpLine(theme, false, "Global", "[q] quit   [z] zen"),
-		"",
-		lipgloss.NewStyle().Faint(true).Render("Press any key to start exploring."),
-	}
-	panel := lipgloss.NewStyle().
-		Width(bodyW).
-		Height(bodyH).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(theme.BarFg).
-		Padding(1, 2).
-		Render(strings.Join(lines, "\n"))
-	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, panel)
-}
-
-func startupLoadingView(m Model, w, h int, theme ColorTheme, now time.Time) string {
-	title := m.startupTitle
-	if title == "" {
-		title = "Loading termus"
-	}
-	barW := maxInt(26, minInt(w-10, 72))
-	barH := 3
-	phase := float64(now.UnixNano()) / float64(time.Second)
-	bar := renderStartupBrailleBar(barW, barH, clamp01(m.startupPercent), phase, theme)
-	pct := lipgloss.NewStyle().Foreground(theme.BarHi).Render(fmt.Sprintf("%3d%%", int(clamp01(m.startupPercent)*100)))
-	titleLine := lipgloss.NewStyle().Foreground(theme.BarHi).Bold(true).Render(title)
-	detail := ""
-	if m.startupDetail != "" {
-		detail = lipgloss.NewStyle().Foreground(theme.BarFg).Faint(true).Render(m.startupDetail)
-	}
-	parts := []string{titleLine, "", bar, pct, "", detail}
-	if ctx := composingContextBlock(m, barW, theme); ctx != "" {
-		parts = append(parts, "", ctx)
-	}
-	content := lipgloss.JoinVertical(lipgloss.Center, parts...)
-	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, content)
 }
 
 // composingContextBlock renders the .tm track's compositional metadata
