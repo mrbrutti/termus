@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 func DefaultRoots() []string {
@@ -99,6 +100,7 @@ func Resolve(entries []Entry, input string) (Entry, bool) {
 				Complexity:   complexity,
 				Structure:    structure,
 				RenderEngine: file.RenderEngine,
+				Textures:     textureLabels(file.Textures),
 			}, true
 		}
 	}
@@ -146,6 +148,7 @@ func loadEntry(root, path string) (Entry, error) {
 		Complexity:   complexity,
 		Structure:    structure,
 		RenderEngine: file.RenderEngine,
+		Textures:     textureLabels(file.Textures),
 	}, nil
 }
 
@@ -186,12 +189,17 @@ func buildEntrySummary(file *File, pack stylePack) ([]string, []EntrySection, []
 		}
 		events := reviewEventLabels(sectionEvents(section))
 		totalEvents += len(events)
+		dur, _ := time.ParseDuration(strings.TrimSpace(section.Duration))
+		if dur < 0 {
+			dur = 0
+		}
 		structure = append(structure, EntrySection{
 			ID:        section.ID,
 			Label:     label,
 			Harmony:   section.Harmony,
 			RoleNames: roleNames,
 			Events:    append([]string(nil), events...),
+			Duration:  dur,
 		})
 	}
 	return titles, structure, ensemble, totalEvents, entryComplexity(len(structure), totalEvents, len(ensemble))
@@ -286,6 +294,23 @@ func entryComplexity(sectionCount, eventCount, ensembleCount int) string {
 	default:
 		return "lean"
 	}
+}
+
+// textureLabels renders the file's textures: block as display strings for
+// the track-library detail pane, e.g. "rain -36 dB".
+func textureLabels(textures []TextureSpec) []string {
+	out := make([]string, 0, len(textures))
+	for _, tx := range textures {
+		name := strings.TrimSpace(tx.Name)
+		if name == "" {
+			continue
+		}
+		out = append(out, fmt.Sprintf("%s %.0f dB", name, tx.LevelDB))
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func dedupePaths(paths []string) []string {
