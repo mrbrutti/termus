@@ -13,6 +13,7 @@ This is a presentation-layer redesign. **No keybinding changes. No behavior chan
 
 1. **Narration data — wire the existing state.** `gen.DebugStatus` gains optional fields `Movement string`, `Episode int`, `NextChord string`. Algorithms that already hold a `FormPlan` / `LongHorizonState` populate them in their existing `DebugStatus()` methods; others leave them zero-valued and the narration line omits those segments. `gen.FormatDebugStatus` output is unchanged (debug bar stays stable).
 2. **Splash dial is non-blocking.** Auto-start and the 5-second auto-dismiss stay exactly as today. While the splash is visible, `←`/`→` switch the station via the existing `switchAlgo` path *without dismissing the splash*; `enter` or any other key dismisses it as before.
+3. **As-built deviations from the mock.** Narration renders the movement *name* (`establish` / `develop` / `breathe` / `lift` / `return`) rather than the mock's roman numeral, since the engine's movements are qualitative phases of the form rather than an ordinal sequence; and splash arrow presses re-arm the 5-second auto-dismiss timer so the dial doesn't vanish mid-browse.
 
 ## Visual spec
 
@@ -30,8 +31,7 @@ This is a presentation-layer redesign. **No keybinding changes. No behavior chan
 
 ## Data plumbing (the only non-TUI changes)
 
-- `gen.DebugStatus`: add `Movement string`, `Episode int`, `NextChord string` (optional; zero values omitted from narration). Populate in algorithms that already track this state (chill, jazz, sf2_markov, and any other `FormPlan` holders). No new engine logic.
-- Procedural form rail: an optional provider interface (e.g. `FormChain() (sections []string, currentIdx int)`) surfaced through the same snapshot path, for algorithms whose `FormPlan` episode section chain exists. Authored tracks use `TrackNavEntry.Structure` / the active playlist track's sections instead. If no source is available, the form rail row collapses (row not rendered).
+- `gen.DebugStatus` (as built): five optional fields — `Movement string`, `Episode int`, `NextChord string`, `FormChain []string`, `FormIndex int` — all zero-valued and omitted from narration/the form rail unless populated. Algorithms that hold an `EpisodePlan` (chill, jazz, sf2_markov) populate all five in one call, `movement, episode, chain, idx := a.form.FormStatus(a.samplesElapsed)`, via `EpisodePlan.FormStatus` (`internal/gen/form.go`); algorithms without an `EpisodePlan` leave them zero. Authored tracks use `TrackNavEntry.Structure` / the active playlist track's sections for the form rail instead of `FormChain`/`FormIndex`. If no source is available, the form rail row collapses (row not rendered).
 - `track.EntrySection`: add `Duration time.Duration`, filled in `discover.go` from the parsed file.
 - `track.Entry`: add `Textures []string`, pre-formatted (e.g. `rain −36 dB`), from `File.Textures` (`TextureSpec.Name` + `LevelDB`).
 - `tui.TrackNavSection` / `tui.TrackNavEntry`: mirror the two new fields; copy in `cmd/termus/main.go`.
